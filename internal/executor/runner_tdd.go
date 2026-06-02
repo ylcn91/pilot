@@ -1,0 +1,247 @@
+package executor
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"path/filepath"
+)
+
+// runTDDSequence drives the opt-in TDD role pipeline when config.TDD.Enabled is
+// set. It runs ARCHITECT -> TEST-AUTHOR -> [RED gate] -> IMPLEMENTER -> [GREEN
+// gate] and returns the IMPLEMENTER's BackendResult so the EXISTING finalize tail
+// (executeCopyResult + executeFinalize: QA/review/PR) runs unchanged.
+//
+// It returns a non-nil error to ABORT the run when a gate cannot be satisfied:
+//   - RED not red after a bounded TEST-AUTHOR retry -> reasonTDDRedGateNotRed
+//   - GREEN still failing after green_max_retries     -> reasonTDDGreenGateFailed
+//
+// The caller (Execute) wires the returned (result, err) into the same path it
+// uses for r.execBackend.Execute, so failures flow through the normal failure
+// handling and successes through the normal finalize tail.
+func (r *Runner) runTDDSequence(s *executeState) (*BackendResult, error) {
+	task := s.task
+	ctx := s.ctx
+	log := s.log
+
+	scopeToNew := true
+	if r.config != nil && r.config.TDD != nil && r.config.TDD.ScopeRedToNew != nil {
+		scopeToNew = *r.config.TDD.ScopeRedToNew
+	}
+	roleMax, greenMax := r.tddRetryBudgets()
+
+	base := r.tddBasePrompt(s)
+
+	// 1) ARCHITECT — read-only design. Advisory: failure is non-fatal, the design
+	// just augments the later prompts when present.
+	r.reportProgress(task.ID, "TDD Architect", 12, "Designing change (read-only)...")
+	if archRes, err := r.runTDDRole(s, r.architectBackend, buildTDDRolePrompt(base, buildArchitectAppendix())); err != nil {
+		log.Warn("TDD architect role failed; continuing without design", slog.Any("error", err))
+	} else if archRes != nil {
+		s.tddArchitectDesign = archRes.Output
+	}
+
+	// 2) TEST-AUTHOR — write FAILING tests and commit. Re-prompt once if no commit
+	// landed (an empty working tree cannot drive the RED gate).
+	if err := r.runTDDTestAuthor(s, base, roleMax); err != nil {
+		return nil, err
+	}
+
+	// 3) RED gate — the authored tests MUST fail. Aborts (no fall-through) if not.
+	r.reportProgress(task.ID, "TDD Red Gate", 40, "Verifying tests fail (RED)...")
+	if err := r.enforceTDDRedGate(ctx, task.ID, s.executionPath, s.tddTestNames, scopeToNew, roleMax,
+		func(ctx context.Context, feedback string) error {
+			return r.rerunTDDTestAuthor(s, base, feedback)
+		}); err != nil {
+		return nil, err
+	}
+
+	// 4) IMPLEMENTER — make the failing tests pass and commit.
+	r.reportProgress(task.ID, "TDD Implementer", 50, "Implementing to pass tests...")
+	implRes, err := r.runTDDImplementer(s, base, "")
+	if err != nil {
+		return nil, err
+	}
+
+	// 5) GREEN gate — same tests MUST pass; loop IMPLEMENTER with gate feedback.
+	r.reportProgress(task.ID, "TDD Green Gate", 70, "Verifying tests pass (GREEN)...")
+	if err := r.enforceTDDGreenGate(ctx, task.ID, s.executionPath, s.tddTestNames, scopeToNew, greenMax,
+		func(ctx context.Context, feedback string) error {
+			res, rerunErr := r.runTDDImplementer(s, base, feedback)
+			if rerunErr != nil {
+				return rerunErr
+			}
+			implRes = res
+			return nil
+		}); err != nil {
+		return nil, err
+	}
+
+	// Return the IMPLEMENTER result so the existing finalize tail (QA/PR) runs.
+	return implRes, nil
+}
+
+// tddRetryBudgets resolves the per-role and GREEN retry budgets from config,
+// falling back to the package defaults.
+func (r *Runner) tddRetryBudgets() (roleMax, greenMax int) {
+	roleMax = defaultTDDRoleMaxRetries
+	greenMax = defaultTDDGreenMaxRetries
+	if r.config == nil || r.config.TDD == nil {
+		return roleMax, greenMax
+	}
+	if r.config.TDD.RoleMaxRetries != nil {
+		roleMax = *r.config.TDD.RoleMaxRetries
+	}
+	if r.config.TDD.GreenMaxRetries != nil {
+		greenMax = *r.config.TDD.GreenMaxRetries
+	}
+	return roleMax, greenMax
+}
+
+// tddBasePrompt builds the shared base prompt for every TDD role: the run's
+// execute prompt (BuildPrompt + plan injection, already on s.prompt) plus an
+// explicit BuildGuidancePreamble so role backends that bypass BuildPrompt (e.g.
+// codex-app-server) still receive .agent priming.
+func (r *Runner) tddBasePrompt(s *executeState) string {
+	base := s.prompt
+	agentDir := s.agentPath
+	if agentDir == "" {
+		agentDir = filepath.Join(s.executionPath, ".agent")
+	}
+	if preamble := BuildGuidancePreamble(agentDir, s.task.Description); preamble != "" {
+		base = preamble + "\n\n" + base
+	}
+	return base
+}
+
+// runTDDRole invokes a single role backend with the shared ExecuteOptions wiring
+// (model/effort/max-turns, recorder + progress event handler) mirrored from the
+// main execute call, and returns its BackendResult.
+func (r *Runner) runTDDRole(s *executeState, backend Backend, prompt string) (*BackendResult, error) {
+	task := s.task
+	allowedTools, mcpConfigPath := r.executionToolOptions()
+	return backend.Execute(s.ctx, ExecuteOptions{
+		Prompt:        prompt,
+		ProjectPath:   s.executionPath,
+		Verbose:       task.Verbose,
+		Model:         s.selectedModel,
+		Effort:        s.selectedEffort,
+		MaxTurns:      s.workflowMaxTurns,
+		AllowedTools:  allowedTools,
+		MCPConfigPath: mcpConfigPath,
+		EventHandler: func(event BackendEvent) {
+			if s.recorder != nil {
+				if recErr := s.recorder.RecordEvent(event.Raw); recErr != nil {
+					s.log.Warn("Failed to record TDD event", slog.Any("error", recErr))
+				}
+			}
+			r.processBackendEvent(task.ID, event, s.state)
+		},
+	})
+}
+
+// runTDDTestAuthor runs the TEST-AUTHOR role, requiring a fresh commit and a
+// TESTS_ADDED list. If no commit landed it re-prompts up to roleMax times; an
+// empty working tree cannot drive the RED gate.
+func (r *Runner) runTDDTestAuthor(s *executeState, base string, roleMax int) error {
+	if roleMax < 0 {
+		roleMax = defaultTDDRoleMaxRetries
+	}
+	for attempt := 0; ; attempt++ {
+		r.reportProgress(s.task.ID, "TDD Test Author", 25, "Writing failing tests...")
+		committed, err := r.runTDDTestAuthorOnce(s, base, "")
+		if err != nil {
+			return err
+		}
+		if committed {
+			if len(s.tddTestNames) == 0 {
+				s.log.Warn("TDD test-author committed but emitted no TESTS_ADDED; RED/GREEN gates fall back to the whole suite",
+					slog.String("task_id", s.task.ID))
+			}
+			return nil
+		}
+		if attempt >= roleMax {
+			return fmt.Errorf("tdd_test_author_no_commit: TEST-AUTHOR produced no commit after %d retr%s", roleMax, plural(roleMax))
+		}
+		s.log.Info("TDD test-author produced no commit; re-prompting",
+			slog.String("task_id", s.task.ID), slog.Int("attempt", attempt+1))
+	}
+}
+
+// rerunTDDTestAuthor re-invokes the TEST-AUTHOR with the RED gate's feedback when
+// the authored tests passed before any implementation. It is the rerun hook
+// passed to enforceTDDRedGate.
+func (r *Runner) rerunTDDTestAuthor(s *executeState, base, feedback string) error {
+	r.reportProgress(s.task.ID, "TDD Test Author", 30, "Re-authoring failing tests...")
+	_, err := r.runTDDTestAuthorOnce(s, base, feedback)
+	return err
+}
+
+// runTDDTestAuthorOnce runs one TEST-AUTHOR invocation, parses TESTS_ADDED into
+// s.tddTestNames, and reports whether a new commit landed (via CountNewCommits
+// against the resolved base branch).
+func (r *Runner) runTDDTestAuthorOnce(s *executeState, base, feedback string) (committed bool, err error) {
+	before, err := r.tddCommitCount(s)
+	if err != nil {
+		return false, err
+	}
+	appendix := buildTestAuthorAppendix(s.tddArchitectDesign)
+	if feedback != "" {
+		appendix += "\n\n## RED gate feedback (fix this)\n\n" + feedback
+	}
+	res, err := r.runTDDRole(s, r.testAuthorBackend, buildTDDRolePrompt(base, appendix))
+	if err != nil {
+		return false, err
+	}
+	if res != nil {
+		if names := extractTestsAdded(res.Output); len(names) > 0 {
+			s.tddTestNames = names
+		}
+	}
+	after, err := r.tddCommitCount(s)
+	if err != nil {
+		return false, err
+	}
+	return after > before, nil
+}
+
+// runTDDImplementer runs one IMPLEMENTER invocation (with optional GREEN gate
+// feedback) and requires a fresh commit.
+func (r *Runner) runTDDImplementer(s *executeState, base, feedback string) (*BackendResult, error) {
+	before, err := r.tddCommitCount(s)
+	if err != nil {
+		return nil, err
+	}
+	appendix := buildImplementerAppendix(s.tddArchitectDesign, s.tddTestNames, feedback)
+	res, err := r.runTDDRole(s, r.implementerBackend, buildTDDRolePrompt(base, appendix))
+	if err != nil {
+		return nil, err
+	}
+	after, err := r.tddCommitCount(s)
+	if err != nil {
+		return res, err
+	}
+	if after <= before {
+		s.log.Warn("TDD implementer produced no new commit; GREEN gate will judge the working tree",
+			slog.String("task_id", s.task.ID))
+	}
+	return res, nil
+}
+
+// tddCommitCount counts commits on the current branch relative to the resolved
+// base branch (task.BaseBranch -> git default -> "main"), used to verify a role
+// committed. A missing base branch yields 0 (CountNewCommits contract).
+func (r *Runner) tddCommitCount(s *executeState) (int, error) {
+	if s.git == nil {
+		return 0, fmt.Errorf("tdd commit count: git operations not initialized")
+	}
+	baseBranch := s.task.BaseBranch
+	if baseBranch == "" {
+		if def, derr := s.git.GetDefaultBranch(s.ctx); derr == nil && def != "" {
+			baseBranch = def
+		} else {
+			baseBranch = "main"
+		}
+	}
+	return s.git.CountNewCommits(s.ctx, baseBranch)
+}
