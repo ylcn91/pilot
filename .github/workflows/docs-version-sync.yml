@@ -53,7 +53,7 @@ jobs:
           HAS_PAT: ${{ secrets.PILOT_DOCS_PAT != '' }}
         run: |
           if [ "$HAS_PAT" != "true" ]; then
-            echo "::warning::PILOT_DOCS_PAT not set — auto-merge will use GITHUB_TOKEN, sync-docs.yml will not chain"
+            echo "::warning::PILOT_DOCS_PAT not set — auto-merge will use GITHUB_TOKEN"
           fi
 
       - name: Check for changes

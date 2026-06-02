@@ -1,4 +1,4 @@
-.PHONY: build run test test-e2e clean install lint fmt deps dev install-hooks check-secrets gate check-integration auto-fix test-short test-integration test-chaos test-wiring package release docker-build docker-push desktop-dev desktop-build desktop-build-windows desktop-build-linux desktop desktop-deps desktop-package desktop-dmg desktop-clean build-with-dashboard
+.PHONY: build run test test-e2e clean install lint fmt deps dev install-hooks check-secrets gate check-integration auto-fix test-short test-integration test-chaos test-wiring package release desktop-dev desktop-build desktop-build-windows desktop-build-linux desktop desktop-deps desktop-package desktop-dmg desktop-clean build-with-dashboard
 
 # Variables
 BINARY_NAME=pilot
@@ -157,8 +157,8 @@ gate:
 # Usage: make release V=0.14.6
 #
 # Tag-only by design: the tag push triggers .github/workflows/release.yml
-# (goreleaser), which builds the binaries and publishes the GitHub release,
-# the Homebrew tap, and Docker images; release-desktop.yml ships the desktop
+# (goreleaser), which builds the binaries and publishes the GitHub release
+# and the Homebrew tap; release-desktop.yml ships the desktop
 # bundles. Do NOT create the GitHub release or upload assets here — a local
 # `gh release create` races goreleaser and makes it fail with 422
 # "asset already_exists", which also skips the Homebrew formula publish.
@@ -182,19 +182,6 @@ endif
 	@echo "✅ Tag v$(V) pushed. CI (goreleaser) now builds binaries and publishes"
 	@echo "   the GitHub release, Homebrew tap, and Docker/Desktop bundles."
 	@echo "   Track it: gh run list --workflow=Release"
-
-# Build Docker image for standalone Pilot
-docker-build:
-	docker build \
-		--build-arg VERSION=$(VERSION) \
-		--build-arg BUILD_TIME=$(BUILD_TIME) \
-		-t pilot:$(VERSION) \
-		.
-
-# Push Docker image to GitHub Container Registry
-docker-push:
-	docker tag pilot:$(VERSION) ghcr.io/qf-studio/pilot:$(VERSION)
-	docker push ghcr.io/qf-studio/pilot:$(VERSION)
 
 # Build with embedded React dashboard at /dashboard/ (GH-1612)
 build-with-dashboard: desktop-deps
@@ -273,8 +260,6 @@ help:
 	@echo "  make test-chaos     Run chaos/fault injection tests"
 	@echo "  make package        Package binaries into tar.gz archives"
 	@echo "  make release        Create release (V=0.x.x required)"
-	@echo "  make docker-build   Build Docker image (tag: pilot:VERSION)"
-	@echo "  make docker-push    Push image to ghcr.io/qf-studio/pilot"
 	@echo "  make build-with-dashboard  Build with embedded React dashboard"
 	@echo "  make desktop-deps          Install desktop frontend dependencies"
 	@echo "  make desktop-dev           Run desktop app in dev mode"

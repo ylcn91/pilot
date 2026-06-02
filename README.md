@@ -29,8 +29,7 @@
   <a href="#how-it-works">How It Works</a> •
   <a href="#features">Features</a> •
   <a href="#cli-reference">CLI</a> •
-  <a href="https://discord.gg/Hsz63MTB3c">Discord</a> •
-  <a href="docs/DEPLOYMENT.md">Deploy</a>
+  <a href="https://discord.gg/Hsz63MTB3c">Discord</a>
 </p>
 
 <br />
