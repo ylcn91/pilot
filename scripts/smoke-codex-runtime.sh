@@ -38,7 +38,16 @@ memory_path="${tmpdir}/memory"
 project_path="${tmpdir}/project"
 server_log="${tmpdir}/pilot.log"
 pilot_bin="${tmpdir}/pilot"
-mkdir -p "${memory_path}" "${project_path}"
+shim_bin="${tmpdir}/bin"
+gh_config_dir="${tmpdir}/gh-config"
+mkdir -p "${memory_path}" "${project_path}" "${shim_bin}" "${gh_config_dir}"
+
+cat > "${shim_bin}/gh" <<'SH'
+#!/usr/bin/env bash
+echo "blocked gh invocation during codex runtime smoke: gh $*" >&2
+exit 88
+SH
+chmod +x "${shim_bin}/gh"
 
 cat > "${config_path}" <<YAML
 version: "1.0"
@@ -133,6 +142,11 @@ alerts:
   enabled: false
 YAML
 
+if grep -q "qf-studio/pilot" "${config_path}"; then
+	echo "smoke config must not reference upstream qf-studio/pilot" >&2
+	exit 1
+fi
+
 (
 	cd "${repo_root}"
 	go build -o "${pilot_bin}" ./cmd/pilot
@@ -141,6 +155,8 @@ YAML
 (
 	cd "${repo_root}"
 	env \
+		PATH="${shim_bin}:${PATH}" \
+		GH_CONFIG_DIR="${gh_config_dir}" \
 		GITHUB_TOKEN= \
 		GH_TOKEN= \
 		GITHUB_APP_ID= \
