@@ -44,6 +44,7 @@ PATTERNS=(
 # must be repo-root-relative, no leading "./").
 ALLOWLIST=(
     'CLAUDE.md'                                       # forbidden-pattern examples in §"Test Token Guidelines"
+    'AGENTS.md'                                       # carries the same §"Test Token Guidelines" educational block as CLAUDE.md
     'CONTRIBUTING.md'                                 # same examples for external contributors
     'internal/testutil/tokens.go'                     # safe-token constants module, comments show what NOT to do
     '.agent/tasks/archive/TASK-41-test-secret-patterns.md'  # postmortem documenting the original incident
