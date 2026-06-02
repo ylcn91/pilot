@@ -161,11 +161,10 @@ gate:
 #
 # Tag-only by design: the tag push triggers .github/workflows/release.yml
 # (goreleaser), which builds the binaries and publishes the GitHub release
-# and the Homebrew tap; release-desktop.yml ships the desktop
-# bundles. Do NOT create the GitHub release or upload assets here — a local
+# in the fork; release-desktop.yml ships the desktop bundles. Do NOT create
+# the GitHub release or upload assets here — a local
 # `gh release create` races goreleaser and makes it fail with 422
-# "asset already_exists", which also skips the Homebrew formula publish.
-# (That broke v2.166.6's Release run; v2.166.0–166.5 shipped clean as tag-only.)
+# "asset already_exists".
 release:
 ifndef V
 	$(error V is required. Usage: make release V=0.14.6)
@@ -175,8 +174,8 @@ endif
 		echo "❌ Error: Working directory not clean. Commit or stash changes first."; \
 		exit 1; \
 	fi
-	@if [ "$$(git branch --show-current)" != "main" ]; then \
-		echo "❌ Error: Must be on main branch to release."; \
+	@if [ "$$(git branch --show-current)" != "master" ]; then \
+		echo "❌ Error: Must be on master branch to release."; \
 		exit 1; \
 	fi
 	@echo "📌 Creating and pushing git tag v$(V)..."

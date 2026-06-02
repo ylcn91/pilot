@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: master
 
       - name: Get release version
         id: version
@@ -84,7 +84,7 @@ jobs:
 
             Created by docs-version-sync workflow.
           branch: docs/version-sync-${{ steps.version.outputs.VERSION }}
-          base: main
+          base: master
           labels: documentation
 
       - name: Enable auto-merge
