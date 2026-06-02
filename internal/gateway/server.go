@@ -72,9 +72,9 @@ type Server struct {
 	mu                     sync.RWMutex
 	running                bool
 	customHandlers         map[string]http.Handler
-	githubWebhookSecret    string             // Secret for GitHub webhook signature validation
-	linearWebhookPublicKey ed25519.PublicKey  // Ed25519 public key for Linear webhook signature validation (TASK-295). Nil = verification disabled.
-	dashboardFS            fs.FS              // Embedded React frontend (nil if not embedded)
+	githubWebhookSecret    string            // Secret for GitHub webhook signature validation
+	linearWebhookPublicKey ed25519.PublicKey // Ed25519 public key for Linear webhook signature validation (TASK-295). Nil = verification disabled.
+	dashboardFS            fs.FS             // Embedded React frontend (nil if not embedded)
 	readinessCheckers      []ReadinessChecker
 	liveness               *livenessState
 	prometheusExporter     *PrometheusExporter
@@ -176,6 +176,7 @@ func NewServerWithAuth(config *Config, authConfig *AuthConfig) *Server {
 	}
 	// Initialize heartbeat
 	s.liveness.lastHeartbeat.Store(time.Now().Unix())
+	s.registerRuntimeHandlers()
 	return s
 }
 
