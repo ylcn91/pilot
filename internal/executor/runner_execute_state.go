@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ylcn91/pilot/internal/executor/workflow"
+	"github.com/ylcn91/pilot/internal/pilotapi"
 	"github.com/ylcn91/pilot/internal/replay"
 )
 
@@ -45,11 +46,24 @@ type executeState struct {
 	// Pipeline plan stage (opt-in): raw spec injected into the execute prompt.
 	planOutput string
 
+	// planArtifact is the typed, traceable record of the pipeline plan stage,
+	// built from planOutput alongside the prose injection. Zero-value (empty
+	// TraceHash) unless config.Pipeline.Plan ran and produced a spec. The prose
+	// "## Implementation Plan" section is what backends consume; this artifact is
+	// the versioned, content-addressable audit record.
+	planArtifact pilotapi.HandoffArtifact
+
 	// TDD mode (opt-in): advisory design from the ARCHITECT role and the test
 	// names emitted by the TEST-AUTHOR (TESTS_ADDED), used to scope the RED/GREEN
 	// gates. Both empty unless config.TDD.Enabled.
 	tddArchitectDesign string
 	tddTestNames       []string
+
+	// tddArtifacts is the chained handoff record for the TDD role pipeline,
+	// appended in role order (architect -> test-author -> implementer). Each
+	// artifact's ParentHash links to the prior role's TraceHash, forming an
+	// auditable lineage. Nil/empty unless config.TDD.Enabled drove the sequence.
+	tddArtifacts []pilotapi.HandoffArtifact
 
 	// Prompt + progress + recording
 	prompt          string

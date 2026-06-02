@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/ylcn91/pilot/internal/pilotapi"
 )
 
 // recordingPlanBackend captures the ExecuteOptions of each Execute call so tests
@@ -50,6 +52,79 @@ func TestExecutePipelinePlan_InjectsSpec(t *testing.T) {
 	}
 	if !strings.Contains(prompt, spec) {
 		t.Fatalf("prompt missing spec body:\n%s", prompt)
+	}
+}
+
+// TestExecutePipelinePlan_BuildsTypedArtifact verifies the plan stage stores a
+// typed "plan" handoff artifact alongside the prose injection: role plan, the
+// raw spec as content, a chain-root ParentHash (empty), the task ID, the current
+// schema version, and the deterministic TraceHash over those fields.
+func TestExecutePipelinePlan_BuildsTypedArtifact(t *testing.T) {
+	const spec = "1. **feat(api): add handler** - wire the route"
+	const taskID = "GH-art-1"
+
+	r := newTestRunner("claude")
+	r.config.Pipeline = &PipelineConfig{Plan: &StageConfig{Type: BackendTypeClaudeCode}}
+	r.planPipelineFn = func() (string, error) { return spec, nil }
+
+	s := &executeState{task: &Task{ID: taskID, Title: "do work"}, ctx: context.Background()}
+	r.executePipelinePlan(s)
+
+	art := s.planArtifact
+	if art.Role != pilotapi.RolePlan {
+		t.Errorf("artifact role = %q, want %q", art.Role, pilotapi.RolePlan)
+	}
+	if art.Content != spec {
+		t.Errorf("artifact content = %q, want spec %q", art.Content, spec)
+	}
+	if art.ParentHash != "" {
+		t.Errorf("plan artifact ParentHash = %q, want empty (chain root)", art.ParentHash)
+	}
+	if art.TaskID != taskID {
+		t.Errorf("artifact TaskID = %q, want %q", art.TaskID, taskID)
+	}
+	if art.SchemaVersion != pilotapi.SchemaVersion {
+		t.Errorf("artifact SchemaVersion = %d, want %d", art.SchemaVersion, pilotapi.SchemaVersion)
+	}
+	want := pilotapi.TraceHash(pilotapi.RolePlan, taskID, spec, "")
+	if art.TraceHash != want {
+		t.Errorf("artifact TraceHash = %q, want %q", art.TraceHash, want)
+	}
+	// The typed artifact equals a freshly built one (deterministic constructor).
+	if art != pilotapi.NewHandoffArtifact(pilotapi.RolePlan, taskID, spec, "") {
+		t.Errorf("plan artifact not equal to NewHandoffArtifact(...): %+v", art)
+	}
+}
+
+// TestExecutePipelinePlan_NoArtifactWhenSkipped verifies that with no plan stage
+// configured the artifact stays the zero value (no TraceHash), matching the
+// no-op planOutput behavior — no traceable record is fabricated.
+func TestExecutePipelinePlan_NoArtifactWhenSkipped(t *testing.T) {
+	r := newTestRunner("claude")
+	s := &executeState{task: &Task{ID: "GH-art-2", Title: "do work"}, ctx: context.Background()}
+	r.executePipelinePlan(s)
+
+	if s.planArtifact != (pilotapi.HandoffArtifact{}) {
+		t.Fatalf("planArtifact = %+v, want zero value when stage skipped", s.planArtifact)
+	}
+	if s.planArtifact.TraceHash != "" {
+		t.Fatalf("planArtifact.TraceHash = %q, want empty when stage skipped", s.planArtifact.TraceHash)
+	}
+}
+
+// TestExecutePipelinePlan_NoArtifactOnFailure verifies a plan-stage error leaves
+// the typed artifact at its zero value (no spurious traceable record) just as it
+// leaves planOutput empty.
+func TestExecutePipelinePlan_NoArtifactOnFailure(t *testing.T) {
+	r := newTestRunner("claude")
+	r.config.Pipeline = &PipelineConfig{Plan: &StageConfig{Type: BackendTypeClaudeCode}}
+	r.planPipelineFn = func() (string, error) { return "", context.DeadlineExceeded }
+
+	s := &executeState{task: &Task{ID: "GH-art-3", Title: "do work"}, ctx: context.Background()}
+	r.executePipelinePlan(s)
+
+	if s.planArtifact != (pilotapi.HandoffArtifact{}) {
+		t.Fatalf("planArtifact = %+v, want zero value after plan failure", s.planArtifact)
 	}
 }
 

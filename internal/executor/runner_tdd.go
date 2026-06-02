@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"strings"
+
+	"github.com/ylcn91/pilot/internal/pilotapi"
 )
 
 // runTDDSequence drives the opt-in TDD role pipeline when config.TDD.Enabled is
@@ -40,6 +43,10 @@ func (r *Runner) runTDDSequence(s *executeState) (*BackendResult, error) {
 	} else if archRes != nil {
 		s.tddArchitectDesign = archRes.Output
 	}
+	// Record the architect handoff as the chain root (ParentHash == ""). The
+	// design may be empty (role failed/produced nothing); the typed record still
+	// anchors the lineage so test-author and implementer chain off a stable hash.
+	r.recordTDDArtifact(s, pilotapi.RoleArchitect, s.tddArchitectDesign)
 
 	// 2) TEST-AUTHOR — write FAILING tests and commit. Re-prompt once if no commit
 	// landed (an empty working tree cannot drive the RED gate).
@@ -55,6 +62,10 @@ func (r *Runner) runTDDSequence(s *executeState) (*BackendResult, error) {
 		}); err != nil {
 		return nil, err
 	}
+	// Record the test-author handoff once the RED gate is satisfied (single entry
+	// regardless of re-author retries), chained to the architect via ParentHash.
+	// Content captures the authored test names so the lineage is meaningful.
+	r.recordTDDArtifact(s, pilotapi.RoleTestAuthor, tddTestAuthorArtifactContent(s.tddTestNames))
 
 	// 4) IMPLEMENTER — make the failing tests pass and commit.
 	r.reportProgress(task.ID, "TDD Implementer", 50, "Implementing to pass tests...")
@@ -76,9 +87,30 @@ func (r *Runner) runTDDSequence(s *executeState) (*BackendResult, error) {
 		}); err != nil {
 		return nil, err
 	}
+	// Record the implementer handoff once the GREEN gate passes (single entry
+	// regardless of green retries), chained to the test-author via ParentHash.
+	r.recordTDDArtifact(s, pilotapi.RoleImplementer, tddImplementerArtifactContent(implRes))
 
 	// Return the IMPLEMENTER result so the existing finalize tail (QA/PR) runs.
 	return implRes, nil
+}
+
+// tddTestAuthorArtifactContent renders the authored test names as the
+// test-author artifact's content. Empty names yield an empty string, so the
+// artifact still records the role and chains correctly even when no TESTS_ADDED
+// list was emitted.
+func tddTestAuthorArtifactContent(names []string) string {
+	return strings.Join(names, "\n")
+}
+
+// tddImplementerArtifactContent renders the implementer artifact's content from
+// the final IMPLEMENTER result. A nil result yields an empty string so the
+// artifact still records the role and closes the chain.
+func tddImplementerArtifactContent(res *BackendResult) string {
+	if res == nil {
+		return ""
+	}
+	return res.Output
 }
 
 // tddRetryBudgets resolves the per-role and GREEN retry budgets from config,

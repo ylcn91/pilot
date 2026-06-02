@@ -3,6 +3,8 @@ package executor
 import (
 	"log/slog"
 	"path/filepath"
+
+	"github.com/ylcn91/pilot/internal/pilotapi"
 )
 
 // executePipelinePlan runs the opt-in pipeline PLAN stage. Unlike epic planning
@@ -59,9 +61,21 @@ func (r *Runner) executePipelinePlan(s *executeState) {
 	}
 
 	s.planOutput = output
+
+	// Build the typed, traceable record alongside the prose injection. The prose
+	// "## Implementation Plan" section (injectPlanOutput) is what backends
+	// consume; this artifact is the versioned, content-addressable audit record.
+	// The plan stage is the chain root, so its ParentHash is empty.
+	s.planArtifact = pilotapi.NewHandoffArtifact(pilotapi.RolePlan, task.ID, output, "")
+
 	r.log.Info("Pipeline plan stage produced spec",
 		slog.String("task_id", task.ID),
 		slog.Int("spec_bytes", len(output)),
+	)
+	r.log.Debug("Pipeline plan handoff artifact",
+		slog.String("task_id", task.ID),
+		slog.String("role", s.planArtifact.Role),
+		slog.String("trace_hash", s.planArtifact.TraceHash),
 	)
 }
 
