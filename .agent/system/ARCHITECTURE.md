@@ -389,13 +389,16 @@ cmd := exec.Command("claude",
 
 ### Navigator Integration
 
-Pilot activates `/nav-loop` mode when `.agent/` exists (v0.33.15+):
+`BuildPrompt()` (in `internal/executor/prompt_builder.go`, not `runner.go`) makes the prompt Navigator-aware when `.agent/` exists. As of GH-987 the workflow is **embedded** into the prompt instead of relying on the `/nav-loop` skill:
 
 ```go
 if useNavigator {
-    sb.WriteString("Use /nav-loop mode for this task.\n\n")
+    // Embedded autonomous workflow replaces the /nav-loop skill (GH-987)
+    sb.WriteString(GetAutonomousWorkflowInstructions())  // from workflow.go
 }
 ```
+
+`GetAutonomousWorkflowInstructions()` lives in `internal/executor/workflow.go`. The `/nav-loop` skill is no longer required — only the delivery mechanism changed; Navigator awareness remains critical.
 
 **Navigator context bridge (v1.18.0):**
 - Load key files, components, structure into prompt
@@ -698,9 +701,9 @@ git tag v2.X.Y && git push origin v2.X.Y  # GoReleaser CI handles rest
 
 ### 1. Navigator Integration (DO NOT REMOVE)
 
-`BuildPrompt()` in `internal/executor/runner.go` MUST invoke `/nav-loop` mode when `.agent/` exists. This is Pilot's core value proposition.
+`BuildPrompt()` in `internal/executor/prompt_builder.go` MUST keep the prompt Navigator-aware when `.agent/` exists, by embedding `GetAutonomousWorkflowInstructions()` (from `internal/executor/workflow.go`). As of GH-987 this embedded autonomous workflow replaces the `/nav-loop` skill dependency. This is Pilot's core value proposition.
 
-**Incident 2026-01-26**: Accidental removal during refactor. Pilot without Navigator = just another Claude Code wrapper.
+**Incident 2026-01-26**: Accidental removal during refactor. Pilot without Navigator awareness = just another Claude Code wrapper.
 
 ### 2. Git Worktree Isolation
 

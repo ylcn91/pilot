@@ -1196,3 +1196,146 @@ func TestBuildRetryPrompt_StripsInvisibleFromFeedback(t *testing.T) {
 		t.Errorf("retry prompt leaked invisible runes: %q", prompt)
 	}
 }
+
+// A1: readBoundedExcerpt truncates on a line boundary and appends an ellipsis.
+func TestReadBoundedExcerpt(t *testing.T) {
+	tempDir := t.TempDir()
+
+	if got := readBoundedExcerpt(filepath.Join(tempDir, "missing.md"), 400); got != "" {
+		t.Errorf("missing file should yield empty string, got %q", got)
+	}
+
+	short := filepath.Join(tempDir, "short.md")
+	if err := os.WriteFile(short, []byte("line one\nline two"), 0644); err != nil {
+		t.Fatalf("write short: %v", err)
+	}
+	if got := readBoundedExcerpt(short, 400); got != "line one\nline two" {
+		t.Errorf("short file should pass through, got %q", got)
+	}
+
+	long := filepath.Join(tempDir, "long.md")
+	body := strings.Repeat("0123456789\n", 100) // 1100 bytes
+	if err := os.WriteFile(long, []byte(body), 0644); err != nil {
+		t.Fatalf("write long: %v", err)
+	}
+	got := readBoundedExcerpt(long, 400)
+	if len(got) > 410 {
+		t.Errorf("excerpt should be bounded near 400 chars, got %d", len(got))
+	}
+	if !strings.HasSuffix(got, "…") {
+		t.Errorf("truncated excerpt should end with ellipsis, got %q", got)
+	}
+	if strings.HasSuffix(strings.TrimSuffix(got, "\n…"), "0123456") {
+		t.Errorf("excerpt should cut on a line boundary, not mid-line: %q", got)
+	}
+}
+
+// A1: BuildPrompt inlines an excerpt for the top SOP match under its pointer.
+func TestBuildPromptInlinesSOPExcerpt(t *testing.T) {
+	tempDir := t.TempDir()
+	agentDir := filepath.Join(tempDir, ".agent")
+	sopsDir := filepath.Join(agentDir, "sops")
+	if err := os.MkdirAll(sopsDir, 0755); err != nil {
+		t.Fatalf("mkdir sops: %v", err)
+	}
+	sopBody := "SOP: run all tests before committing. Use table-driven tests."
+	if err := os.WriteFile(filepath.Join(sopsDir, "testing-guide.md"), []byte(sopBody), 0644); err != nil {
+		t.Fatalf("write sop: %v", err)
+	}
+
+	runner := NewRunner()
+	task := &Task{
+		ID:          "TEST-A1",
+		Title:       "Add tests",
+		Description: "Add unit testing for the module",
+		ProjectPath: tempDir,
+	}
+	prompt := runner.BuildPrompt(task, tempDir)
+
+	if !strings.Contains(prompt, "`.agent/sops/testing-guide.md`") {
+		t.Error("expected SOP pointer line")
+	}
+	if !strings.Contains(prompt, "run all tests before committing") {
+		t.Error("expected inlined SOP excerpt under the pointer")
+	}
+}
+
+// B1: a curated PRIMING.md is loaded verbatim as project context.
+func TestLoadProjectContextPrefersPriming(t *testing.T) {
+	tempDir := t.TempDir()
+	agentDir := filepath.Join(tempDir, ".agent")
+	systemDir := filepath.Join(agentDir, "system")
+	if err := os.MkdirAll(systemDir, 0755); err != nil {
+		t.Fatalf("mkdir system: %v", err)
+	}
+	// A DEVELOPMENT-README that would otherwise be scraped.
+	if err := os.WriteFile(filepath.Join(agentDir, "DEVELOPMENT-README.md"),
+		[]byte("### Key Components\n\nScraped content\n"), 0644); err != nil {
+		t.Fatalf("write readme: %v", err)
+	}
+	primingBody := "# Curated Priming\n\nVerbatim priming body that wins.\n"
+	if err := os.WriteFile(filepath.Join(systemDir, "PRIMING.md"), []byte(primingBody), 0644); err != nil {
+		t.Fatalf("write priming: %v", err)
+	}
+
+	got := loadProjectContext(agentDir)
+	if !strings.Contains(got, "Verbatim priming body that wins") {
+		t.Errorf("expected verbatim PRIMING.md content, got %q", got)
+	}
+	if strings.Contains(got, "Scraped content") {
+		t.Errorf("PRIMING.md should override README scrape, got %q", got)
+	}
+}
+
+// B1: the assembled project-context block is capped at the overall budget.
+func TestLoadProjectContextBudget(t *testing.T) {
+	tempDir := t.TempDir()
+	systemDir := filepath.Join(tempDir, ".agent", "system")
+	if err := os.MkdirAll(systemDir, 0755); err != nil {
+		t.Fatalf("mkdir system: %v", err)
+	}
+	huge := "# Priming\n\n" + strings.Repeat("x", projectContextBudget*2) + "\n"
+	if err := os.WriteFile(filepath.Join(systemDir, "PRIMING.md"), []byte(huge), 0644); err != nil {
+		t.Fatalf("write priming: %v", err)
+	}
+
+	got := loadProjectContext(filepath.Join(tempDir, ".agent"))
+	if len(got) > projectContextBudget+64 {
+		t.Errorf("project context should be capped near budget, got %d chars", len(got))
+	}
+	if !strings.Contains(got, "project context truncated") {
+		t.Errorf("truncated context should carry a marker, got tail %q", got[max(0, len(got)-80):])
+	}
+}
+
+// B2e/A3/B7: self-review carries the full description, scope-creep critique,
+// and tiered standards markers.
+func TestBuildSelfReviewPromptScopeAndTiering(t *testing.T) {
+	runner := NewRunner()
+	longDesc := strings.Repeat("spec detail line. ", 60) // > 500 chars
+	task := &Task{
+		ID:          "GH-X",
+		Title:       "Self-review additions",
+		Description: longDesc,
+	}
+
+	prompt := runner.buildSelfReviewPrompt(task)
+
+	if !strings.Contains(prompt, longDesc) {
+		t.Error("full description should be included (no 500-char truncation)")
+	}
+	if strings.Contains(prompt, "(excerpt)") {
+		t.Error("description should no longer be labeled an excerpt")
+	}
+	if !strings.Contains(prompt, "SCOPE_CREEP: <symbol>") {
+		t.Error("self-review should include the scope-creep critique marker")
+	}
+	if !strings.Contains(prompt, "STANDARD_VIOLATION: <tier> <rule>") {
+		t.Error("self-review should include the tiered standards marker")
+	}
+	for _, tier := range []string{"blocker", "must", "nice"} {
+		if !strings.Contains(prompt, tier) {
+			t.Errorf("self-review should mention tier %q", tier)
+		}
+	}
+}

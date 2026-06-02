@@ -76,15 +76,21 @@ func (r *Runner) BuildPrompt(task *Task, executionPath string) (prompt string) {
 		return sb.String()
 	}
 
+	// .agent dir for file-driven guidance overlays (move B5). Resolved early so
+	// the header/evidence-spec fragments below can be overlaid before any branch.
+	// loadGuidance returns the const verbatim when no executor-guidance/<key>.md
+	// exists, so prompts stay byte-identical for projects without atoms.
+	agentDir := filepath.Join(executionPath, ".agent")
+
 	// GH-2328: Prepend [PILOT-EXEC] executor-mode header so the child Claude
 	// session and any project CLAUDE.md can skip Navigator-only "don't write
 	// code" rules explicitly, without relying on CWD or prompt-prefix sniffing.
-	sb.WriteString(ExecutorPromptHeader)
+	sb.WriteString(loadGuidance(agentDir, "header", ExecutorPromptHeader))
 
 	// GH-3224: defeat the false-negative no-op for evidence-backed specs.
 	// Injected here so it covers both the Navigator and non-Navigator execution
 	// paths below (image/local-mode early returns above are out of scope).
-	sb.WriteString(EvidenceBackedSpecDirective)
+	sb.WriteString(loadGuidance(agentDir, "evidence-spec", EvidenceBackedSpecDirective))
 
 	// GH-2103: LocalMode takes priority over Navigator detection.
 	// Sandbox environments with .agent/ dirs would hijack the prompt to Navigator path,
@@ -119,8 +125,9 @@ func (r *Runner) BuildPrompt(task *Task, executionPath string) (prompt string) {
 		return prompt
 	}
 
-	// Check if project has Navigator initialized (use executionPath for worktree support)
-	agentDir := filepath.Join(executionPath, ".agent")
+	// Check if project has Navigator initialized (agentDir resolved above for
+	// worktree support; reused here so guidance overlays and the .agent stat
+	// share one path).
 	hasNavigator := false
 	if _, err := os.Stat(agentDir); err == nil {
 		hasNavigator = true
@@ -167,12 +174,22 @@ func (r *Runner) BuildPrompt(task *Task, executionPath string) (prompt string) {
 			sb.WriteString("\n\n")
 		}
 
-		// NEW: Add SOP hints
+		// NEW: Add SOP hints. Inline a short excerpt for the top matches so the
+		// agent sees the actual guidance, not just a pointer it may not open;
+		// remaining matches stay as bare pointers to keep the prompt lean.
 		if sops := findRelevantSOPs(agentDir, task.Description); len(sops) > 0 {
 			sb.WriteString("## Relevant SOPs\n\n")
 			sb.WriteString("Check these before implementing:\n")
-			for _, sop := range sops {
+			const maxInlineExcerpts = 2
+			for i, sop := range sops {
 				sb.WriteString(fmt.Sprintf("- `.agent/%s`\n", sop))
+				if i < maxInlineExcerpts {
+					if excerpt := readBoundedExcerpt(filepath.Join(agentDir, sop), 400); excerpt != "" {
+						sb.WriteString("\n```\n")
+						sb.WriteString(excerpt)
+						sb.WriteString("\n```\n")
+					}
+				}
 			}
 			sb.WriteString("\n")
 		}
@@ -194,8 +211,10 @@ func (r *Runner) BuildPrompt(task *Task, executionPath string) (prompt string) {
 			sb.WriteString(fmt.Sprintf("Create branch `%s` before starting.\n\n", task.Branch))
 		}
 
-		// Embed autonomous workflow instructions (replaces /nav-loop dependency)
-		sb.WriteString(GetAutonomousWorkflowInstructions())
+		// Embed autonomous workflow instructions (replaces /nav-loop dependency).
+		// Routed through loadGuidance so executor-guidance/workflow.md can overlay
+		// or override the const (move B5).
+		sb.WriteString(loadGuidance(agentDir, "workflow", GetAutonomousWorkflowInstructions()))
 		sb.WriteString("\n")
 
 		// Inject user preferences if profile manager is available (GH-1028)
@@ -257,19 +276,33 @@ func (r *Runner) BuildPrompt(task *Task, executionPath string) (prompt string) {
 			}
 		}
 
-		// Pre-commit verification checklist (GH-359, GH-920, GH-1321)
-		sb.WriteString("## Pre-Commit Verification\n\n")
-		sb.WriteString("BEFORE committing, verify:\n")
-		sb.WriteString("1. **Build passes**: Run `go build ./...` (or equivalent for the project)\n")
-		sb.WriteString("2. **Config wiring**: Any new config struct fields must flow from yaml → main.go → handler\n")
-		sb.WriteString("3. **Methods exist**: Any method calls you added must have implementations\n")
-		sb.WriteString("4. **Tests pass + new code tested**: Run `go test ./...` for changed packages. If you added new exported functions or methods, write tests for them — \"tests pass\" is NOT enough.\n")
-		sb.WriteString("5. **Constants sourced**: If you added/changed numeric constants (prices, limits, thresholds, URLs), verify each value against the source mentioned in the issue. Do NOT invent values — cite the source in a code comment.\n")
-		sb.WriteString("6. **Lint compliance**: In Go test files, ALL return values must be checked — including w.Write(), json.NewEncoder().Encode(), fmt.Fprintf(w, ...) in HTTP mock handlers. Use '_, _ = w.Write(...)' or assign to err variable. The golangci-lint errcheck linter is enabled globally including test files.\n")
+		// Pre-commit verification checklist (GH-359, GH-920, GH-1321). Assembled
+		// into one block then routed through loadGuidance so
+		// executor-guidance/pre-commit.md can overlay or override it (move B5).
+		var pc strings.Builder
+		pc.WriteString("## Pre-Commit Verification\n\n")
+		pc.WriteString("BEFORE committing, verify:\n")
+		pc.WriteString("1. **Build passes**: Run `go build ./...` (or equivalent for the project)\n")
+		pc.WriteString("2. **Config wiring**: Any new config struct fields must flow from yaml → main.go → handler\n")
+		pc.WriteString("3. **Methods exist**: Any method calls you added must have implementations\n")
+		pc.WriteString("4. **Tests pass + new code tested**: Run `go test ./...` for changed packages. If you added new exported functions or methods, write tests for them — \"tests pass\" is NOT enough.\n")
+		pc.WriteString("5. **Constants sourced**: If you added/changed numeric constants (prices, limits, thresholds, URLs), verify each value against the source mentioned in the issue. Do NOT invent values — cite the source in a code comment.\n")
+		pc.WriteString("6. **Lint compliance**: In Go test files, ALL return values must be checked — including w.Write(), json.NewEncoder().Encode(), fmt.Fprintf(w, ...) in HTTP mock handlers. Use '_, _ = w.Write(...)' or assign to err variable. The golangci-lint errcheck linter is enabled globally including test files.\n")
 		if len(task.AcceptanceCriteria) > 0 {
-			sb.WriteString("7. **Acceptance criteria**: Verify ALL criteria listed above are satisfied\n")
+			pc.WriteString("7. **Acceptance criteria**: Verify ALL criteria listed above are satisfied\n")
 		}
-		sb.WriteString("\nIf any verification fails, fix it before committing.\n\n")
+		pc.WriteString("\nIf any verification fails, fix it before committing.\n")
+		sb.WriteString(loadGuidance(agentDir, "pre-commit", pc.String()))
+		sb.WriteString("\n")
+
+		// Optional code-generation standards overlay (move B5). No backing const:
+		// absent file contributes nothing, present file is emitted under a
+		// "## Coding Standards" section.
+		if gen := loadGuidance(agentDir, "generation", ""); gen != "" {
+			sb.WriteString("## Coding Standards\n\n")
+			sb.WriteString(gen)
+			sb.WriteString("\n\n")
+		}
 
 		sb.WriteString("CRITICAL: You MUST commit all changes before completing. A task is NOT complete until changes are committed. Use format: `type(scope): description (TASK-XX)`\n")
 	} else if hasNavigator && complexity.ShouldSkipNavigator() {
@@ -507,12 +540,15 @@ func (r *Runner) buildSelfReviewPrompt(task *Task) (prompt string) {
 	sb.WriteString("Compare the issue title/body with your actual changes:\n\n")
 	sb.WriteString("**Issue Title:** " + task.Title + "\n\n")
 	if task.Description != "" {
-		// Truncate long descriptions to avoid prompt bloat
+		// Include the full description so the self-review can verify against the
+		// complete spec (B2e). Keep only a sane upper bound to avoid a runaway
+		// prompt on pathological inputs.
 		desc := task.Description
-		if len(desc) > 500 {
-			desc = desc[:500] + "..."
+		const maxSelfReviewDescChars = 4000
+		if len(desc) > maxSelfReviewDescChars {
+			desc = desc[:maxSelfReviewDescChars] + "..."
 		}
-		sb.WriteString("**Issue Description (excerpt):** " + desc + "\n\n")
+		sb.WriteString("**Issue Description:** " + desc + "\n\n")
 	}
 	sb.WriteString("Run:\n")
 	sb.WriteString("```bash\ngit diff --name-only HEAD~1\n```\n\n")
@@ -575,6 +611,23 @@ func (r *Runner) buildSelfReviewPrompt(task *Task) (prompt string) {
 		}
 	}
 
+	// A3: scope-creep self-critique. New symbols not anchored to the task or
+	// acceptance criteria are a frequent source of over-engineering; flag them
+	// advisorily so the agent justifies or removes them.
+	sb.WriteString("### Scope Discipline Check\n")
+	sb.WriteString("Inspect every NEW type, wrapper, or interface in your diff.\n")
+	sb.WriteString("For each one whose name is NOT mentioned in the task description or acceptance criteria,\n")
+	sb.WriteString("output `SCOPE_CREEP: <symbol> — <justify-or-remove>`.\n")
+	sb.WriteString("Prefer removing speculative abstractions over justifying them.\n\n")
+
+	// B7: tiered standards markers. Surface violations with an explicit severity
+	// tier so blocker/must items get fixed before the PR. Advisory only — no hard
+	// runtime gate is wired here.
+	sb.WriteString("### Standards Tiering\n")
+	sb.WriteString("Tag any project-standard violation as `STANDARD_VIOLATION: <tier> <rule> — <file:line>`,\n")
+	sb.WriteString("where `<tier>` is one of `blocker`, `must`, or `nice`.\n")
+	sb.WriteString("Fix every `blocker` and `must` item before opening the PR; `nice` items are optional.\n\n")
+
 	sb.WriteString("### Actions\n")
 	sb.WriteString("- If you find issues: FIX them and commit the fix\n")
 	sb.WriteString("- Output `REVIEW_FIXED: <description>` if you fixed something\n")
@@ -615,9 +668,23 @@ func (r *Runner) appendResearchContext(prompt string, research *ResearchResult) 
 	return sb.String()
 }
 
-// loadProjectContext reads .agent/DEVELOPMENT-README.md and extracts key sections
-// for project context injection. Returns ~2000 tokens of the most valuable context.
+// projectContextBudget caps the whole project-context block injected into the
+// executor prompt. Sized to keep priming useful without crowding out the task.
+const projectContextBudget = 6000
+
+// loadProjectContext assembles the project-context block injected into Navigator
+// prompts. It prefers a curated .agent/system/PRIMING.md (used verbatim); absent
+// that, it scrapes key sections from DEVELOPMENT-README.md and appends
+// system/ARCHITECTURE.md when present. The result is capped at one overall
+// budget, truncated on a heading/line boundary. Signature is stable: callers in
+// epic.go depend on loadProjectContext(agentDir) string.
 func loadProjectContext(agentDir string) string {
+	// (a) Curated priming wins — load it verbatim, no heading slicing.
+	if priming, err := os.ReadFile(filepath.Join(agentDir, "system", "PRIMING.md")); err == nil {
+		return capProjectContext(strings.TrimSpace(string(priming)))
+	}
+
+	// (b) Fall back to scraping DEVELOPMENT-README.md.
 	readmePath := filepath.Join(agentDir, "DEVELOPMENT-README.md")
 	content, err := os.ReadFile(readmePath)
 	if err != nil {
@@ -658,7 +725,40 @@ func loadProjectContext(agentDir string) string {
 		sb.WriteString("\n\n")
 	}
 
-	return strings.TrimSpace(sb.String())
+	// (c) Append ARCHITECTURE.md when present for system-level grounding.
+	if arch, err := os.ReadFile(filepath.Join(agentDir, "system", "ARCHITECTURE.md")); err == nil {
+		sb.WriteString("## Architecture\n\n")
+		sb.WriteString(strings.TrimSpace(string(arch)))
+		sb.WriteString("\n\n")
+	}
+
+	return capProjectContext(strings.TrimSpace(sb.String()))
+}
+
+// capProjectContext enforces projectContextBudget, truncating on a heading/line
+// boundary and warning when the block overflows so over-large context is visible.
+func capProjectContext(block string) string {
+	if len(block) <= projectContextBudget {
+		return block
+	}
+
+	cut := block[:projectContextBudget]
+	// Prefer the last Markdown heading so we don't sever a section mid-body.
+	bound := strings.LastIndex(cut, "\n#")
+	if bound <= 0 {
+		bound = strings.LastIndexByte(cut, '\n')
+	}
+	if bound > 0 {
+		cut = cut[:bound]
+	}
+
+	slog.Warn("project_context_truncated",
+		slog.String("component", "executor"),
+		slog.Int("original_chars", len(block)),
+		slog.Int("budget", projectContextBudget),
+	)
+
+	return strings.TrimRight(cut, " \n\t") + "\n\n… (project context truncated)"
 }
 
 // extractSection extracts content between a start marker and the next occurrence of end marker
@@ -741,6 +841,29 @@ func findRelevantSOPs(agentDir string, taskDescription string) []string {
 	}
 
 	return matches
+}
+
+// readBoundedExcerpt reads a file and returns at most maxChars of its content,
+// truncating on a line boundary and appending an ellipsis when content is cut.
+// Deliberately independent of extractSection's 2000-char cap so SOP excerpts
+// stay short enough to inline without bloating the prompt.
+func readBoundedExcerpt(path string, maxChars int) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+
+	s := strings.TrimSpace(string(data))
+	if len(s) <= maxChars {
+		return s
+	}
+
+	cut := s[:maxChars]
+	// Prefer a line boundary so we don't slice mid-line.
+	if nl := strings.LastIndexByte(cut, '\n'); nl > 0 {
+		cut = cut[:nl]
+	}
+	return strings.TrimRight(cut, " \n\t") + "\n…"
 }
 
 // extractTaskKeywords extracts relevant keywords from task description for SOP matching

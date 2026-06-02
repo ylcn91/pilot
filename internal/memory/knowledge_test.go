@@ -2,6 +2,9 @@ package memory
 
 import (
 	"database/sql"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -323,5 +326,64 @@ func TestKnowledgeStore_DeleteMemory(t *testing.T) {
 	_, err := ks.GetMemory(mem.ID)
 	if err != sql.ErrNoRows {
 		t.Errorf("expected ErrNoRows after delete, got: %v", err)
+	}
+}
+
+func TestKnowledgeStore_SyncToFiles(t *testing.T) {
+	db, ks := setupKnowledgeTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	mem := &Memory{
+		Type:       MemoryTypePattern,
+		Content:    "We use JWT for auth",
+		Context:    "auth/handler.go",
+		Confidence: 0.9,
+	}
+	if err := ks.AddMemory(mem); err != nil {
+		t.Fatalf("AddMemory failed: %v", err)
+	}
+
+	agentPath := t.TempDir()
+	if err := ks.SyncToFiles(agentPath); err != nil {
+		t.Fatalf("SyncToFiles failed: %v", err)
+	}
+
+	dir := filepath.Join(agentPath, "knowledge", "memories", "patterns")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("reading export dir failed: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("got %d exported files, want 1", len(entries))
+	}
+
+	path := filepath.Join(dir, entries[0].Name())
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading exported file failed: %v", err)
+	}
+	body := string(data)
+
+	for _, want := range []string{
+		"type: pattern",
+		"confidence: 0.90",
+		"context: auth/handler.go",
+		"We use JWT for auth",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("exported file missing %q\n--- content ---\n%s", want, body)
+		}
+	}
+
+	// Idempotent: re-running over unchanged content must not create duplicates.
+	if err := ks.SyncToFiles(agentPath); err != nil {
+		t.Fatalf("second SyncToFiles failed: %v", err)
+	}
+	entries, err = os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("re-reading export dir failed: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("after re-sync got %d files, want 1 (not idempotent)", len(entries))
 	}
 }

@@ -2,6 +2,8 @@
 
 **Navigator plans. Pilot executes.**
 
+> **This fork (ylcn91) has its own rules: direct implementation applies; the Navigator + Pilot GitHub-issue handoff is not required.**
+
 ## Who is reading this file?
 
 This project ships an autonomous executor (Pilot) that runs Codex
@@ -11,19 +13,18 @@ is read by two very different kinds of sessions:
 1. **Pilot-executor sessions** — spawned by `pilot start` to implement a
    specific GitHub issue. The prompt describes a concrete task and expects
    code changes, a commit, and a PR. **In these sessions, YOU ARE Pilot.
-   Implement the task directly. The "Navigator + Pilot pipeline" rules in
-   the next section DO NOT apply — you are the execution leg of that
-   pipeline.** Signals you're in this mode:
+   Implement the task directly.** Signals you're in this mode:
    - Prompt begins with `GitHub Issue #NNN:` or `Task:`
    - No interactive user is following up
    - CWD is inside a pilot worktree or a branch named `pilot/GH-*`
 2. **Interactive dev sessions** — a human developer is planning or
-   reviewing work on the Pilot project itself. In these, follow the
-   Navigator + Pilot pipeline below.
+   reviewing work on the Pilot project itself. In this fork (ylcn91),
+   direct implementation in your own worktree is permitted (see
+   "ylcn91 Fork Rules" below); the upstream GitHub-issue handoff is **not**
+   required.
 
 When in doubt, look at the incoming prompt: if it hands you a specific
-task with file paths and expected outputs, implement it. If it's a human
-asking open-ended questions about the project, plan via Navigator.
+task with file paths and expected outputs, implement it.
 
 ## ⚠️ Git & Worktree Discipline (ALL sessions)
 
@@ -36,8 +37,9 @@ uncommitted changes and a graveyard of stashes.
 **Rules:**
 
 - ❌ **NEVER `git checkout <branch>` / `git switch` in the repo root**
-  (`/Users/.../startups/pilot`). Keep the root pinned to `main`; treat it as
-  reference + build-from-main only.
+  (this fork's root is `/Volumes/doksanbir/repos/pilot`; on other machines
+  use whatever path the fork is cloned to). Keep the root pinned to `main`;
+  treat it as reference + build-from-main only.
 - ✅ **Do all branch work in your own worktree.** Interactive Codex sessions:
   use the worktree flow (sessions land in `.Codex/worktrees/<name>`). The
   Pilot daemon already isolates via `pilot-worktree-GH-*` — leave those alone.
@@ -51,46 +53,33 @@ uncommitted changes and a graveyard of stashes.
   did not make, **STOP** — that's another session's work. Don't checkout,
   don't reset, don't commit it. Flag it.
 
-## ⚠️ WORKFLOW: Navigator + Pilot Pipeline (interactive sessions only)
+## ylcn91 Fork Rules
 
-**If this is an interactive dev session**, use Navigator to plan and Pilot
-to execute:
+This fork does **not** require the upstream "plan with Navigator, hand off
+via a `pilot`-labeled GitHub issue, never touch code" pipeline. Its rules:
 
-| Phase | Tool | Action |
-|-------|------|--------|
-| 1. Plan | `/nav-task` | Design solution, create implementation plan |
-| 2. Execute | GitHub Issue | Create issue with `pilot` label |
-| 3. Review | PR Review | Check Pilot's PR, request changes if needed |
-| 4. Ship | Merge | Merge PR when approved |
-
-### Quick Commands
+- ✅ **Direct implementation in your own worktree** is permitted — for humans
+  and for agents (Claude Code or Codex). Never branch in the repo root; obey
+  the Git & Worktree Discipline above.
+- ✅ **Own rules and own memory.** This fork keeps its own conventions and
+  routes persistent knowledge through Navigator (`.agent/`); auto-memory paths
+  are machine-local and not assumed from upstream.
+- ✅ **Multi-backend executors.** Tasks can run through any configured backend
+  (`claude code -p`, the `codex` CLI, or the `codex app-server` runtime), not
+  Claude Code alone.
+- ✅ Handing a task to the Pilot daemon via a `pilot`-labeled issue is still
+  available, but it's **one option**, not the mandatory path.
 
 ```bash
-# Plan a feature (Navigator)
-/nav-task "Add rate limiting to API endpoints"
+# Direct implementation in a worktree (Claude Code or Codex)
+claude code -p "Add rate limiting to API endpoints"
+codex "Add rate limiting to API endpoints"
 
-# Hand off to Pilot
+# Optional: hand off to the Pilot daemon
 gh issue create --title "Add rate limiting" --label pilot --body "..."
-
-# Check Pilot's queue
 gh issue list --label pilot --state open
-
-# Review and merge
 gh pr view <number> && gh pr merge <number>
 ```
-
-### Rules (interactive sessions)
-
-- ✅ Use `/nav-task` for planning and design
-- ✅ Create GitHub issues with `pilot` label for execution
-- ✅ Review every PR before merging
-- ❌ In *interactive* sessions, do not write code directly — defer to
-  Pilot so the knowledge graph and quality gates run
-- ❌ Do not make commits manually from an interactive planning session
-- ❌ Do not create PRs manually from an interactive planning session
-
-Pilot-executor sessions are the exception: they MUST write code, commit,
-and push — that's their entire job.
 
 **Pilot runs in a separate terminal** (`pilot start --telegram --github`) and auto-picks issues labeled `pilot`.
 
@@ -98,7 +87,7 @@ and push — that's their entire job.
 
 ## Memory: Navigator only (auto-memory disabled for this project)
 
-**This project uses Navigator's memory system as the single source of truth for persistent knowledge.** The Codex auto-memory system at `~/.Codex/projects/-Users-aleks-petrov-Projects-startups-pilot/memory/` is **deprecated for new writes** in this project.
+**This project uses Navigator's memory system as the single source of truth for persistent knowledge.** Any agent auto-memory system is **deprecated for new writes** in this project. Such paths are **machine-local** — derived from the absolute checkout path, so they live under `~/.<agent>/projects/<slugified-fork-path>/memory/` on whatever machine you're on (do **not** assume the upstream `-Users-aleks-petrov-Projects-startups-pilot` slug; that is one contributor's path).
 
 **Rules:**
 
@@ -124,8 +113,11 @@ and push — that's their entire job.
 ## Project Overview
 
 Pilot is an autonomous AI development pipeline that:
-- Receives tickets from Linear/Jira/Asana
-- Plans and executes implementation using Codex
+- Receives tickets from GitHub issues, and optionally from Linear, Jira,
+  Asana, GitLab, and other adapters (GitHub is the primary source in this fork;
+  the others are supported, not authoritative)
+- Plans and executes implementation using Codex, Claude Code, or other
+  configured executor backends
 - Creates PRs and notifies via Slack
 - Learns patterns across projects
 
@@ -152,6 +144,27 @@ Autopilot         → CI monitoring, auto-merge, feedback loop, release pipeline
 Memory            → SQLite + knowledge graph
 Dashboard         → Terminal UI (bubbletea)
 ```
+
+### Multi-Backend Executor Support
+
+The executor is backend-agnostic. A task can run through any configured
+backend, selected via `executor.backend`:
+
+- `claude code -p` — Claude Code, headless prompt mode
+- `codex` CLI — Codex headless execution
+- `codex app-server` — the Codex app-server runtime (receives `.agent`
+  priming via `BuildGuidancePreamble`, closing the prior gap where the
+  app-server started without Navigator/`.agent` context)
+
+Other registered backends: `qwen-code`, `codex-exec`, `anthropic-api`,
+`openai-api`, `opencode`.
+
+### Pilot-Managed Executors
+
+Backends are managed by the runner, not invoked ad hoc: Pilot owns process
+lifecycle, worktree isolation, prompt building (Navigator/`.agent` priming),
+stream parsing, and quality gates uniformly across every backend. Switching
+backends does not change the surrounding execution contract.
 
 ## Project Structure
 

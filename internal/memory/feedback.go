@@ -272,6 +272,29 @@ func (l *LearningLoop) SurfaceHighValuePatterns(ctx context.Context, projectPath
 	return highValue, nil
 }
 
+// RecordMergeOutcome reinforces every pattern linked to a project after one of
+// the project's PRs merges. A merge is the strongest available success signal —
+// the work shipped and passed review/CI — so it credits each pattern's
+// (project, taskType) context with a success outcome.
+//
+// It mirrors SurfaceHighValuePatterns' use of GetCrossPatternsForProject and is
+// idempotent only at the call site: callers must guard against recording the
+// same merge twice (see autopilot's reinforcement guard).
+func (l *LearningLoop) RecordMergeOutcome(projectPath, taskType, model string) error {
+	patterns, err := l.store.GetCrossPatternsForProject(projectPath, false)
+	if err != nil {
+		return fmt.Errorf("failed to get patterns for merge reinforcement: %w", err)
+	}
+
+	for _, p := range patterns {
+		if err := l.store.RecordPatternOutcome(p.ID, projectPath, taskType, model, true); err != nil {
+			return fmt.Errorf("failed to record merge outcome for pattern %s: %w", p.ID, err)
+		}
+	}
+
+	return nil
+}
+
 // LearnFromDiff analyzes a code diff and extracts potential patterns
 func (l *LearningLoop) LearnFromDiff(ctx context.Context, projectPath, diff string, success bool) error {
 	// Create a synthetic execution to extract patterns from

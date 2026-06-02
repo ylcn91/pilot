@@ -44,6 +44,9 @@ type ExtractionResult struct {
 	Patterns     []*ExtractedPattern
 	AntiPatterns []*ExtractedPattern
 	ExtractedAt  time.Time
+	// Tier is the severity tier parsed from a STANDARD_VIOLATION self-review
+	// marker (blocker/must/nice). Empty when no standard violation was found.
+	Tier string
 }
 
 // ExtractFromExecution extracts patterns from a completed execution
@@ -696,6 +699,21 @@ var selfReviewFindings = []selfReviewFinding{
 		context: "Self-review",
 	},
 	{
+		regex:   regexp.MustCompile(`(?i)SCOPE_CREEP:\s*\S+\s*—`),
+		pType:   PatternTypeStructure,
+		title:   "Scope creep detected",
+		desc:    "Change touches symbols outside the task scope; keep edits surgical",
+		context: "Self-review",
+	},
+	{
+		// Captures the tier (blocker/must/nice) so callers can route by severity.
+		regex:   regexp.MustCompile(`(?i)STANDARD_VIOLATION:\s*(blocker|must|nice)\s+\S+\s*—\s*\S+`),
+		pType:   PatternTypeWorkflow,
+		title:   "Coding standard violation",
+		desc:    "Code violates a project coding standard; resolve before submission",
+		context: "Self-review",
+	},
+	{
 		regex:   regexp.MustCompile(`(?i)SUSPICIOUS_VALUE`),
 		pType:   PatternTypeCode,
 		title:   "Suspicious value detected",
@@ -732,6 +750,14 @@ func (e *PatternExtractor) ExtractFromSelfReview(ctx context.Context, selfReview
 		matches := finding.regex.FindAllString(selfReviewOutput, -1)
 		if len(matches) == 0 {
 			continue
+		}
+
+		// STANDARD_VIOLATION markers carry a severity tier in the first capture
+		// group; surface it on the result for severity-based routing.
+		if result.Tier == "" {
+			if sub := finding.regex.FindStringSubmatch(selfReviewOutput); len(sub) > 1 {
+				result.Tier = strings.ToLower(sub[1])
+			}
 		}
 
 		examples := append([]string{}, matches...)

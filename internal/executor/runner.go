@@ -3289,9 +3289,42 @@ Only use DECLINED if implementation is truly impossible or undefined. Do not dec
 					state.intentRetried = true
 					r.reportProgress(task.ID, "Intent Retry", 80, "Retrying with intent feedback...")
 
+					// Re-anchor the retry on the original acceptance criteria so the
+					// fix is judged against the same target as the first attempt
+					// instead of drifting toward the veto reason alone.
+					var acSection string
+					if len(task.AcceptanceCriteria) > 0 {
+						var acb strings.Builder
+						acb.WriteString("\n\n## Acceptance Criteria\n\n")
+						for _, ac := range task.AcceptanceCriteria {
+							acb.WriteString(fmt.Sprintf("- [ ] %s\n", ac))
+						}
+						acSection = acb.String()
+					}
+
+					// Re-inject persisted constraints/decisions from the run doc so
+					// the retry stays anchored to context captured earlier in the run.
+					var docSection string
+					if runDoc, docErr := loadRunDoc(agentPath, task.ID); docErr == nil && runDoc != nil {
+						var db strings.Builder
+						if len(runDoc.Constraints) > 0 {
+							db.WriteString("\n\n## Constraints\n\n")
+							for _, c := range runDoc.Constraints {
+								db.WriteString(fmt.Sprintf("- %s\n", c))
+							}
+						}
+						if len(runDoc.DecisionLog) > 0 {
+							db.WriteString("\n\n## Prior Decisions\n\n")
+							for _, d := range runDoc.DecisionLog {
+								db.WriteString(fmt.Sprintf("- %s — %s\n", d.Decision, d.Reasoning))
+							}
+						}
+						docSection = db.String()
+					}
+
 					retryPrompt := fmt.Sprintf(
-						"## Intent Alignment Retry\n\nThe intent judge flagged the previous implementation:\n\n**Reason:** %s\n\nPlease fix the issues above. Focus on implementing exactly what the issue asks for.\n\n## Original Task: %s\n\n%s",
-						intentVerdict.Reason, task.Title, task.Description,
+						"## Intent Alignment Retry\n\nThe intent judge flagged the previous implementation:\n\n**Reason:** %s\n\nPlease fix the issues above. Focus on implementing exactly what the issue asks for.\n\n## Original Task: %s\n\n%s%s%s",
+						intentVerdict.Reason, task.Title, task.Description, acSection, docSection,
 					)
 
 					intentAllowed, intentMCP := r.executionToolOptions()
@@ -3778,17 +3811,30 @@ func (r *Runner) recordPatternOutcomes(task *Task, result *ExecutionResult) {
 		model = "claude-opus-4-6"
 	}
 
-	// Get patterns linked to this project to record outcomes
-	patterns, err := r.logStore.GetCrossPatternsForProject(task.ProjectPath, false)
-	if err != nil {
-		r.log.Warn("Failed to get patterns for outcome recording", slog.Any("error", err))
-		return
+	// GH-2021/B3: Credit only the patterns actually injected into this task's
+	// prompt, not every pattern linked to the project. PatternContext recorded
+	// the injected IDs at prompt-build time; fall back to all project patterns
+	// when no injection record exists (e.g. pattern injection was disabled).
+	var ids []string
+	if r.patternContext != nil {
+		ids = r.patternContext.AppliedPatterns(task.ProjectPath, taskType, task.Description)
+	}
+	if len(ids) == 0 {
+		patterns, err := r.logStore.GetCrossPatternsForProject(task.ProjectPath, false)
+		if err != nil {
+			r.log.Warn("Failed to get patterns for outcome recording", slog.Any("error", err))
+			return
+		}
+		ids = make([]string, 0, len(patterns))
+		for _, p := range patterns {
+			ids = append(ids, p.ID)
+		}
 	}
 
-	for _, p := range patterns {
-		if recErr := r.logStore.RecordPatternOutcome(p.ID, task.ProjectPath, taskType, model, result.Success); recErr != nil {
+	for _, id := range ids {
+		if recErr := r.logStore.RecordPatternOutcome(id, task.ProjectPath, taskType, model, result.Success); recErr != nil {
 			r.log.Warn("Failed to record pattern outcome",
-				slog.String("pattern_id", p.ID),
+				slog.String("pattern_id", id),
 				slog.Any("error", recErr),
 			)
 		}
