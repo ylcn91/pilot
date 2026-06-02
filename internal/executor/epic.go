@@ -973,6 +973,18 @@ func parsePRNumberFromURL(url string) int {
 	return n
 }
 
+// issueCreationDisabled reports whether issue creation has been globally turned
+// off via PILOT_DISABLE_ISSUE_CREATION ("1"/"true"/"yes"/"on"). Hard kill-switch
+// added after the GH-201 OAuth-cascade incident to stop upstream issue spam.
+// Kept local to avoid an executor→adapters/github dependency.
+func issueCreationDisabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("PILOT_DISABLE_ISSUE_CREATION"))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
 // CreateSubIssues creates issues from the planned subtasks.
 // For GitHub-sourced tasks (or when no SubIssueCreator is set), uses gh CLI.
 // For non-GitHub adapters with a SubIssueCreator, dispatches via that interface (GH-1471).
@@ -991,6 +1003,18 @@ func (r *Runner) CreateSubIssues(ctx context.Context, plan *EpicPlan, executionP
 			"labels", plan.ParentTask.Labels,
 		)
 		return nil, ErrParentDone
+	}
+
+	if issueCreationDisabled() {
+		parentID := ""
+		if plan.ParentTask != nil {
+			parentID = plan.ParentTask.ID
+		}
+		r.log.Warn("Skipping sub-issue creation: issue creation disabled (PILOT_DISABLE_ISSUE_CREATION)",
+			"parent_id", parentID,
+			"subtasks", len(plan.Subtasks),
+		)
+		return nil, nil
 	}
 
 	// GH-1471: pick the creation backend up front. The adapter path is

@@ -2,6 +2,7 @@ package autopilot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -101,6 +102,10 @@ func (f *FeedbackLoop) CreateFailureIssue(ctx context.Context, prState *PRState,
 	// construction, so they're already constrained to a configured project. The
 	// explicit sentinel encodes that intent (vs a nil-means-skip default). TASK-286 / GH-3027 / TASK-347.
 	issue, err := github.CreatePilotIssue(ctx, f.ghClient, github.AllowAllIssueRepos(), f.owner, f.repo, title, body, f.issueLabels)
+	if errors.Is(err, github.ErrIssueCreationDisabled) {
+		f.log.Warn("skipping fix issue: issue creation disabled", "pr", prState.PRNumber)
+		return 0, nil
+	}
 	if err != nil {
 		return 0, fmt.Errorf("failed to create issue: %w", err)
 	}
@@ -270,6 +275,10 @@ func (f *FeedbackLoop) CreateReviewIssue(ctx context.Context, prState *PRState, 
 	// AllowAllIssueRepos: owner/repo set from explicit config at construction; explicit
 	// sentinel encodes intent vs a nil-means-skip default (TASK-286 / GH-3027 / TASK-347).
 	issue, err := github.CreatePilotIssue(ctx, f.ghClient, github.AllowAllIssueRepos(), f.owner, f.repo, title, body, f.issueLabels)
+	if errors.Is(err, github.ErrIssueCreationDisabled) {
+		f.log.Warn("skipping review issue: issue creation disabled", "pr", prState.PRNumber)
+		return 0, nil
+	}
 	if err != nil {
 		return 0, fmt.Errorf("failed to create review issue: %w", err)
 	}

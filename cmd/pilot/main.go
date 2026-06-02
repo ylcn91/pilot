@@ -149,6 +149,18 @@ Examples:
   pilot start --dashboard              # With TUI dashboard
   pilot start --no-gateway             # Polling only (no HTTP server)`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// SAFETY KILL-SWITCH (anti upstream-spam, GH-201 OAuth cascade):
+			// default GitHub issue creation to OFF for this fork unless the
+			// operator explicitly opts back in. A misconfigured daemon once
+			// re-dispatched a closed parent and spawned hundreds of hallucinated
+			// sub-issues on the upstream repo; making "create no issues" the
+			// default prevents a recurrence. Re-enable with
+			// PILOT_DISABLE_ISSUE_CREATION=0.
+			if _, ok := os.LookupEnv("PILOT_DISABLE_ISSUE_CREATION"); !ok {
+				_ = os.Setenv("PILOT_DISABLE_ISSUE_CREATION", "1")
+				fmt.Fprintln(os.Stderr, "[pilot] GitHub issue creation is DISABLED by default; set PILOT_DISABLE_ISSUE_CREATION=0 to enable")
+			}
+
 			// Load config
 			configPath := cfgFile
 			if configPath == "" {

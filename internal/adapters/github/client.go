@@ -528,6 +528,11 @@ type IssueInput struct {
 
 // CreateIssue creates a new issue in a repository
 func (c *Client) CreateIssue(ctx context.Context, owner, repo string, input *IssueInput) (*Issue, error) {
+	// Kill-switch defense-in-depth: refuse the REST POST when issue creation is
+	// globally disabled (see ErrIssueCreationDisabled / GH-201 cascade).
+	if IssueCreationDisabled() {
+		return nil, ErrIssueCreationDisabled
+	}
 	path := fmt.Sprintf("/repos/%s/%s/issues", owner, repo)
 	var issue Issue
 	if err := c.doRequest(ctx, http.MethodPost, path, input, &issue); err != nil {

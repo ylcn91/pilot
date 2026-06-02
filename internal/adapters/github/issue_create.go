@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -21,6 +22,26 @@ const (
 	protectedUpstreamOwner = "qf-studio"
 	protectedUpstreamRepo  = "pilot"
 )
+
+// envDisableIssueCreation is the global kill-switch that disables ALL GitHub
+// issue creation. Added after the GH-201 OAuth-cascade incident, where a daemon
+// pointed at the upstream repo re-dispatched a closed parent and spawned hundreds
+// of hallucinated "feat(auth): add OAuth provider integration" sub-issues. When
+// set truthy ("1"/"true"/"yes"/"on") every creation chokepoint refuses to create.
+const envDisableIssueCreation = "PILOT_DISABLE_ISSUE_CREATION"
+
+// ErrIssueCreationDisabled is returned by the creation chokepoints when the
+// kill-switch is engaged. Callers should treat it as a clean skip, not a failure.
+var ErrIssueCreationDisabled = errors.New("github issue creation disabled (PILOT_DISABLE_ISSUE_CREATION)")
+
+// IssueCreationDisabled reports whether the issue-creation kill-switch is engaged.
+func IssueCreationDisabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(envDisableIssueCreation))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
 
 // IssueAllowlist is the minimal surface CreatePilotIssue needs to validate that the
 // target (owner, repo) is in the user's configured project list. executor.RepoAllowlist
@@ -63,6 +84,15 @@ func AllowAllIssueRepos() IssueAllowlist { return allowAllIssueRepos{} }
 // Returns an error if the title does not match conventional-commits format, if the
 // allowlist rejects the repo, or if the GitHub API call fails.
 func CreatePilotIssue(ctx context.Context, c *Client, allow IssueAllowlist, owner, repo, title, body string, labels []string) (*Issue, error) {
+	if IssueCreationDisabled() {
+		slog.Warn("CreatePilotIssue skipped: issue creation disabled",
+			"component", "adapters.github.issue_create",
+			"owner", owner,
+			"repo", repo,
+			"title", title,
+		)
+		return nil, ErrIssueCreationDisabled
+	}
 	if err := validateIssueRepo(allow, owner, repo); err != nil {
 		return nil, fmt.Errorf("CreatePilotIssue repo guardrail: %w", err)
 	}
