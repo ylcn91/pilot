@@ -94,8 +94,8 @@ type Runner struct {
 	recoverSubIssuesFn func(ctx context.Context, dir, parentID string) ([]CreatedIssue, error)
 	// planEpicFn overrides PlanEpic for testing; nil uses the real PlanEpic implementation.
 	planEpicFn func(ctx context.Context, task *Task, executionPath string) (*EpicPlan, error)
-	// planPipelineFn overrides the opt-in pipeline plan subprocess for testing;
-	// nil shells the real `claude --print` planning pass.
+	// planPipelineFn overrides the opt-in pipeline plan stage for testing;
+	// nil runs the spec through the configured plan backend (r.planBackend.Execute).
 	planPipelineFn func() (string, error)
 	// GH-2855: Prometheus counters for tokens, cost, and executions.
 	metricsRecorder MetricsRecorder

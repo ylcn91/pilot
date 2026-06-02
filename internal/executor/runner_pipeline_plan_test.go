@@ -6,6 +6,27 @@ import (
 	"testing"
 )
 
+// recordingPlanBackend captures the ExecuteOptions of each Execute call so tests
+// can assert the pipeline plan stage drives the configured backend with a
+// read-only tool set. It returns a fixed spec as Output.
+type recordingPlanBackend struct {
+	output   string
+	err      error
+	calls    int
+	lastOpts ExecuteOptions
+}
+
+func (b *recordingPlanBackend) Name() string      { return "recording-plan" }
+func (b *recordingPlanBackend) IsAvailable() bool { return true }
+func (b *recordingPlanBackend) Execute(_ context.Context, opts ExecuteOptions) (*BackendResult, error) {
+	b.calls++
+	b.lastOpts = opts
+	if b.err != nil {
+		return nil, b.err
+	}
+	return &BackendResult{Success: true, Output: b.output}, nil
+}
+
 // TestExecutePipelinePlan_InjectsSpec verifies the opt-in pipeline plan stage:
 // when config.Pipeline.Plan is set it captures a spec into s.planOutput, and the
 // assembled execute prompt then carries an "## Implementation Plan" section.
@@ -76,5 +97,62 @@ func TestExecutePipelinePlan_FailureNonFatal(t *testing.T) {
 
 	if s.planOutput != "" {
 		t.Fatalf("planOutput = %q, want empty after failure", s.planOutput)
+	}
+}
+
+// TestExecutePipelinePlan_RunsOnConfiguredBackend verifies the any-to-any plan
+// path: with a configured plan stage and no test override, the stage drives the
+// resolved planBackend (not the claude `--print` subprocess), passing the
+// read-only tool set, and the backend's Output becomes the injected
+// "## Implementation Plan" section.
+func TestExecutePipelinePlan_RunsOnConfiguredBackend(t *testing.T) {
+	const spec = "1. **feat(api): add handler** - design the route"
+
+	r := newTestRunner("claude")
+	r.config.Pipeline = &PipelineConfig{Plan: &StageConfig{Type: BackendTypeCodexExec, Model: "gpt-5"}}
+	plan := &recordingPlanBackend{output: spec}
+	r.planBackend = plan
+
+	s := &executeState{task: &Task{ID: "GH-4", Title: "do work"}, ctx: context.Background()}
+	r.executePipelinePlan(s)
+
+	if plan.calls != 1 {
+		t.Fatalf("planBackend.Execute calls = %d, want 1", plan.calls)
+	}
+	if got, want := strings.Join(plan.lastOpts.AllowedTools, ","), strings.Join(DefaultAllowedToolsPlanning(), ","); got != want {
+		t.Fatalf("AllowedTools = %q, want read-only %q", got, want)
+	}
+	if plan.lastOpts.Model != "gpt-5" {
+		t.Fatalf("Model = %q, want plan-stage model %q", plan.lastOpts.Model, "gpt-5")
+	}
+	if !strings.Contains(plan.lastOpts.Prompt, "spec ONLY") {
+		t.Fatalf("prompt missing read-only contract:\n%s", plan.lastOpts.Prompt)
+	}
+	if s.planOutput != spec {
+		t.Fatalf("planOutput = %q, want %q", s.planOutput, spec)
+	}
+
+	prompt := injectPlanOutput("base prompt", s.planOutput)
+	if !strings.Contains(prompt, "## Implementation Plan") || !strings.Contains(prompt, spec) {
+		t.Fatalf("assembled prompt missing plan section/spec:\n%s", prompt)
+	}
+}
+
+// TestExecutePipelinePlan_NoConfigSkipsBackend verifies the configured plan
+// backend is NOT invoked when no pipeline plan stage is set — no extra LLM
+// round-trip is added to a normal run.
+func TestExecutePipelinePlan_NoConfigSkipsBackend(t *testing.T) {
+	r := newTestRunner("claude")
+	plan := &recordingPlanBackend{output: "should not be used"}
+	r.planBackend = plan
+
+	s := &executeState{task: &Task{ID: "GH-5", Title: "do work"}, ctx: context.Background()}
+	r.executePipelinePlan(s)
+
+	if plan.calls != 0 {
+		t.Fatalf("planBackend.Execute called %d times without Pipeline.Plan", plan.calls)
+	}
+	if s.planOutput != "" {
+		t.Fatalf("planOutput = %q, want empty", s.planOutput)
 	}
 }

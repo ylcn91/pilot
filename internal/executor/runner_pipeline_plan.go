@@ -11,9 +11,11 @@ import (
 // planning to every task adds an LLM round-trip, so it only happens when the
 // operator explicitly opts in via the pipeline.plan stage.
 //
-// v1 reuses PlanEpic's existing `claude --print` subprocess approach,
-// parameterized by pipeline.plan.model (falling back to the planning default).
-// Routing this through the Backend interface is a deliberate future v2.
+// The spec is produced by the CONFIGURED plan backend (r.planBackend, resolved
+// by resolveStageBackends from config.Pipeline.Plan) via Backend.Execute, so any
+// backend can plan (claude→codex AND codex→claude) — the goal-critical any-to-any
+// path. This is distinct from PlanEpic, which keeps its dedicated `claude --print`
+// subprocess for epic decomposition.
 //
 // On success it stores the raw spec on s.planOutput; executePrepare injects it
 // into the execute prompt as an "## Implementation Plan" section. Planning
@@ -30,9 +32,20 @@ func (r *Runner) executePipelinePlan(s *executeState) {
 	if planFn == nil {
 		planFn = func() (string, error) {
 			agentDir := filepath.Join(s.executionPath, ".agent")
-			prompt := buildPlanningPrompt(task, agentDir)
-			model := r.resolvePlanningModel(r.config.Pipeline.Plan.Model)
-			return r.runPlanningSubprocess(s.ctx, task, prompt, s.executionPath, model)
+			prompt := buildPipelinePlanPrompt(task, agentDir)
+			// AllowedTools is honored by claude-code (read-only enforcement);
+			// other backends ignore it, so the prompt itself forbids edits/commits.
+			result, err := r.planBackend.Execute(s.ctx, ExecuteOptions{
+				Prompt:       prompt,
+				ProjectPath:  s.executionPath,
+				Model:        r.config.Pipeline.Plan.Model,
+				Effort:       r.config.Pipeline.Plan.Effort,
+				AllowedTools: DefaultAllowedToolsPlanning(),
+			})
+			if err != nil {
+				return "", err
+			}
+			return result.Output, nil
 		}
 	}
 
@@ -50,6 +63,19 @@ func (r *Runner) executePipelinePlan(s *executeState) {
 		slog.String("task_id", task.ID),
 		slog.Int("spec_bytes", len(output)),
 	)
+}
+
+// buildPipelinePlanPrompt builds the prompt for the opt-in pipeline plan stage.
+// It reuses buildPlanningPrompt's task framing and project priming, but prepends
+// an explicit read-only contract: the spec backend MUST design only and must not
+// modify files or commit. AllowedTools enforces this for claude-code; every other
+// backend ignores tool restrictions, so the instruction is the only guardrail
+// there — that is why it lives in the prompt text, not just in ExecuteOptions.
+func buildPipelinePlanPrompt(task *Task, agentDir string) string {
+	const readOnlyContract = "IMPORTANT: Produce an implementation plan / spec ONLY. " +
+		"Do NOT write or modify any files, do NOT run commands that change state, " +
+		"and do NOT commit. Output the plan as text only.\n\n"
+	return readOnlyContract + buildPlanningPrompt(task, agentDir)
 }
 
 // injectPlanOutput appends the pipeline plan spec to the execute prompt as an
