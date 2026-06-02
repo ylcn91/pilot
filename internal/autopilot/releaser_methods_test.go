@@ -1,0 +1,254 @@
+package autopilot
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/ylcn91/pilot/internal/adapters/github"
+)
+
+func TestReleaser_ShouldRelease(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   *ReleaseConfig
+		bumpType BumpType
+		want     bool
+	}{
+		{
+			name:     "enabled with on_merge and minor bump",
+			config:   &ReleaseConfig{Enabled: true, Trigger: "on_merge"},
+			bumpType: BumpMinor,
+			want:     true,
+		},
+		{
+			name:     "enabled with on_merge and patch bump",
+			config:   &ReleaseConfig{Enabled: true, Trigger: "on_merge"},
+			bumpType: BumpPatch,
+			want:     true,
+		},
+		{
+			name:     "enabled with on_merge and major bump",
+			config:   &ReleaseConfig{Enabled: true, Trigger: "on_merge"},
+			bumpType: BumpMajor,
+			want:     true,
+		},
+		{
+			name:     "enabled with on_merge but no bump",
+			config:   &ReleaseConfig{Enabled: true, Trigger: "on_merge"},
+			bumpType: BumpNone,
+			want:     false,
+		},
+		{
+			name:     "disabled",
+			config:   &ReleaseConfig{Enabled: false, Trigger: "on_merge"},
+			bumpType: BumpMinor,
+			want:     false,
+		},
+		{
+			name:     "wrong trigger",
+			config:   &ReleaseConfig{Enabled: true, Trigger: "manual"},
+			bumpType: BumpMinor,
+			want:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Releaser{config: tt.config}
+			got := r.ShouldRelease(tt.bumpType)
+			if got != tt.want {
+				t.Errorf("Releaser.ShouldRelease() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReleaser_GetCurrentVersion(t *testing.T) {
+	tests := []struct {
+		name    string
+		handler http.HandlerFunc
+		want    SemVer
+		wantErr bool
+	}{
+		{
+			name: "from latest release",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/repos/owner/repo/releases/latest" {
+					_ = json.NewEncoder(w).Encode(map[string]interface{}{
+						"id":       1,
+						"tag_name": "v1.2.3",
+					})
+					return
+				}
+				w.WriteHeader(http.StatusNotFound)
+			},
+			want: SemVer{Major: 1, Minor: 2, Patch: 3},
+		},
+		{
+			name: "fallback to tags",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/repos/owner/repo/releases/latest" {
+					w.WriteHeader(http.StatusNotFound)
+					_, _ = w.Write([]byte(`{"message": "Not Found"}`))
+					return
+				}
+				if r.URL.Path == "/repos/owner/repo/tags" {
+					_ = json.NewEncoder(w).Encode([]map[string]interface{}{
+						{"name": "v1.0.0"},
+						{"name": "v2.0.0"},
+						{"name": "v1.5.0"},
+					})
+					return
+				}
+				w.WriteHeader(http.StatusNotFound)
+			},
+			want: SemVer{Major: 2, Minor: 0, Patch: 0},
+		},
+		{
+			name: "no releases or tags - zero version",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/repos/owner/repo/releases/latest" {
+					w.WriteHeader(http.StatusNotFound)
+					_, _ = w.Write([]byte(`{"message": "Not Found"}`))
+					return
+				}
+				if r.URL.Path == "/repos/owner/repo/tags" {
+					_ = json.NewEncoder(w).Encode([]map[string]interface{}{})
+					return
+				}
+				w.WriteHeader(http.StatusNotFound)
+			},
+			want: SemVer{Major: 0, Minor: 0, Patch: 0},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
+
+			client := github.NewClientWithBaseURL("test-token", server.URL)
+			r := NewReleaser(client, "owner", "repo", DefaultReleaseConfig())
+
+			got, err := r.GetCurrentVersion(context.Background())
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetCurrentVersion() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && got != tt.want {
+				t.Errorf("GetCurrentVersion() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReleaser_CreateTag(t *testing.T) {
+	var capturedBody map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/repos/owner/repo/git/refs" && r.Method == "POST" {
+			_ = json.NewDecoder(r.Body).Decode(&capturedBody)
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ref": capturedBody["ref"],
+				"object": map[string]string{
+					"sha": "abc123",
+				},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	client := github.NewClientWithBaseURL("test-token", server.URL)
+	config := &ReleaseConfig{
+		Enabled:   true,
+		Trigger:   "on_merge",
+		TagPrefix: "v",
+	}
+	r := NewReleaser(client, "owner", "repo", config)
+
+	prState := &PRState{PRNumber: 42, HeadSHA: "abc123"}
+	newVersion := SemVer{Major: 1, Minor: 0, Patch: 0}
+
+	tagName, err := r.CreateTag(context.Background(), prState, newVersion)
+	if err != nil {
+		t.Fatalf("CreateTag() error = %v", err)
+	}
+
+	if tagName != "v1.0.0" {
+		t.Errorf("CreateTag() = %v, want v1.0.0", tagName)
+	}
+
+	if capturedBody["ref"] != "refs/tags/v1.0.0" {
+		t.Errorf("CreateTag() ref = %v, want refs/tags/v1.0.0", capturedBody["ref"])
+	}
+
+	if capturedBody["sha"] != "abc123" {
+		t.Errorf("CreateTag() sha = %v, want abc123", capturedBody["sha"])
+	}
+}
+
+func TestReleaser_CreateTagForRepo(t *testing.T) {
+	var capturedPath string
+	var capturedBody map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		if r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/git/refs") {
+			_ = json.NewDecoder(r.Body).Decode(&capturedBody)
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"ref":"refs/tags/v2.0.0","object":{"sha":"def456"}}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	client := github.NewClientWithBaseURL("test-token", server.URL)
+	config := &ReleaseConfig{Enabled: true, Trigger: "on_merge", TagPrefix: "v"}
+	r := NewReleaser(client, "default-owner", "default-repo", config)
+
+	prState := &PRState{PRNumber: 422, HeadSHA: "def456"}
+	newVersion := SemVer{Major: 2, Minor: 0, Patch: 0}
+
+	// Call with a different owner/repo than the releaser default
+	tagName, err := r.CreateTagForRepo(context.Background(), "qf-studio", "auth-service", prState, newVersion)
+	if err != nil {
+		t.Fatalf("CreateTagForRepo() error = %v", err)
+	}
+
+	if tagName != "v2.0.0" {
+		t.Errorf("CreateTagForRepo() = %q, want %q", tagName, "v2.0.0")
+	}
+
+	// Verify the API call targeted the correct repo, not the default
+	if capturedPath != "/repos/qf-studio/auth-service/git/refs" {
+		t.Errorf("API path = %q, want %q", capturedPath, "/repos/qf-studio/auth-service/git/refs")
+	}
+}
+
+func TestNewReleaser(t *testing.T) {
+	client := github.NewClient("test-token")
+	config := DefaultReleaseConfig()
+
+	r := NewReleaser(client, "owner", "repo", config)
+
+	if r == nil {
+		t.Fatal("NewReleaser() returned nil")
+	}
+	if r.owner != "owner" {
+		t.Errorf("NewReleaser() owner = %v, want owner", r.owner)
+	}
+	if r.repo != "repo" {
+		t.Errorf("NewReleaser() repo = %v, want repo", r.repo)
+	}
+	if r.config != config {
+		t.Error("NewReleaser() config mismatch")
+	}
+}
