@@ -835,8 +835,8 @@ func TestBuildPromptLocalMode(t *testing.T) {
 
 func TestBuildPromptLocalModeNoOraclePaths(t *testing.T) {
 	// GH-2393: prompt must not name oracle test paths; agent should discover
-	// the spec from the workspace. Naming /tests/test_outputs.py blocks
-	// Terminal-Bench 2.0 leaderboard submission (Harbor compliance).
+	// the spec from the workspace. Naming /tests/test_outputs.py overfits
+	// local-mode prompts to a specific external harness.
 	tempDir, err := os.MkdirTemp("", "pilot-test-local-oracle")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)

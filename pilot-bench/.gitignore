@@ -1,6 +1,0 @@
-jobs/
-.analysis/
-aws/results/
-aws/tasks-manifest.json
-tasks-manifest.json
-aws/__pycache__/
