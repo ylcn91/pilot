@@ -197,7 +197,7 @@ Build out the main business logic and user-facing features with full functionali
 This is the bulk of the work and requires coordination across teams including frontend, backend, and QA.
 We need to implement the core algorithms, integrate with external services, handle edge cases,
 and ensure the system performs well under expected load. Documentation should be written in parallel.
-Performance benchmarks need to be established early to catch regressions during development cycles.
+Performance targets need to be established early to catch regressions during development cycles.
 
 ## Phase 3: Polish and Testing
 Add comprehensive tests including unit tests, integration tests, and end-to-end tests.
@@ -214,7 +214,7 @@ Regular sync meetings with stakeholders will be necessary to ensure alignment on
 - [ ] Core implementation done
 - [ ] All tests passing
 - [ ] Security review passed
-- [ ] Performance benchmarks met`},
+- [ ] Performance targets met`},
 			expected: ComplexityEpic,
 		},
 

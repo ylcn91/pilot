@@ -58,8 +58,6 @@ func TestDefaultRules(t *testing.T) {
 		AlertTypePRStuckWaitingCI:   {"pr_stuck_waiting_ci", true},
 		// Deadlock detection (GH-849)
 		AlertTypeDeadlock: {"autopilot_deadlock", true},
-		// Eval regression (GH-2065)
-		AlertTypeEvalRegression: {"eval_regression", true},
 		// Escalation (GH-848)
 		AlertTypeEscalation: {"escalation", true},
 	}
@@ -223,7 +221,6 @@ func TestAlertTypeConstants(t *testing.T) {
 		{AlertTypeUnauthorizedAccess, "unauthorized_access"},
 		{AlertTypeSensitiveFile, "sensitive_file_modified"},
 		{AlertTypeUnusualPattern, "unusual_pattern"},
-		{AlertTypeEvalRegression, "eval_regression"},
 	}
 
 	for _, tt := range tests {

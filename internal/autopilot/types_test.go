@@ -84,7 +84,6 @@ func TestResolvedEnv_CustomEnv(t *testing.T) {
 		RequireApproval: true,
 		CITimeout:       10 * time.Minute,
 		SkipPostMergeCI: false,
-		PostMerge:       &PostMergeConfig{Action: "none"},
 	}
 
 	if err := cfg.SetActiveEnvironment("qa"); err != nil {

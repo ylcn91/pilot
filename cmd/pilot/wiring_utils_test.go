@@ -6,7 +6,6 @@ import (
 
 	"github.com/qf-studio/pilot/internal/dashboard"
 	"github.com/qf-studio/pilot/internal/executor"
-	"github.com/qf-studio/pilot/internal/memory"
 )
 
 // =============================================================================
@@ -204,31 +203,6 @@ func TestParseInt64(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("parseInt64(%q) = %d, want %d", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
-// =============================================================================
-// GH-2134: evalPassRate tests
-// =============================================================================
-
-func TestEvalPassRate_EdgeCases(t *testing.T) {
-	tests := []struct {
-		name  string
-		tasks []*memory.EvalTask
-		want  float64
-	}{
-		{"empty", nil, 0},
-		{"all pass", []*memory.EvalTask{{Success: true}, {Success: true}}, 100},
-		{"all fail", []*memory.EvalTask{{Success: false}, {Success: false}}, 0},
-		{"half pass", []*memory.EvalTask{{Success: true}, {Success: false}}, 50},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := evalPassRate(tt.tasks)
-			if got != tt.want {
-				t.Errorf("evalPassRate() = %v, want %v", got, tt.want)
 			}
 		})
 	}

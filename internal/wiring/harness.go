@@ -123,8 +123,7 @@ func NewPollingHarness(t *testing.T, cfg *config.Config) *Harness {
 		ctrl.SetLearningLoop(h.LearningLoop)
 	}
 
-	// Wire eval store to controller
-	ctrl.SetEvalStore(store)
+	ctrl.SetMemoryStore(store)
 
 	// State store for crash recovery
 	if _, err := autopilot.NewStateStore(store.DB()); err != nil {
@@ -238,8 +237,7 @@ func NewGatewayHarness(t *testing.T, cfg *config.Config) *Harness {
 		ctrl.SetLearningLoop(h.LearningLoop)
 	}
 
-	// Wire eval store to controller (gateway path)
-	ctrl.SetEvalStore(store)
+	ctrl.SetMemoryStore(store)
 
 	// State store
 	if _, err := autopilot.NewStateStore(store.DB()); err != nil {

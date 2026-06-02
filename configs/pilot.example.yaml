@@ -381,8 +381,6 @@ autopilot:
       require_approval: false
       ci_timeout: 5m
       skip_post_merge_ci: true
-      post_merge:
-        action: "none"
 
     # Staging environment: wait for CI, then auto-merge
     staging:
@@ -390,8 +388,6 @@ autopilot:
       require_approval: false
       ci_timeout: 30m
       skip_post_merge_ci: false
-      post_merge:
-        action: "none"
 
     # Production environment: requires human approval
     prod:
@@ -402,11 +398,6 @@ autopilot:
       ci_timeout: 30m
       skip_post_merge_ci: false
       merge_method: "squash"
-      post_merge:
-        action: "tag"
-        # For webhook action:
-        # webhook_url: "https://example.com/deploy"
-        # webhook_secret: "${DEPLOY_WEBHOOK_SECRET}"
 
   # Approval configuration (per-environment override possible)
   github_review:

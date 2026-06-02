@@ -99,29 +99,11 @@ func onboardAutopilot(state *OnboardState) error {
 			ciTimeout = 30 * time.Minute
 		}
 
-		// Post-merge action
-		fmt.Println("    After merge:")
-		fmt.Println("      1. Nothing")
-		fmt.Println("      2. Create tag")
-		fmt.Println("      3. Webhook")
-		postMergeChoice := selectOption(reader, "    Action:", []string{"Nothing", "Create tag", "Webhook"})
-
-		postMergeAction := "none"
-		switch postMergeChoice {
-		case 2:
-			postMergeAction = "tag"
-		case 3:
-			postMergeAction = "webhook"
-		}
-
 		cfg.Orchestrator.Autopilot.Environments[envName] = &autopilot.EnvironmentConfig{
 			Branch:          branch,
 			RequireApproval: requireApproval,
 			CITimeout:       ciTimeout,
 			SkipPostMergeCI: false,
-			PostMerge: &autopilot.PostMergeConfig{
-				Action: postMergeAction,
-			},
 		}
 		cfg.Orchestrator.Autopilot.Environment = autopilot.Environment(envName)
 		fmt.Printf("    Autopilot: %s\n", envName)
@@ -134,9 +116,6 @@ func onboardAutopilot(state *OnboardState) error {
 			RequireApproval: false,
 			CITimeout:       5 * time.Minute,
 			SkipPostMergeCI: true,
-			PostMerge: &autopilot.PostMergeConfig{
-				Action: "none",
-			},
 		}
 		cfg.Orchestrator.Autopilot.Environments["dev"] = devCfg
 
@@ -146,29 +125,12 @@ func onboardAutopilot(state *OnboardState) error {
 		fmt.Print("    Require approval for prod? [Y/n] ")
 		requireApproval := readYesNo(reader, true)
 
-		fmt.Println("    After merge:")
-		fmt.Println("      1. Nothing")
-		fmt.Println("      2. Create tag")
-		fmt.Println("      3. Webhook")
-		postMergeChoice := selectOption(reader, "    Action:", []string{"Nothing", "Create tag", "Webhook"})
-
-		postMergeAction := "none"
-		switch postMergeChoice {
-		case 2:
-			postMergeAction = "tag"
-		case 3:
-			postMergeAction = "webhook"
-		}
-
 		prodCfg := &autopilot.EnvironmentConfig{
 			Branch:          prodBranch,
 			RequireApproval: requireApproval,
 			ApprovalSource:  autopilot.ApprovalSourceTelegram,
 			CITimeout:       30 * time.Minute,
 			SkipPostMergeCI: false,
-			PostMerge: &autopilot.PostMergeConfig{
-				Action: postMergeAction,
-			},
 		}
 		cfg.Orchestrator.Autopilot.Environments["prod"] = prodCfg
 		cfg.Orchestrator.Autopilot.Environment = autopilot.EnvDev
@@ -182,9 +144,6 @@ func onboardAutopilot(state *OnboardState) error {
 			RequireApproval: false,
 			CITimeout:       5 * time.Minute,
 			SkipPostMergeCI: true,
-			PostMerge: &autopilot.PostMergeConfig{
-				Action: "none",
-			},
 		}
 		cfg.Orchestrator.Autopilot.Environments["dev"] = devCfg
 
@@ -193,9 +152,6 @@ func onboardAutopilot(state *OnboardState) error {
 			RequireApproval: false,
 			CITimeout:       30 * time.Minute,
 			SkipPostMergeCI: false,
-			PostMerge: &autopilot.PostMergeConfig{
-				Action: "none",
-			},
 		}
 		cfg.Orchestrator.Autopilot.Environments["staging"] = stagingCfg
 
@@ -205,9 +161,6 @@ func onboardAutopilot(state *OnboardState) error {
 			ApprovalSource:  autopilot.ApprovalSourceTelegram,
 			CITimeout:       30 * time.Minute,
 			SkipPostMergeCI: false,
-			PostMerge: &autopilot.PostMergeConfig{
-				Action: "tag",
-			},
 		}
 		cfg.Orchestrator.Autopilot.Environments["prod"] = prodCfg
 		cfg.Orchestrator.Autopilot.Environment = autopilot.EnvDev

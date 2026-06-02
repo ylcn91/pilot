@@ -94,12 +94,8 @@ type TaskMonitor interface {
 	Complete(taskID, prURL string)
 }
 
-// EvalStore persists eval tasks extracted from merged PRs.
-type EvalStore interface {
-	SaveEvalTask(task *memory.EvalTask) error
-	// UpdateExecutionStatusByTaskID updates execution status by task ID and project path.
-	// Used to mark failed executions as completed when the PR is merged.
-	UpdateExecutionStatusByTaskID(taskID, projectPath, status string) error
+// ExecutionHealer promotes execution rows after externally successful merges.
+type ExecutionHealer interface {
 	// SelfHealExecutionAfterMerge promotes failed rows to completed and
 	// stamps the PR URL after a successful merge. projectPath scopes the update
 	// to prevent cross-repo clobbering. GH-2402.
@@ -127,6 +123,7 @@ func WithProjectBoardSync(bs *github.ProjectBoardSync, doneStatus, failStatus, r
 func WithMemoryStore(s *memory.Store) ControllerOption {
 	return func(c *Controller) {
 		c.memoryStore = s
+		c.executionHealer = s
 	}
 }
 
@@ -151,7 +148,6 @@ type Controller struct {
 	autoMerger       *AutoMerger
 	feedbackLoop     *FeedbackLoop
 	releaser         *Releaser
-	deployer         *Deployer
 	notifier         Notifier
 	monitor          TaskMonitor // GH-1336: sync dashboard state on merge
 	boardSync        projectBoardSyncer
@@ -176,8 +172,8 @@ type Controller struct {
 	// Learning loop for capturing review feedback (optional, nil = learning disabled)
 	learningLoop *memory.LearningLoop
 
-	// Eval store for capturing eval tasks from merged PRs (optional, nil = eval disabled)
-	evalStore EvalStore
+	// Execution healer for reconciling execution rows after successful merges.
+	executionHealer ExecutionHealer
 
 	// Execution-level approval persistence (optional, nil = audit trail disabled)
 	memoryStore approvalPersister
@@ -238,11 +234,6 @@ func NewController(cfg *Config, ghClient *github.Client, approvalMgr *approval.M
 		c.releaser = NewReleaser(ghClient, owner, repo, relCfg)
 	}
 
-	// Initialize deployer if post-merge config exists
-	if env := cfg.ResolvedEnv(); env.PostMerge != nil && env.PostMerge.Action != "" && env.PostMerge.Action != "none" {
-		c.deployer = NewDeployer(ghClient, owner, repo, env.PostMerge)
-	}
-
 	for _, opt := range opts {
 		opt(c)
 	}
@@ -259,9 +250,9 @@ var parentIssueRe = regexp.MustCompile(`(?i)Parent:\s*GH-(\d+)`)
 // issue — and its parent epic, if it is a sub-issue — to "completed", stamping the
 // PR URL so the dashboard reflects the merged outcome. Safe to call from any merge
 // path (controller-driven handleMerging or the externally-merged scan). No-op when
-// the eval store is unset or issueNum is zero. TASK-352.
+// the execution healer is unset or issueNum is zero. TASK-352.
 func (c *Controller) selfHealForPR(ctx context.Context, issueNum int, prURL string) {
-	if c.evalStore == nil || issueNum == 0 {
+	if c.executionHealer == nil || issueNum == 0 {
 		return
 	}
 	c.selfHealTask(fmt.Sprintf("GH-%d", issueNum), prURL)
@@ -275,7 +266,7 @@ func (c *Controller) selfHealForPR(ctx context.Context, issueNum int, prURL stri
 // selfHealTask runs SelfHealExecutionAfterMerge for one task ID, scoped to this
 // controller's project path (empty = task_id-only match). TASK-352.
 func (c *Controller) selfHealTask(taskID, prURL string) {
-	if err := c.evalStore.SelfHealExecutionAfterMerge(taskID, c.projectPath, prURL); err != nil {
+	if err := c.executionHealer.SelfHealExecutionAfterMerge(taskID, c.projectPath, prURL); err != nil {
 		c.log.Warn("failed to self-heal execution on merge", "task_id", taskID, "error", err)
 	}
 }
@@ -324,15 +315,16 @@ func (c *Controller) SetLearningLoop(loop *memory.LearningLoop) {
 	}
 }
 
-// SetEvalStore sets the eval store for capturing eval tasks from merged PRs.
-func (c *Controller) SetEvalStore(store EvalStore) {
-	c.evalStore = store
+// SetExecutionHealer sets the execution healer used after successful merges.
+func (c *Controller) SetExecutionHealer(healer ExecutionHealer) {
+	c.executionHealer = healer
 }
 
 // SetMemoryStore wires an execution-level approval persister so that
 // approval_request_id and approval_decision are written to the executions table.
 func (c *Controller) SetMemoryStore(s *memory.Store) {
 	c.memoryStore = s
+	c.executionHealer = s
 }
 
 // SetReleaseSummaryGenerator sets the LLM release summary generator.
@@ -1484,22 +1476,13 @@ func (c *Controller) handleMerging(ctx context.Context, prState *PRState) error 
 	return nil
 }
 
-// handleMerged runs post-merge deployer and checks post-merge CI based on environment config.
+// handleMerged checks post-merge CI based on environment config.
 func (c *Controller) handleMerged(ctx context.Context, prState *PRState) error {
 	c.log.Info("handleMerged: PR merged, checking next steps",
 		"pr", prState.PRNumber,
 		"env", c.config.EnvironmentName(),
 		"should_release", c.shouldTriggerRelease(),
 	)
-
-	// Run deployer if configured (webhook, branch-push).
-	// Tag action is a no-op here — handled by the releaser stage.
-	if c.deployer != nil {
-		if err := c.deployer.Deploy(ctx, prState); err != nil {
-			c.log.Error("post-merge deploy failed", "pr", prState.PRNumber, "error", err)
-			return fmt.Errorf("deploy failed: %w", err)
-		}
-	}
 
 	// GH-1823: Learn from PR reviews (self-improvement).
 	// Fetch reviews and line-level comments after merge, when the review cycle is complete.
@@ -1540,40 +1523,6 @@ func (c *Controller) handleMerged(ctx context.Context, prState *PRState) error {
 					c.log.Info("Learned from PR reviews",
 						slog.Int("pr", prState.PRNumber),
 						slog.Int("reviews", len(reviewData)),
-					)
-				}
-			}
-		}
-	}
-
-	// GH-2059: Extract eval task from merged PR for benchmarking.
-	if c.evalStore != nil && prState.IssueNumber > 0 {
-		issue, err := c.ghClient.GetIssue(ctx, c.owner, c.repo, prState.IssueNumber)
-		if err != nil {
-			c.log.Warn("Failed to fetch issue for eval task", slog.Any("error", err))
-		} else {
-			prFiles, err := c.ghClient.ListPullRequestFiles(ctx, c.owner, c.repo, prState.PRNumber)
-			if err != nil {
-				c.log.Warn("Failed to fetch PR files for eval task", slog.Any("error", err))
-			} else {
-				var filenames []string
-				for _, f := range prFiles {
-					filenames = append(filenames, f.Filename)
-				}
-				evalTask := memory.ExtractEvalTask(memory.EvalInput{
-					TaskID:       fmt.Sprintf("pr-%d", prState.PRNumber),
-					Success:      true, // merged = successful
-					IssueNumber:  prState.IssueNumber,
-					IssueTitle:   issue.Title,
-					Repo:         fmt.Sprintf("%s/%s", c.owner, c.repo),
-					FilesChanged: filenames,
-				})
-				if saveErr := c.evalStore.SaveEvalTask(evalTask); saveErr != nil {
-					c.log.Warn("Failed to save eval task", slog.Any("error", saveErr))
-				} else {
-					c.log.Info("Saved eval task from merged PR",
-						slog.Int("pr", prState.PRNumber),
-						slog.Int("issue", prState.IssueNumber),
 					)
 				}
 			}
@@ -1715,7 +1664,7 @@ func (c *Controller) Start(ctx context.Context) {
 	c.recoverStaleParentIssues(ctx)
 }
 
-// handlePostMergeCI monitors deployment/post-merge checks (non-blocking).
+// handlePostMergeCI monitors post-merge checks (non-blocking).
 // Each tick calls CheckCI once and either advances the stage or returns to wait
 // for the next tick, mirroring the pattern used by handleWaitingCI.
 func (c *Controller) handlePostMergeCI(ctx context.Context, prState *PRState) error {

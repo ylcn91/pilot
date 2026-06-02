@@ -3190,8 +3190,7 @@ func TestLocalModeSkipsNavigatorAutoInit(t *testing.T) {
 }
 
 func TestLocalModeRunsQualityGates(t *testing.T) {
-	// Quality gates are now enabled in LocalMode (re-enabled for bench,
-	// deps are pre-installed so OOM risk is mitigated).
+	// Quality gates are enabled in LocalMode because sandbox dependencies are pre-installed.
 	projectDir := t.TempDir()
 
 	backend := &mockSelfReviewBackend{output: "done"}

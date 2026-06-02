@@ -686,7 +686,7 @@ func TestBuildPromptExecutorHeader(t *testing.T) {
 			task: &Task{
 				ID:          "LOCAL-1",
 				Title:       "Sandbox run",
-				Description: "Solve bench task",
+				Description: "Solve sandbox task",
 				LocalMode:   true,
 			},
 			setup: func(t *testing.T) string { return t.TempDir() },
@@ -772,7 +772,7 @@ func TestBuildPromptSkipsNavigatorForTrivialTask(t *testing.T) {
 }
 
 func TestBuildPromptLocalMode(t *testing.T) {
-	// GH-2103: LocalMode should use bench-optimized prompt even if .agent/ exists
+	// GH-2103: LocalMode should use a standalone prompt even if .agent/ exists
 	tempDir, err := os.MkdirTemp("", "pilot-test-local")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -894,7 +894,7 @@ func TestBuildPromptLocalModeWithoutTestFiles(t *testing.T) {
 }
 
 func TestBuildPromptLocalModeWithPatternContext(t *testing.T) {
-	// LocalMode uses standalone bench prompt — patterns are NOT injected
+	// LocalMode uses a standalone prompt — patterns are NOT injected
 	tempDir, err := os.MkdirTemp("", "pilot-test-local-patterns")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -932,20 +932,20 @@ func TestBuildPromptLocalModeWithPatternContext(t *testing.T) {
 
 	prompt := runner.BuildPrompt(task, tempDir)
 
-	// Should have bench-optimized task section
+	// Should have standalone task section
 	if !strings.Contains(prompt, "## Task") {
 		t.Error("LocalMode with patterns should still have task section")
 	}
 
-	// LocalMode uses standalone bench prompt — patterns are not injected
-	// (bench prompt is self-contained for sandbox execution)
+	// LocalMode uses a standalone prompt — patterns are not injected
+	// (local prompt is self-contained for sandbox execution)
 	if !strings.Contains(prompt, "## Phase 1: RECON") {
 		t.Error("LocalMode should have recon phase")
 	}
 }
 
 func TestBuildPromptLocalModeWithKnowledgeGraph(t *testing.T) {
-	// LocalMode uses standalone bench prompt — knowledge graph is NOT injected
+	// LocalMode uses a standalone prompt for task framing
 	tempDir, err := os.MkdirTemp("", "pilot-test-local-kg")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -971,7 +971,7 @@ func TestBuildPromptLocalModeWithKnowledgeGraph(t *testing.T) {
 
 	prompt := runner.BuildPrompt(task, tempDir)
 
-	// Should have bench-optimized task section
+	// Should have standalone task section
 	if !strings.Contains(prompt, "## Task") {
 		t.Error("LocalMode with knowledge graph should have task section")
 	}
@@ -1043,8 +1043,8 @@ func TestBuildPromptNoNavigator(t *testing.T) {
 	}
 }
 
-func TestBuildPromptLocalModeBench(t *testing.T) {
-	// Test local/bench mode: problem-solving prompt without restrictive constraints
+func TestBuildPromptLocalModeSandbox(t *testing.T) {
+	// Test local sandbox mode: problem-solving prompt without restrictive constraints
 	tempDir, err := os.MkdirTemp("", "pilot-test-local")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)

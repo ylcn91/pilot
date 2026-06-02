@@ -931,7 +931,7 @@ type OpenAIConfig struct {
 //
 //	executor:
 //	  subprocess_limits:
-//	    enabled: false           # flip to true after one baseline bench cycle
+//	    enabled: false           # flip to true after one baseline cycle
 //	    max_rss_mb: 4096         # cap at 4 GiB virtual address space (Linux only)
 //	    sample_interval_sec: 10  # how often to poll /proc/<pid>/status
 type SubprocessLimitsConfig struct {

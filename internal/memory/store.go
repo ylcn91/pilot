@@ -271,40 +271,6 @@ func (s *Store) migrate() error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_pattern_performance_pattern ON pattern_performance(pattern_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_pattern_performance_project ON pattern_performance(project_id)`,
-		// Eval tasks table (GH-2058)
-		`CREATE TABLE IF NOT EXISTS eval_tasks (
-			id TEXT PRIMARY KEY,
-			execution_id TEXT NOT NULL,
-			issue_number INTEGER NOT NULL,
-			issue_title TEXT NOT NULL,
-			repo TEXT NOT NULL,
-			success BOOLEAN NOT NULL,
-			pass_criteria TEXT,
-			files_changed TEXT,
-			duration_ms INTEGER DEFAULT 0,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			UNIQUE(repo, issue_number)
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_eval_tasks_repo ON eval_tasks(repo)`,
-		`CREATE INDEX IF NOT EXISTS idx_eval_tasks_success ON eval_tasks(success)`,
-		`CREATE INDEX IF NOT EXISTS idx_eval_tasks_created ON eval_tasks(created_at)`,
-		// Eval results table (GH-2062) — stores per-run, per-model, per-task outcomes
-		`CREATE TABLE IF NOT EXISTS eval_results (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			run_id TEXT NOT NULL,
-			task_id TEXT NOT NULL,
-			model TEXT NOT NULL,
-			passed BOOLEAN NOT NULL,
-			duration_ms INTEGER DEFAULT 0,
-			tokens_used INTEGER DEFAULT 0,
-			cost_usd REAL DEFAULT 0.0,
-			error_msg TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_eval_results_run ON eval_results(run_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_eval_results_task ON eval_results(task_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_eval_results_model ON eval_results(model)`,
-		`CREATE INDEX IF NOT EXISTS idx_eval_results_created ON eval_results(created_at)`,
 		// Pending approval requests awaiting human decision (GH-2657)
 		`CREATE TABLE IF NOT EXISTS approval_pending (
 			id TEXT PRIMARY KEY,

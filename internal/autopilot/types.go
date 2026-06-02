@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Environment defines deployment environment behavior.
+// Environment defines automation environment behavior.
 // Different environments have different levels of automation and approval requirements.
 type Environment string
 
@@ -38,7 +38,7 @@ type GitHubReviewConfig struct {
 	PollInterval time.Duration `yaml:"poll_interval"`
 }
 
-// EnvironmentConfig defines a deployment pipeline for one target environment.
+// EnvironmentConfig defines an automation pipeline for one target environment.
 type EnvironmentConfig struct {
 	// Branch is the target branch for PRs (e.g., "main", "develop").
 	Branch string `yaml:"branch"`
@@ -54,24 +54,8 @@ type EnvironmentConfig struct {
 	SkipPostMergeCI bool `yaml:"skip_post_merge_ci"`
 	// MergeMethod overrides the default merge method for this environment.
 	MergeMethod string `yaml:"merge_method,omitempty"`
-	// PostMerge defines what happens after merge (deployment trigger).
-	PostMerge *PostMergeConfig `yaml:"post_merge,omitempty"`
 	// Release holds per-environment release configuration.
 	Release *ReleaseConfig `yaml:"release,omitempty"`
-}
-
-// PostMergeConfig defines the deployment trigger action after PR merge.
-type PostMergeConfig struct {
-	// Action: "none", "tag", "webhook", "branch-push"
-	Action string `yaml:"action"`
-	// WebhookURL for action "webhook".
-	WebhookURL string `yaml:"webhook_url,omitempty"`
-	// WebhookHeaders for action "webhook".
-	WebhookHeaders map[string]string `yaml:"webhook_headers,omitempty"`
-	// WebhookSecret for action "webhook" HMAC signing.
-	WebhookSecret string `yaml:"webhook_secret,omitempty"`
-	// DeployBranch for action "branch-push".
-	DeployBranch string `yaml:"deploy_branch,omitempty"`
 }
 
 // Config holds autopilot configuration for automated PR handling.
@@ -199,14 +183,12 @@ func defaultEnvironments() map[string]*EnvironmentConfig {
 			RequireApproval: false,
 			CITimeout:       5 * time.Minute,
 			SkipPostMergeCI: true,
-			PostMerge:       &PostMergeConfig{Action: "none"},
 		},
 		"stage": {
 			Branch:          "main",
 			RequireApproval: false,
 			CITimeout:       30 * time.Minute,
 			SkipPostMergeCI: false,
-			PostMerge:       &PostMergeConfig{Action: "none"},
 		},
 		"prod": {
 			Branch:          "main",
@@ -215,7 +197,6 @@ func defaultEnvironments() map[string]*EnvironmentConfig {
 			ApprovalTimeout: 1 * time.Hour,
 			CITimeout:       30 * time.Minute,
 			SkipPostMergeCI: false,
-			PostMerge:       &PostMergeConfig{Action: "tag"},
 		},
 	}
 }

@@ -511,8 +511,8 @@ func TestController_HandleMerging_SelfHealsExecution(t *testing.T) {
 	// TASK-352: scope self-heal to the project's filesystem path (the value the
 	// executor stores in executions.project_path), NOT owner/repo.
 	c := NewController(cfg, ghClient, nil, "owner", "repo", WithProjectPath("/proj/pilot"))
-	evalMock := &mockEvalStore{}
-	c.SetEvalStore(evalMock)
+	healer := &mockExecutionHealer{}
+	c.SetExecutionHealer(healer)
 
 	c.mu.Lock()
 	c.activePRs[42] = &PRState{
@@ -530,10 +530,10 @@ func TestController_HandleMerging_SelfHealsExecution(t *testing.T) {
 
 	// IssueNumber 99 has no "Parent: GH-N" body (default {} response), so exactly
 	// one self-heal call (the issue itself, no parent).
-	if len(evalMock.selfHealed) != 1 {
-		t.Fatalf("expected 1 self-heal call, got %d", len(evalMock.selfHealed))
+	if len(healer.selfHealed) != 1 {
+		t.Fatalf("expected 1 self-heal call, got %d", len(healer.selfHealed))
 	}
-	got := evalMock.selfHealed[0]
+	got := healer.selfHealed[0]
 	if got.TaskID != "GH-99" {
 		t.Errorf("self-heal task ID = %q, want GH-99", got.TaskID)
 	}
@@ -542,11 +542,6 @@ func TestController_HandleMerging_SelfHealsExecution(t *testing.T) {
 	}
 	if got.PRURL != "https://github.com/owner/repo/pull/42" {
 		t.Errorf("self-heal PR URL = %q, want PR URL", got.PRURL)
-	}
-	// Old UpdateExecutionStatusByTaskID path must NOT also be invoked — self-heal
-	// supersedes it so we don't write stale rows without the PR URL.
-	if len(evalMock.updateStatus) != 0 {
-		t.Errorf("expected 0 UpdateExecutionStatusByTaskID calls (self-heal replaces it), got %d", len(evalMock.updateStatus))
 	}
 }
 
@@ -591,15 +586,15 @@ func TestController_ScanRecentlyMergedPRs_SelfHeals(t *testing.T) {
 	cfg.MergedPRScanWindow = 30 * time.Minute
 
 	c := NewController(cfg, ghClient, nil, "owner", "repo", WithProjectPath("/proj/pilot"))
-	evalMock := &mockEvalStore{}
-	c.SetEvalStore(evalMock)
+	healer := &mockExecutionHealer{}
+	c.SetExecutionHealer(healer)
 
 	if err := c.ScanRecentlyMergedPRs(context.Background()); err != nil {
 		t.Fatalf("ScanRecentlyMergedPRs: %v", err)
 	}
 
 	healed := map[string]bool{}
-	for _, h := range evalMock.selfHealed {
+	for _, h := range healer.selfHealed {
 		healed[h.TaskID] = true
 		if h.ProjectPath != "/proj/pilot" {
 			t.Errorf("self-heal %s: ProjectPath = %q, want /proj/pilot", h.TaskID, h.ProjectPath)
@@ -609,10 +604,10 @@ func TestController_ScanRecentlyMergedPRs_SelfHeals(t *testing.T) {
 		}
 	}
 	if !healed["GH-3353"] {
-		t.Errorf("Bug 1: expected self-heal for the merged sub-issue GH-3353; got %+v", evalMock.selfHealed)
+		t.Errorf("Bug 1: expected self-heal for the merged sub-issue GH-3353; got %+v", healer.selfHealed)
 	}
 	if !healed["GH-3344"] {
-		t.Errorf("Bug 2: expected self-heal for the parent epic GH-3344; got %+v", evalMock.selfHealed)
+		t.Errorf("Bug 2: expected self-heal for the parent epic GH-3344; got %+v", healer.selfHealed)
 	}
 }
 
@@ -3984,11 +3979,9 @@ func TestSetLearningLoop_ForwardsToFeedbackLoop(t *testing.T) {
 	}
 }
 
-// mockEvalStore captures SaveEvalTask calls for testing.
-type mockEvalStore struct {
-	saved        []*memory.EvalTask
-	selfHealed   []selfHealCall
-	updateStatus []updateStatusCall
+// mockExecutionHealer captures execution self-heal calls for testing.
+type mockExecutionHealer struct {
+	selfHealed []selfHealCall
 }
 
 type selfHealCall struct {
@@ -3997,102 +3990,9 @@ type selfHealCall struct {
 	PRURL       string
 }
 
-type updateStatusCall struct {
-	TaskID      string
-	ProjectPath string
-	Status      string
-}
-
-func (m *mockEvalStore) SaveEvalTask(task *memory.EvalTask) error {
-	m.saved = append(m.saved, task)
-	return nil
-}
-
-func (m *mockEvalStore) UpdateExecutionStatusByTaskID(taskID, projectPath, status string) error {
-	m.updateStatus = append(m.updateStatus, updateStatusCall{TaskID: taskID, ProjectPath: projectPath, Status: status})
-	return nil
-}
-
-func (m *mockEvalStore) SelfHealExecutionAfterMerge(taskID, projectPath, prURL string) error {
+func (m *mockExecutionHealer) SelfHealExecutionAfterMerge(taskID, projectPath, prURL string) error {
 	m.selfHealed = append(m.selfHealed, selfHealCall{TaskID: taskID, ProjectPath: projectPath, PRURL: prURL})
 	return nil
-}
-
-// TestHandleMerged_ExtractsEvalTask verifies that handleMerged extracts and saves
-// an eval task when evalStore is configured and the PR has a linked issue.
-func TestHandleMerged_ExtractsEvalTask(t *testing.T) {
-	issueFetched := false
-	filesFetched := false
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/repos/owner/repo/issues/10":
-			issueFetched = true
-			issue := github.Issue{Number: 10, Title: "Add feature X"}
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write(mustJSON(t, issue))
-		case "/repos/owner/repo/pulls/42/files":
-			filesFetched = true
-			files := []github.PRFile{
-				{Filename: "internal/foo.go", Status: "modified"},
-				{Filename: "internal/bar.go", Status: "added"},
-			}
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write(mustJSON(t, files))
-		default:
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("{}"))
-		}
-	}))
-	defer server.Close()
-
-	ghClient := github.NewClientWithBaseURL(testutil.FakeGitHubToken, server.URL)
-	cfg := DefaultConfig()
-	cfg.Environment = EnvDev
-	cfg.AutoReview = false
-
-	c := NewController(cfg, ghClient, nil, "owner", "repo")
-	evalMock := &mockEvalStore{}
-	c.SetEvalStore(evalMock)
-
-	prState := &PRState{
-		PRNumber:    42,
-		PRURL:       "https://github.com/owner/repo/pull/42",
-		IssueNumber: 10,
-		Stage:       StageMerged,
-	}
-
-	err := c.handleMerged(context.Background(), prState)
-	if err != nil {
-		t.Fatalf("handleMerged returned unexpected error: %v", err)
-	}
-
-	if !issueFetched {
-		t.Error("expected /issues/10 to be fetched")
-	}
-	if !filesFetched {
-		t.Error("expected /pulls/42/files to be fetched")
-	}
-	if len(evalMock.saved) != 1 {
-		t.Fatalf("expected 1 eval task saved, got %d", len(evalMock.saved))
-	}
-
-	task := evalMock.saved[0]
-	if task.IssueNumber != 10 {
-		t.Errorf("expected issue number 10, got %d", task.IssueNumber)
-	}
-	if task.IssueTitle != "Add feature X" {
-		t.Errorf("expected issue title 'Add feature X', got %q", task.IssueTitle)
-	}
-	if task.Repo != "owner/repo" {
-		t.Errorf("expected repo 'owner/repo', got %q", task.Repo)
-	}
-	if !task.Success {
-		t.Error("expected task success=true for merged PR")
-	}
-	if len(task.FilesChanged) != 2 {
-		t.Errorf("expected 2 files changed, got %d", len(task.FilesChanged))
-	}
 }
 
 // mustJSON serialises v to JSON and fails the test on error.

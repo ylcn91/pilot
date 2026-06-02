@@ -16,7 +16,6 @@ export default {
   "effort-routing": "Effort-Based Routing",
   "quality-gates": "Quality Gates",
   "self-improvement": "Self-Improvement",
-  "evaluation-system": "Evaluation System",
   "self-healing": "Self-Healing",
   hooks: "Claude Code Hooks",
   "executor-mode-signal": "Executor-Mode Signal"

@@ -438,7 +438,7 @@ func (r *Runner) buildLocalModePrompt(task *Task) (prompt string) {
 
 // buildRetryPrompt constructs a prompt for Claude Code to fix quality gate failures.
 // Includes git diff context and explicit strategy-switch instruction to avoid
-// repeating the same failed approach (GH-bench: ALGORITHM_VARIANCE fix).
+// repeating the same failed approach.
 func (r *Runner) buildRetryPrompt(task *Task, feedback string, attempt int) (prompt string) {
 	defer sanitizePromptReturn("buildRetryPrompt", &prompt)
 	var sb strings.Builder
