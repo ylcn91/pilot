@@ -33,8 +33,16 @@ func (r *Runner) runSelfReview(ctx context.Context, task *Task, state *progressS
 	// review-stage backend is used. When tdd.qa is unset qaBackend falls back to
 	// the primary backend (== reviewBackend default), so behavior is unchanged.
 	selfReviewBackend := r.reviewBackend
+	// reviewStage is the StageConfig whose model/effort override applies to this
+	// self-review call: the TDD qa role when TDD owns review, else the pipeline
+	// review stage. Nil when neither is configured (falls back to run-level).
+	var reviewStage *StageConfig
+	if r.config != nil && r.config.Pipeline != nil {
+		reviewStage = r.config.Pipeline.Review
+	}
 	if r.config != nil && r.config.TDD != nil && r.config.TDD.Enabled {
 		selfReviewBackend = r.qaBackend
+		reviewStage = r.config.TDD.QA
 	}
 
 	// Execute self-review with backend-aware timeout. OpenCode runs are
@@ -43,9 +51,12 @@ func (r *Runner) runSelfReview(ctx context.Context, task *Task, state *progressS
 	reviewCtx, cancel := context.WithTimeout(ctx, r.selfReviewTimeout())
 	defer cancel()
 
-	// Select model and effort (use same routing as main execution).
+	// Select model and effort (use same routing as main execution), then apply
+	// the review-stage override (pipeline.review, or tdd.qa in TDD mode) so a
+	// stage-level model/effort wins over the run-level selection.
 	selectedModel := r.resolveSelectedModel(task)
 	selectedEffort := r.modelRouter.SelectEffort(task)
+	selectedModel, selectedEffort = effectiveStageModelEffort(reviewStage, selectedModel, selectedEffort)
 
 	// GH-1265: Determine if session resume is enabled and session ID is available.
 	// Cross-backend resume is invalid: only claude-code honors --resume, and an

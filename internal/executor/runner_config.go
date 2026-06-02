@@ -65,6 +65,23 @@ func (r *Runner) executionToolOptions() (allowed []string, mcpPath string) {
 	return nil, ""
 }
 
+// effectiveStageModelEffort resolves the model/effort to pass in ExecuteOptions
+// for a given pipeline/TDD stage, honoring the precedence:
+//
+//	stage override > run-level selected > backend default
+//
+// Backends prefer the per-call ExecuteOptions over their baked-in config (e.g.
+// codex-exec's appendCommonArgs does firstNonEmpty(opts.Model, b.config.Model)),
+// so without this the run-level selectedModel/selectedEffort would shadow a
+// stage's NewStageBackend-baked override. A nil stage yields the run-level
+// values unchanged (no-pipeline / no-TDD path is byte-identical to before).
+func effectiveStageModelEffort(stage *StageConfig, selectedModel, selectedEffort string) (effModel, effEffort string) {
+	if stage == nil {
+		return selectedModel, selectedEffort
+	}
+	return firstNonEmpty(stage.Model, selectedModel), firstNonEmpty(stage.Effort, selectedEffort)
+}
+
 // resolveSelectedModel returns the model name to pass to the backend for a task.
 // GH-2450: model_routing wins when configured. Only fall back to default_model
 // (or CC empty-passthrough) when the router returned an empty string. Setting

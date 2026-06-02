@@ -43,7 +43,7 @@ func (r *Runner) runTDDSequence(s *executeState) (*BackendResult, error) {
 	// commit. A misbehaving non-claude architect that commits is reverted before
 	// TEST-AUTHOR runs so its stray commits never enter the RED/GREEN diff.
 	archHeadBefore := r.readOnlyHeadBefore(s)
-	archRes, archErr := r.runTDDRole(s, r.architectBackend, buildTDDRolePrompt(base, buildArchitectAppendix()))
+	archRes, archErr := r.runTDDRole(s, r.architectBackend, r.tddRoleStage("architect"), buildTDDRolePrompt(base, buildArchitectAppendix()))
 	if guard := enforceReadOnly(ctx, s.git, archHeadBefore, pilotapi.RoleArchitect, log); guard.Violated {
 		s.tddArchitectReadOnlyViolation = true
 	}
@@ -201,18 +201,42 @@ func (r *Runner) tddBasePrompt(s *executeState) string {
 	return base
 }
 
+// tddRoleStage returns the StageConfig for a TDD role so its per-stage
+// model/effort override can be threaded into the role's Execute call. A nil TDD
+// config (or nil role stage) yields nil, falling back to the run-level model.
+func (r *Runner) tddRoleStage(role string) *StageConfig {
+	if r.config == nil || r.config.TDD == nil {
+		return nil
+	}
+	switch role {
+	case "architect":
+		return r.config.TDD.Architect
+	case "test_author":
+		return r.config.TDD.TestAuthor
+	case "implementer":
+		return r.config.TDD.Implementer
+	case "qa":
+		return r.config.TDD.QA
+	default:
+		return nil
+	}
+}
+
 // runTDDRole invokes a single role backend with the shared ExecuteOptions wiring
 // (model/effort/max-turns, recorder + progress event handler) mirrored from the
-// main execute call, and returns its BackendResult.
-func (r *Runner) runTDDRole(s *executeState, backend Backend, prompt string) (*BackendResult, error) {
+// main execute call, and returns its BackendResult. stage carries the role's
+// per-stage model/effort override (nil => run-level), threaded so a role model
+// override is not shadowed by the run-level selection (backends prefer opts).
+func (r *Runner) runTDDRole(s *executeState, backend Backend, stage *StageConfig, prompt string) (*BackendResult, error) {
 	task := s.task
 	allowedTools, mcpConfigPath := r.executionToolOptions()
+	effModel, effEffort := effectiveStageModelEffort(stage, s.selectedModel, s.selectedEffort)
 	return backend.Execute(s.ctx, ExecuteOptions{
 		Prompt:        prompt,
 		ProjectPath:   s.executionPath,
 		Verbose:       task.Verbose,
-		Model:         s.selectedModel,
-		Effort:        s.selectedEffort,
+		Model:         effModel,
+		Effort:        effEffort,
 		MaxTurns:      s.workflowMaxTurns,
 		AllowedTools:  allowedTools,
 		MCPConfigPath: mcpConfigPath,
@@ -276,7 +300,7 @@ func (r *Runner) runTDDTestAuthorOnce(s *executeState, base, feedback string) (c
 	if feedback != "" {
 		appendix += "\n\n## RED gate feedback (fix this)\n\n" + feedback
 	}
-	res, err := r.runTDDRole(s, r.testAuthorBackend, buildTDDRolePrompt(base, appendix))
+	res, err := r.runTDDRole(s, r.testAuthorBackend, r.tddRoleStage("test_author"), buildTDDRolePrompt(base, appendix))
 	if err != nil {
 		return false, err
 	}
@@ -300,7 +324,7 @@ func (r *Runner) runTDDImplementer(s *executeState, base, feedback string) (*Bac
 		return nil, err
 	}
 	appendix := buildImplementerAppendix(s.tddArchitectDesign, s.tddTestNames, feedback)
-	res, err := r.runTDDRole(s, r.implementerBackend, buildTDDRolePrompt(base, appendix))
+	res, err := r.runTDDRole(s, r.implementerBackend, r.tddRoleStage("implementer"), buildTDDRolePrompt(base, appendix))
 	if err != nil {
 		return nil, err
 	}

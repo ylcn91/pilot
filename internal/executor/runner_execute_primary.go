@@ -27,12 +27,22 @@ func (r *Runner) executePrimaryBackend(
 	state := s.state
 	complexity := s.complexity
 
+	// Apply the execute-stage override (pipeline.execute) so a stage-level
+	// model/effort wins over the run-level selection; otherwise the run-level
+	// value would shadow the stage backend's NewStageBackend-baked override
+	// (backends prefer ExecuteOptions over their config). Nil stage => run-level.
+	var execStage *StageConfig
+	if r.config != nil && r.config.Pipeline != nil {
+		execStage = r.config.Pipeline.Execute
+	}
+	effModel, effEffort := effectiveStageModelEffort(execStage, s.selectedModel, s.selectedEffort)
+
 	return r.execBackend.Execute(stallExecutionCtx, ExecuteOptions{
 		Prompt:          s.prompt,
 		ProjectPath:     s.executionPath, // Use worktree path if active
 		Verbose:         task.Verbose,
-		Model:           s.selectedModel,
-		Effort:          s.selectedEffort,
+		Model:           effModel,
+		Effort:          effEffort,
 		MaxTurns:        s.workflowMaxTurns, // TASK-304: per-repo .pilot/workflow.yaml override
 		FromPR:          task.FromPR,        // GH-1267: session resumption from PR context
 		WatchdogTimeout: watchdogTimeout,
