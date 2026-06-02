@@ -76,15 +76,21 @@ func (r *Runner) BuildPrompt(task *Task, executionPath string) (prompt string) {
 		return sb.String()
 	}
 
+	// .agent dir for file-driven guidance overlays (move B5). Resolved early so
+	// the header/evidence-spec fragments below can be overlaid before any branch.
+	// loadGuidance returns the const verbatim when no executor-guidance/<key>.md
+	// exists, so prompts stay byte-identical for projects without atoms.
+	agentDir := filepath.Join(executionPath, ".agent")
+
 	// GH-2328: Prepend [PILOT-EXEC] executor-mode header so the child Claude
 	// session and any project CLAUDE.md can skip Navigator-only "don't write
 	// code" rules explicitly, without relying on CWD or prompt-prefix sniffing.
-	sb.WriteString(ExecutorPromptHeader)
+	sb.WriteString(loadGuidance(agentDir, "header", ExecutorPromptHeader))
 
 	// GH-3224: defeat the false-negative no-op for evidence-backed specs.
 	// Injected here so it covers both the Navigator and non-Navigator execution
 	// paths below (image/local-mode early returns above are out of scope).
-	sb.WriteString(EvidenceBackedSpecDirective)
+	sb.WriteString(loadGuidance(agentDir, "evidence-spec", EvidenceBackedSpecDirective))
 
 	// GH-2103: LocalMode takes priority over Navigator detection.
 	// Sandbox environments with .agent/ dirs would hijack the prompt to Navigator path,
@@ -119,8 +125,9 @@ func (r *Runner) BuildPrompt(task *Task, executionPath string) (prompt string) {
 		return prompt
 	}
 
-	// Check if project has Navigator initialized (use executionPath for worktree support)
-	agentDir := filepath.Join(executionPath, ".agent")
+	// Check if project has Navigator initialized (agentDir resolved above for
+	// worktree support; reused here so guidance overlays and the .agent stat
+	// share one path).
 	hasNavigator := false
 	if _, err := os.Stat(agentDir); err == nil {
 		hasNavigator = true
@@ -204,8 +211,10 @@ func (r *Runner) BuildPrompt(task *Task, executionPath string) (prompt string) {
 			sb.WriteString(fmt.Sprintf("Create branch `%s` before starting.\n\n", task.Branch))
 		}
 
-		// Embed autonomous workflow instructions (replaces /nav-loop dependency)
-		sb.WriteString(GetAutonomousWorkflowInstructions())
+		// Embed autonomous workflow instructions (replaces /nav-loop dependency).
+		// Routed through loadGuidance so executor-guidance/workflow.md can overlay
+		// or override the const (move B5).
+		sb.WriteString(loadGuidance(agentDir, "workflow", GetAutonomousWorkflowInstructions()))
 		sb.WriteString("\n")
 
 		// Inject user preferences if profile manager is available (GH-1028)
@@ -267,19 +276,33 @@ func (r *Runner) BuildPrompt(task *Task, executionPath string) (prompt string) {
 			}
 		}
 
-		// Pre-commit verification checklist (GH-359, GH-920, GH-1321)
-		sb.WriteString("## Pre-Commit Verification\n\n")
-		sb.WriteString("BEFORE committing, verify:\n")
-		sb.WriteString("1. **Build passes**: Run `go build ./...` (or equivalent for the project)\n")
-		sb.WriteString("2. **Config wiring**: Any new config struct fields must flow from yaml → main.go → handler\n")
-		sb.WriteString("3. **Methods exist**: Any method calls you added must have implementations\n")
-		sb.WriteString("4. **Tests pass + new code tested**: Run `go test ./...` for changed packages. If you added new exported functions or methods, write tests for them — \"tests pass\" is NOT enough.\n")
-		sb.WriteString("5. **Constants sourced**: If you added/changed numeric constants (prices, limits, thresholds, URLs), verify each value against the source mentioned in the issue. Do NOT invent values — cite the source in a code comment.\n")
-		sb.WriteString("6. **Lint compliance**: In Go test files, ALL return values must be checked — including w.Write(), json.NewEncoder().Encode(), fmt.Fprintf(w, ...) in HTTP mock handlers. Use '_, _ = w.Write(...)' or assign to err variable. The golangci-lint errcheck linter is enabled globally including test files.\n")
+		// Pre-commit verification checklist (GH-359, GH-920, GH-1321). Assembled
+		// into one block then routed through loadGuidance so
+		// executor-guidance/pre-commit.md can overlay or override it (move B5).
+		var pc strings.Builder
+		pc.WriteString("## Pre-Commit Verification\n\n")
+		pc.WriteString("BEFORE committing, verify:\n")
+		pc.WriteString("1. **Build passes**: Run `go build ./...` (or equivalent for the project)\n")
+		pc.WriteString("2. **Config wiring**: Any new config struct fields must flow from yaml → main.go → handler\n")
+		pc.WriteString("3. **Methods exist**: Any method calls you added must have implementations\n")
+		pc.WriteString("4. **Tests pass + new code tested**: Run `go test ./...` for changed packages. If you added new exported functions or methods, write tests for them — \"tests pass\" is NOT enough.\n")
+		pc.WriteString("5. **Constants sourced**: If you added/changed numeric constants (prices, limits, thresholds, URLs), verify each value against the source mentioned in the issue. Do NOT invent values — cite the source in a code comment.\n")
+		pc.WriteString("6. **Lint compliance**: In Go test files, ALL return values must be checked — including w.Write(), json.NewEncoder().Encode(), fmt.Fprintf(w, ...) in HTTP mock handlers. Use '_, _ = w.Write(...)' or assign to err variable. The golangci-lint errcheck linter is enabled globally including test files.\n")
 		if len(task.AcceptanceCriteria) > 0 {
-			sb.WriteString("7. **Acceptance criteria**: Verify ALL criteria listed above are satisfied\n")
+			pc.WriteString("7. **Acceptance criteria**: Verify ALL criteria listed above are satisfied\n")
 		}
-		sb.WriteString("\nIf any verification fails, fix it before committing.\n\n")
+		pc.WriteString("\nIf any verification fails, fix it before committing.\n")
+		sb.WriteString(loadGuidance(agentDir, "pre-commit", pc.String()))
+		sb.WriteString("\n")
+
+		// Optional code-generation standards overlay (move B5). No backing const:
+		// absent file contributes nothing, present file is emitted under a
+		// "## Coding Standards" section.
+		if gen := loadGuidance(agentDir, "generation", ""); gen != "" {
+			sb.WriteString("## Coding Standards\n\n")
+			sb.WriteString(gen)
+			sb.WriteString("\n\n")
+		}
 
 		sb.WriteString("CRITICAL: You MUST commit all changes before completing. A task is NOT complete until changes are committed. Use format: `type(scope): description (TASK-XX)`\n")
 	} else if hasNavigator && complexity.ShouldSkipNavigator() {
