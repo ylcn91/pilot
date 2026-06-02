@@ -80,3 +80,67 @@ export interface GitGraphData {
   error?: string
   last_refresh: string
 }
+
+export type GatewayMessageType = 'task' | 'status' | 'progress' | 'ping' | 'pong'
+
+export interface GatewayMessage<TPayload = unknown> {
+  type: GatewayMessageType
+  payload: TPayload
+}
+
+export type RuntimeSandbox = 'read-only' | 'workspace-write' | 'danger-full-access'
+
+export interface RuntimeStartPayload {
+  action: 'codexruntime.start'
+  prompt: string
+  cwd?: string
+  model?: string
+  sandbox?: RuntimeSandbox
+}
+
+export interface RuntimeApprovalResponsePayload {
+  action: 'codexruntime.approval.respond'
+  requestId: number | string
+  decision?: string
+  scope?: string
+}
+
+export interface CodexRuntimeEvent {
+  type: string
+  method: string
+  threadId?: string
+  turnId?: string
+  itemId?: string
+  delta?: string
+  diff?: string
+  error?: string
+  explanation?: string
+  status?: unknown
+  plan?: unknown
+  changes?: unknown
+  rawParams?: unknown
+}
+
+export interface RuntimeProgressPayload {
+  source: 'codexruntime'
+  kind: 'event' | 'approval_request' | 'error'
+  event?: CodexRuntimeEvent
+  error?: string
+  requestId?: number | string
+  method?: string
+  params?: unknown
+  choices?: string[]
+}
+
+export interface RuntimeApprovalRequest {
+  requestId: number | string
+  method: string
+  params?: unknown
+  choices: string[]
+}
+
+export interface CodexChatMessage {
+  id: string
+  role: 'user' | 'assistant' | 'system'
+  text: string
+}

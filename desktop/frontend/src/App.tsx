@@ -6,6 +6,7 @@ import { AutopilotPanel } from './components/AutopilotPanel'
 import { HistoryPanel } from './components/HistoryPanel'
 import { LogsPanel } from './components/LogsPanel'
 import { GitGraphPanel } from './components/GitGraphPanel'
+import { CodexChatPanel } from './components/CodexChatPanel'
 import { useDashboard } from './hooks/useDashboard'
 import { useGitGraph } from './hooks/useGitGraph'
 
@@ -30,7 +31,8 @@ function App() {
         </div>
 
         {/* Right column */}
-        <div className="flex flex-1 min-w-0 min-h-0">
+        <div className="flex flex-col flex-1 min-w-0 min-h-0 gap-1.5">
+          <CodexChatPanel gatewayURL={server.gatewayURL} />
           <GitGraphPanel data={gitGraph} />
         </div>
       </div>
