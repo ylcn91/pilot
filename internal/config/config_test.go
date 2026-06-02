@@ -126,6 +126,9 @@ func TestDefaultConfig(t *testing.T) {
 		if config.Memory.CrossProject != true {
 			t.Error("Memory.CrossProject should be true by default")
 		}
+		if config.Memory.SyncToFiles != false {
+			t.Error("Memory.SyncToFiles should be false by default")
+		}
 	})
 
 	t.Run("Dashboard", func(t *testing.T) {

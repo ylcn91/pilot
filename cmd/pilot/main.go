@@ -1583,11 +1583,14 @@ func runPollingMode(cmd *cobra.Command, cfg *config.Config, projectPath string, 
 		}
 	}
 
-	// GH-1027: Initialize knowledge store for experiential memories
+	// GH-1027: Initialize knowledge store for experiential memories.
+	// Hoisted so the pattern-maintenance ticker below can call SyncToFiles.
+	var knowledgeStore *memory.KnowledgeStore
 	if store != nil {
-		knowledgeStore := memory.NewKnowledgeStore(store.DB())
+		knowledgeStore = memory.NewKnowledgeStore(store.DB())
 		if err := knowledgeStore.InitSchema(); err != nil {
 			logging.WithComponent("knowledge").Warn("Failed to initialize knowledge store schema", slog.Any("error", err))
+			knowledgeStore = nil
 		} else {
 			runner.SetKnowledgeStore(knowledgeStore)
 			logging.WithComponent("knowledge").Debug("Knowledge store initialized for polling mode")
@@ -1659,6 +1662,19 @@ func runPollingMode(cmd *cobra.Command, cfg *config.Config, projectPath string, 
 							logging.WithComponent("learning").Warn("Pattern deprecation failed", slog.Any("error", depErr))
 						} else if n > 0 {
 							logging.WithComponent("learning").Info("Deprecated low-confidence patterns", slog.Int("deprecated", n))
+						}
+
+						// Opt-in (default off): SyncToFiles writes hash-named files under
+						// .agent/knowledge/memories/{type}s/ — the same tree Navigator
+						// manages with slug-named files, so enabling is explicit to avoid
+						// surprising that layout.
+						if knowledgeStore != nil && cfg.Memory != nil && cfg.Memory.SyncToFiles {
+							agentPath := filepath.Join(projectPath, ".agent")
+							if syncErr := knowledgeStore.SyncToFiles(agentPath); syncErr != nil {
+								logging.WithComponent("knowledge").Warn("Knowledge sync to files failed", slog.Any("error", syncErr))
+							} else {
+								logging.WithComponent("knowledge").Info("Synced knowledge memories to files", slog.String("agent_path", agentPath))
+							}
 						}
 					}
 				}

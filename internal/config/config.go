@@ -165,6 +165,10 @@ type MemoryConfig struct {
 	Path         string          `yaml:"path"`
 	CrossProject bool            `yaml:"cross_project"`
 	Learning     *LearningConfig `yaml:"learning"`
+	// SyncToFiles exports experiential memories to markdown files under
+	// .agent/knowledge/memories/ on the maintenance ticker. Default false:
+	// Navigator owns that directory (slug-named files), so opt in explicitly.
+	SyncToFiles bool `yaml:"sync_to_files"`
 }
 
 // ProjectConfig holds configuration for a registered project.
