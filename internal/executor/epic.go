@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -248,8 +249,11 @@ var numberedListRegex = regexp.MustCompile(`(?mi)^(?:\s*)(?:#{1,6}\s+)?(?:[-*]\s
 // Returns an EpicPlan with 3-5 sequential subtasks.
 // executionPath may differ from task.ProjectPath when using worktree isolation (GH-968).
 func (r *Runner) PlanEpic(ctx context.Context, task *Task, executionPath string) (*EpicPlan, error) {
-	// Build planning prompt
-	prompt := buildPlanningPrompt(task)
+	// Build planning prompt. agentDir mirrors the executor's priming source so
+	// the planner sees the same project context and SOP hints (GH worktree-safe:
+	// derived from executionPath, not task.ProjectPath).
+	agentDir := filepath.Join(executionPath, ".agent")
+	prompt := buildPlanningPrompt(task, agentDir)
 
 	// Get claude command from config or use default
 	claudeCmd := "claude"
@@ -320,13 +324,35 @@ func (r *Runner) PlanEpic(ctx context.Context, task *Task, executionPath string)
 	}, nil
 }
 
-// buildPlanningPrompt creates the prompt for epic planning.
-func buildPlanningPrompt(task *Task) string {
+// buildPlanningPrompt creates the prompt for epic planning. agentDir points at
+// the project's .agent/ directory so the planner is primed with the same project
+// context and SOP hints the executor receives (loadProjectContext /
+// findRelevantSOPs in prompt_builder.go). Empty/missing priming is skipped.
+func buildPlanningPrompt(task *Task, agentDir string) string {
 	var sb strings.Builder
 
 	sb.WriteString("You are a software architect planning an implementation.\n\n")
 	sb.WriteString("Break down this epic task into 3-5 sequential subtasks that can each be completed independently.\n")
-	sb.WriteString("Each subtask should be a concrete, implementable unit of work.\n\n")
+	sb.WriteString("Each subtask should be a concrete, implementable unit of work.\n")
+	sb.WriteString("Do NOT propose abstractions, layers, or generalizations the ticket does not imply — plan only the work the task actually requires.\n\n")
+
+	// Prime the planner with project context and relevant SOPs, mirroring the
+	// executor's priming so plans align with existing architecture.
+	if agentDir != "" {
+		if projectCtx := loadProjectContext(agentDir); projectCtx != "" {
+			sb.WriteString("## Project Context\n\n")
+			sb.WriteString(projectCtx)
+			sb.WriteString("\n\n")
+		}
+		if sops := findRelevantSOPs(agentDir, task.Title+" "+task.Description); len(sops) > 0 {
+			sb.WriteString("## Relevant SOPs\n\n")
+			sb.WriteString("Consider these when planning:\n")
+			for _, sop := range sops {
+				sb.WriteString(fmt.Sprintf("- `.agent/%s`\n", sop))
+			}
+			sb.WriteString("\n")
+		}
+	}
 
 	sb.WriteString("## CRITICAL: Subtask Title Format\n\n")
 	sb.WriteString("Every subtask title MUST follow the conventional-commits format:\n\n")
@@ -349,6 +375,9 @@ func buildPlanningPrompt(task *Task) string {
 	sb.WriteString(fmt.Sprintf("**Title:** %s\n\n", task.Title))
 	if task.Description != "" {
 		sb.WriteString(fmt.Sprintf("**Description:**\n%s\n\n", task.Description))
+	}
+	if len(task.Labels) > 0 {
+		sb.WriteString(fmt.Sprintf("Labels: %s\n\n", strings.Join(task.Labels, ", ")))
 	}
 
 	sb.WriteString("## Output Format\n\n")
