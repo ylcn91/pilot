@@ -166,6 +166,12 @@ type Controller struct {
 	// can both call recordMergeSuccess without double-counting.
 	recordedMerges map[int]bool
 
+	// Post-merge reinforcement idempotency: tracks PR numbers we've already
+	// reinforced patterns for. Separate from recordedMerges because the metrics
+	// flag is set early in handleMerging (before reinforcement runs), so reusing
+	// it would skip reinforcement entirely (A4 idempotency bug).
+	recordedReinforcements map[int]bool
+
 	// Persistent state store (optional, nil = in-memory only)
 	stateStore *StateStore
 
@@ -211,17 +217,18 @@ type Controller struct {
 // NewController creates an autopilot controller with all required components.
 func NewController(cfg *Config, ghClient *github.Client, approvalMgr *approval.Manager, owner, repo string, opts ...ControllerOption) *Controller {
 	c := &Controller{
-		config:         cfg,
-		ghClient:       ghClient,
-		approvalMgr:    approvalMgr,
-		owner:          owner,
-		repo:           repo,
-		activePRs:      make(map[int]*PRState),
-		recordedMerges: make(map[int]bool),
-		prFailures:     make(map[int]*prFailureState),
-		lastProgressAt: time.Now(), // Initialize to now to avoid false alarm on startup
-		metrics:        NewMetrics(),
-		log:            slog.Default().With("component", "autopilot"),
+		config:                 cfg,
+		ghClient:               ghClient,
+		approvalMgr:            approvalMgr,
+		owner:                  owner,
+		repo:                   repo,
+		activePRs:              make(map[int]*PRState),
+		recordedMerges:         make(map[int]bool),
+		recordedReinforcements: make(map[int]bool),
+		prFailures:             make(map[int]*prFailureState),
+		lastProgressAt:         time.Now(), // Initialize to now to avoid false alarm on startup
+		metrics:                NewMetrics(),
+		log:                    slog.Default().With("component", "autopilot"),
 	}
 
 	c.ciMonitor = NewCIMonitor(ghClient, owner, repo, cfg)
@@ -1447,6 +1454,11 @@ func (c *Controller) handleMerging(ctx context.Context, prState *PRState) error 
 		// outcome (handles user-pushed commits, sub-issues merged via parent, etc.).
 		c.selfHealForPR(ctx, prState.IssueNumber, prState.PRURL)
 
+		// A4: Reinforce the project's patterns on merge — the strongest success
+		// signal available (work shipped and passed review/CI). Guarded so each
+		// merge reinforces exactly once.
+		c.reinforceMergedPatterns(prState)
+
 		// GH-1870: Sync board card to "Done" column on merge
 		if c.boardSync != nil && prState.IssueNodeID != "" {
 			if err := c.boardSync.UpdateProjectItemStatus(ctx, prState.IssueNodeID, c.doneStatus); err != nil {
@@ -2272,6 +2284,44 @@ func (c *Controller) recordMergeSuccess(prState *PRState) {
 	if !prState.CreatedAt.IsZero() {
 		c.metrics.RecordPRTimeToMerge(time.Since(prState.CreatedAt))
 	}
+}
+
+// reinforceMergedPatterns credits the merged PR's project patterns with a
+// success outcome (A4). It runs at most once per PR number per daemon lifetime,
+// guarded independently of recordMergeSuccess so the early metrics flag doesn't
+// suppress it. No-op when learning is disabled.
+func (c *Controller) reinforceMergedPatterns(prState *PRState) {
+	if c.learningLoop == nil {
+		return
+	}
+
+	c.mu.Lock()
+	if c.recordedReinforcements[prState.PRNumber] {
+		c.mu.Unlock()
+		return
+	}
+	c.recordedReinforcements[prState.PRNumber] = true
+	c.mu.Unlock()
+
+	project := c.owner + "/" + c.repo
+	taskType := inferTaskTypeFromTitle(prState.PRTitle)
+	if err := c.learningLoop.RecordMergeOutcome(project, taskType, ""); err != nil {
+		c.log.Warn("failed to reinforce patterns on merge",
+			"pr", prState.PRNumber, "project", project, "error", err)
+	}
+}
+
+// inferTaskTypeFromTitle derives a conventional-commit task type from a PR/issue
+// title. Mirrors the executor's inferTaskType keyword logic without importing
+// the executor package. Defaults to "feat".
+func inferTaskTypeFromTitle(title string) string {
+	t := strings.ToLower(title)
+	for _, prefix := range []string{"feat", "fix", "refactor", "test", "docs", "chore"} {
+		if strings.HasPrefix(t, prefix) {
+			return prefix
+		}
+	}
+	return "feat"
 }
 
 // GetLastProgressAt returns the timestamp of the last PR state transition.

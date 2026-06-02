@@ -3811,17 +3811,30 @@ func (r *Runner) recordPatternOutcomes(task *Task, result *ExecutionResult) {
 		model = "claude-opus-4-6"
 	}
 
-	// Get patterns linked to this project to record outcomes
-	patterns, err := r.logStore.GetCrossPatternsForProject(task.ProjectPath, false)
-	if err != nil {
-		r.log.Warn("Failed to get patterns for outcome recording", slog.Any("error", err))
-		return
+	// GH-2021/B3: Credit only the patterns actually injected into this task's
+	// prompt, not every pattern linked to the project. PatternContext recorded
+	// the injected IDs at prompt-build time; fall back to all project patterns
+	// when no injection record exists (e.g. pattern injection was disabled).
+	var ids []string
+	if r.patternContext != nil {
+		ids = r.patternContext.AppliedPatterns(task.ProjectPath, taskType, task.Description)
+	}
+	if len(ids) == 0 {
+		patterns, err := r.logStore.GetCrossPatternsForProject(task.ProjectPath, false)
+		if err != nil {
+			r.log.Warn("Failed to get patterns for outcome recording", slog.Any("error", err))
+			return
+		}
+		ids = make([]string, 0, len(patterns))
+		for _, p := range patterns {
+			ids = append(ids, p.ID)
+		}
 	}
 
-	for _, p := range patterns {
-		if recErr := r.logStore.RecordPatternOutcome(p.ID, task.ProjectPath, taskType, model, result.Success); recErr != nil {
+	for _, id := range ids {
+		if recErr := r.logStore.RecordPatternOutcome(id, task.ProjectPath, taskType, model, result.Success); recErr != nil {
 			r.log.Warn("Failed to record pattern outcome",
-				slog.String("pattern_id", p.ID),
+				slog.String("pattern_id", id),
 				slog.Any("error", recErr),
 			)
 		}
