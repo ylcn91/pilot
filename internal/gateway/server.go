@@ -94,6 +94,8 @@ type Config struct {
 	Host string `yaml:"host"`
 	// Port is the TCP port number to listen on.
 	Port int `yaml:"port"`
+	// CodexRuntime configures the Codex app-server runtime used by gateway WebSocket sessions.
+	CodexRuntime *CodexRuntimeConfig `yaml:"codex_runtime,omitempty"`
 	// GithubWebhookSecret is the secret for GitHub webhook signature validation.
 	// If set, incoming GitHub webhooks must have valid HMAC-SHA256 signatures.
 	GithubWebhookSecret string `yaml:"-"` // Set programmatically from adapters config

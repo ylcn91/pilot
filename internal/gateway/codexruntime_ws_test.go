@@ -21,6 +21,78 @@ func TestParseRuntimeSandbox(t *testing.T) {
 	}
 }
 
+func TestResolveCodexRuntimeConfig(t *testing.T) {
+	server := NewServer(&Config{
+		Host: "127.0.0.1",
+		Port: 9090,
+		CodexRuntime: &CodexRuntimeConfig{
+			Command: "/opt/bin/codex",
+			Args:    []string{"app-server", "--stdio", "--trace"},
+			Model:   "gpt-5.1-codex",
+			Sandbox: "workspace-write",
+		},
+	})
+
+	got, err := server.resolveCodexRuntimeConfig(runtimeTaskPayload{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Command != "/opt/bin/codex" {
+		t.Fatalf("command = %q", got.Command)
+	}
+	if got.Model != "gpt-5.1-codex" {
+		t.Fatalf("model = %q", got.Model)
+	}
+	if got.Sandbox != codexruntime.SandboxWorkspaceWrite {
+		t.Fatalf("sandbox = %q", got.Sandbox)
+	}
+	if len(got.Args) != 3 || got.Args[2] != "--trace" {
+		t.Fatalf("args = %v", got.Args)
+	}
+}
+
+func TestResolveCodexRuntimeConfigTaskOverrides(t *testing.T) {
+	server := NewServer(&Config{
+		Host: "127.0.0.1",
+		Port: 9090,
+		CodexRuntime: &CodexRuntimeConfig{
+			Model:   "configured-model",
+			Sandbox: "read-only",
+		},
+	})
+
+	got, err := server.resolveCodexRuntimeConfig(runtimeTaskPayload{
+		Model:   "payload-model",
+		Sandbox: "danger-full-access",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Command != "codex" {
+		t.Fatalf("command = %q", got.Command)
+	}
+	if got.Model != "payload-model" {
+		t.Fatalf("model = %q", got.Model)
+	}
+	if got.Sandbox != codexruntime.SandboxDangerFull {
+		t.Fatalf("sandbox = %q", got.Sandbox)
+	}
+}
+
+func TestResolveCodexRuntimeConfigInvalidSandbox(t *testing.T) {
+	server := NewServer(&Config{
+		Host: "127.0.0.1",
+		Port: 9090,
+		CodexRuntime: &CodexRuntimeConfig{
+			Sandbox: "bad",
+		},
+	})
+
+	if _, err := server.resolveCodexRuntimeConfig(runtimeTaskPayload{}); err == nil {
+		t.Fatal("expected invalid sandbox error")
+	}
+}
+
 func TestRuntimeApprovalChoices(t *testing.T) {
 	choices := runtimeApprovalChoices("item/fileChange/requestApproval")
 	if len(choices) != 4 || choices[0] != "accept" {

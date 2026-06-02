@@ -34,6 +34,21 @@ type runtimeTaskPayload struct {
 	Scope     string          `json:"scope,omitempty"`
 }
 
+// CodexRuntimeConfig configures gateway WebSocket sessions backed by `codex app-server`.
+type CodexRuntimeConfig struct {
+	Command string   `yaml:"command,omitempty"`
+	Args    []string `yaml:"args,omitempty"`
+	Model   string   `yaml:"model,omitempty"`
+	Sandbox string   `yaml:"sandbox,omitempty"`
+}
+
+type resolvedCodexRuntimeConfig struct {
+	Command string
+	Args    []string
+	Model   string
+	Sandbox codexruntime.SandboxMode
+}
+
 type runtimeProgressPayload struct {
 	Source    string              `json:"source"`
 	Kind      string              `json:"kind"`
@@ -99,6 +114,13 @@ func newRuntimeSessionRegistry() *runtimeSessionRegistry {
 	}
 }
 
+func DefaultCodexRuntimeConfig() *CodexRuntimeConfig {
+	return &CodexRuntimeConfig{
+		Command: "codex",
+		Sandbox: string(codexruntime.SandboxReadOnly),
+	}
+}
+
 func (s *Server) registerRuntimeHandlers() {
 	s.router.RegisterMessageHandler(MessageTypeTask, s.handleRuntimeTask)
 }
@@ -155,17 +177,14 @@ func (s *Server) runRuntimeSession(ctx context.Context, session *Session, task r
 		return err
 	}
 
-	sandbox := codexruntime.SandboxReadOnly
-	if task.Sandbox != "" {
-		parsed, err := parseRuntimeSandbox(task.Sandbox)
-		if err != nil {
-			return err
-		}
-		sandbox = parsed
+	runtimeConfig, err := s.resolveCodexRuntimeConfig(task)
+	if err != nil {
+		return err
 	}
 
 	client, err := codexruntime.Start(ctx, codexruntime.Config{
-		Command: "codex",
+		Command: runtimeConfig.Command,
+		Args:    runtimeConfig.Args,
 		Cwd:     absCwd,
 	})
 	if err != nil {
@@ -195,10 +214,10 @@ func (s *Server) runRuntimeSession(ctx context.Context, session *Session, task r
 	ephemeral := true
 	thread, err := client.ThreadStart(ctx, codexruntime.ThreadStartParams{
 		Cwd:                absCwd,
-		Model:              task.Model,
+		Model:              runtimeConfig.Model,
 		ApprovalPolicy:     codexruntime.ApprovalNever,
 		ApprovalsReviewer:  codexruntime.ApprovalsReviewerUser,
-		Sandbox:            sandbox,
+		Sandbox:            runtimeConfig.Sandbox,
 		Ephemeral:          &ephemeral,
 		ThreadSource:       codexruntime.ThreadSourceUser,
 		SessionStartSource: codexruntime.ThreadStartSourceStartup,
@@ -211,13 +230,13 @@ func (s *Server) runRuntimeSession(ctx context.Context, session *Session, task r
 		ThreadID:       thread.Thread.ID,
 		Cwd:            absCwd,
 		ApprovalPolicy: codexruntime.ApprovalNever,
-		Model:          task.Model,
+		Model:          runtimeConfig.Model,
 		Input:          []codexruntime.UserInput{codexruntime.TextUserInput(task.Prompt)},
 	}); err != nil {
 		return err
 	}
 
-	controller := newRuntimeSessionController(client, thread.Thread.ID, absCwd, task.Model)
+	controller := newRuntimeSessionController(client, thread.Thread.ID, absCwd, runtimeConfig.Model)
 	controller.setRunning(true)
 	defer func() {
 		controller.finish()
@@ -273,6 +292,42 @@ func (s *Server) runRuntimeSession(ctx context.Context, session *Session, task r
 			return ctx.Err()
 		}
 	}
+}
+
+func (s *Server) resolveCodexRuntimeConfig(task runtimeTaskPayload) (resolvedCodexRuntimeConfig, error) {
+	cfg := DefaultCodexRuntimeConfig()
+	if s != nil && s.config != nil && s.config.CodexRuntime != nil {
+		configured := s.config.CodexRuntime
+		if configured.Command != "" {
+			cfg.Command = configured.Command
+		}
+		if len(configured.Args) > 0 {
+			cfg.Args = append([]string(nil), configured.Args...)
+		}
+		if configured.Model != "" {
+			cfg.Model = configured.Model
+		}
+		if configured.Sandbox != "" {
+			cfg.Sandbox = configured.Sandbox
+		}
+	}
+	if task.Model != "" {
+		cfg.Model = task.Model
+	}
+	if task.Sandbox != "" {
+		cfg.Sandbox = task.Sandbox
+	}
+
+	sandbox, err := parseRuntimeSandbox(cfg.Sandbox)
+	if err != nil {
+		return resolvedCodexRuntimeConfig{}, err
+	}
+	return resolvedCodexRuntimeConfig{
+		Command: cfg.Command,
+		Args:    cfg.Args,
+		Model:   cfg.Model,
+		Sandbox: sandbox,
+	}, nil
 }
 
 func newRuntimeSessionController(client *codexruntime.Client, threadID, cwd, model string) *runtimeSessionController {

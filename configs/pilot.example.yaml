@@ -7,6 +7,13 @@ version: "1.0"
 gateway:
   host: "127.0.0.1"
   port: 9090
+  # Codex app-server runtime for the gateway WebSocket experience.
+  # Auth/OAuth stays in the Codex CLI and CODEX_HOME; Pilot does not store Codex tokens.
+  codex_runtime:
+    command: "codex"
+    sandbox: "read-only"
+    # model: "gpt-5.1-codex"
+    # args: ["app-server", "--stdio"]
 
 # Authentication
 auth:

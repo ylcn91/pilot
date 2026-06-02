@@ -33,6 +33,15 @@ func TestDefaultConfig(t *testing.T) {
 		if config.Gateway.Port != 9090 {
 			t.Errorf("Gateway.Port = %d, want %d", config.Gateway.Port, 9090)
 		}
+		if config.Gateway.CodexRuntime == nil {
+			t.Fatal("Gateway.CodexRuntime is nil")
+		}
+		if config.Gateway.CodexRuntime.Command != "codex" {
+			t.Errorf("Gateway.CodexRuntime.Command = %q, want %q", config.Gateway.CodexRuntime.Command, "codex")
+		}
+		if config.Gateway.CodexRuntime.Sandbox != "read-only" {
+			t.Errorf("Gateway.CodexRuntime.Sandbox = %q, want %q", config.Gateway.CodexRuntime.Sandbox, "read-only")
+		}
 	})
 
 	t.Run("Auth", func(t *testing.T) {
@@ -214,6 +223,13 @@ version: "2.0"
 gateway:
   host: "0.0.0.0"
   port: 8080
+  codex_runtime:
+    command: "/usr/local/bin/codex"
+    args:
+      - "app-server"
+      - "--stdio"
+    model: "gpt-5.1-codex"
+    sandbox: "workspace-write"
 orchestrator:
   model: "claude-opus"
   max_concurrent: 4
@@ -247,6 +263,21 @@ dashboard:
 		}
 		if config.Gateway.Port != 8080 {
 			t.Errorf("Gateway.Port = %d, want %d", config.Gateway.Port, 8080)
+		}
+		if config.Gateway.CodexRuntime == nil {
+			t.Fatal("Gateway.CodexRuntime is nil")
+		}
+		if config.Gateway.CodexRuntime.Command != "/usr/local/bin/codex" {
+			t.Errorf("Gateway.CodexRuntime.Command = %q, want %q", config.Gateway.CodexRuntime.Command, "/usr/local/bin/codex")
+		}
+		if len(config.Gateway.CodexRuntime.Args) != 2 || config.Gateway.CodexRuntime.Args[1] != "--stdio" {
+			t.Errorf("Gateway.CodexRuntime.Args = %v, want %v", config.Gateway.CodexRuntime.Args, []string{"app-server", "--stdio"})
+		}
+		if config.Gateway.CodexRuntime.Model != "gpt-5.1-codex" {
+			t.Errorf("Gateway.CodexRuntime.Model = %q, want %q", config.Gateway.CodexRuntime.Model, "gpt-5.1-codex")
+		}
+		if config.Gateway.CodexRuntime.Sandbox != "workspace-write" {
+			t.Errorf("Gateway.CodexRuntime.Sandbox = %q, want %q", config.Gateway.CodexRuntime.Sandbox, "workspace-write")
 		}
 		if config.Orchestrator.Model != "claude-opus" {
 			t.Errorf("Orchestrator.Model = %q, want %q", config.Orchestrator.Model, "claude-opus")

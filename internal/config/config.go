@@ -307,8 +307,9 @@ func DefaultConfig() *Config {
 	return &Config{
 		Version: "1.0",
 		Gateway: &gateway.Config{
-			Host: "127.0.0.1",
-			Port: 9090,
+			Host:         "127.0.0.1",
+			Port:         9090,
+			CodexRuntime: gateway.DefaultCodexRuntimeConfig(),
 		},
 		Auth: &gateway.AuthConfig{
 			Type: gateway.AuthTypeClaudeCode,
