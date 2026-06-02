@@ -614,6 +614,7 @@ func TestExtractFromSelfReview(t *testing.T) {
 		selfReviewOutput string
 		wantAntiPatterns int
 		wantPatternTypes []PatternType // expected types in anti-patterns (order-independent)
+		wantTier         string        // expected ExtractionResult.Tier (empty unless STANDARD_VIOLATION)
 	}{
 		{
 			name: "multiple finding types",
@@ -693,6 +694,33 @@ parity mismatch between interface and implementation`,
 			wantAntiPatterns: 1, // single regex matches both variants
 			wantPatternTypes: []PatternType{PatternTypeStructure},
 		},
+		{
+			name:             "scope creep marker",
+			selfReviewOutput: "SCOPE_CREEP: renameHelper — touched unrelated util outside task scope",
+			wantAntiPatterns: 1,
+			wantPatternTypes: []PatternType{PatternTypeStructure},
+		},
+		{
+			name:             "standard violation captures blocker tier",
+			selfReviewOutput: "STANDARD_VIOLATION: blocker no-secrets — config.go:12",
+			wantAntiPatterns: 1,
+			wantPatternTypes: []PatternType{PatternTypeWorkflow},
+			wantTier:         "blocker",
+		},
+		{
+			name:             "standard violation captures must tier",
+			selfReviewOutput: "STANDARD_VIOLATION: must error-check — handler.go:88",
+			wantAntiPatterns: 1,
+			wantPatternTypes: []PatternType{PatternTypeWorkflow},
+			wantTier:         "must",
+		},
+		{
+			name:             "standard violation captures nice tier",
+			selfReviewOutput: "STANDARD_VIOLATION: nice naming — store.go:5",
+			wantAntiPatterns: 1,
+			wantPatternTypes: []PatternType{PatternTypeWorkflow},
+			wantTier:         "nice",
+		},
 	}
 
 	for _, tt := range tests {
@@ -752,6 +780,11 @@ parity mismatch between interface and implementation`,
 			// Verify no positive patterns (self-review findings are all anti-patterns)
 			if len(result.Patterns) != 0 {
 				t.Errorf("got %d positive patterns, want 0", len(result.Patterns))
+			}
+
+			// Verify severity tier parsed from STANDARD_VIOLATION markers
+			if result.Tier != tt.wantTier {
+				t.Errorf("Tier = %q, want %q", result.Tier, tt.wantTier)
 			}
 		})
 	}

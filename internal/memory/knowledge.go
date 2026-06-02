@@ -1,7 +1,12 @@
 package memory
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -285,11 +290,45 @@ type MemoryStats struct {
 	ByType        map[MemoryType]int
 }
 
-// SyncToFiles exports memories to markdown files in .agent/memories/ for git tracking.
-// This allows memories to persist in version control alongside the codebase.
+// SyncToFiles exports memories to markdown files under
+// <agentPath>/knowledge/memories/{type}s/{hash}.md for git tracking, matching
+// the Navigator memory layout in CLAUDE.md. Each file has YAML frontmatter
+// (type, confidence, context) plus the memory content as the body. Filenames
+// derive from a content hash, so re-running over unchanged memories is
+// idempotent. Only real IO failures are returned.
 func (k *KnowledgeStore) SyncToFiles(agentPath string) error {
-	// TODO: Implement file export for git-tracked memories
-	// Format: .agent/memories/{type}/{hash}.md
-	// Each file contains: type, content, context, confidence, timestamps
+	rows, err := k.db.Query(`
+		SELECT id, type, content, context, confidence, project_id, created_at, updated_at
+		FROM memories
+	`)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+
+	memories, err := k.scanMemories(rows)
+	if err != nil {
+		return err
+	}
+
+	for _, m := range memories {
+		dir := filepath.Join(agentPath, "knowledge", "memories", string(m.Type)+"s")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+
+		hash := sha256.Sum256([]byte(m.Content))
+		name := hex.EncodeToString(hash[:8]) + ".md"
+		path := filepath.Join(dir, name)
+
+		content := fmt.Sprintf(
+			"---\ntype: %s\nconfidence: %.2f\ncontext: %s\n---\n\n%s\n",
+			m.Type, m.Confidence, m.Context, m.Content,
+		)
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
