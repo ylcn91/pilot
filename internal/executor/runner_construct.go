@@ -23,9 +23,16 @@ type Runner struct {
 	// Per-stage backends for the optional handoff pipeline. When no pipeline is
 	// configured all three point at the single `backend` instance, so behavior
 	// is identical to the single-backend path.
-	planBackend           Backend
-	execBackend           Backend
-	reviewBackend         Backend
+	planBackend   Backend
+	execBackend   Backend
+	reviewBackend Backend
+	// Per-role backends for the optional opt-in TDD run mode. When TDD is
+	// disabled (or a role's StageConfig is nil) all four point at the single
+	// `backend` instance, so behavior is identical to the non-TDD path.
+	architectBackend      Backend
+	testAuthorBackend     Backend
+	implementerBackend    Backend
+	qaBackend             Backend
 	config                *BackendConfig
 	onProgress            ProgressCallback
 	progressCallbacks     map[string]ProgressCallback // Named callbacks for multi-listener support
@@ -40,6 +47,7 @@ type Runner struct {
 	alertProcessor        AlertEventProcessor                                             // Optional alert processor for event emission
 	webhooks              *webhooks.Manager                                               // Optional webhook manager for event delivery
 	qualityCheckerFactory QualityCheckerFactory                                           // Optional factory for creating quality checkers
+	tddGateCheckerFactory TDDGateCheckerFactory                                           // Optional factory for TDD RED/GREEN single-test gates
 	modelRouter           *ModelRouter                                                    // Model and timeout routing based on complexity
 	parallelRunner        *ParallelRunner                                                 // Optional parallel research runner (GH-217)
 	decomposer            *TaskDecomposer                                                 // Optional task decomposer for complex tasks (GH-218)
@@ -140,19 +148,23 @@ func NewRunner() *Runner {
 	}
 	log := logging.WithComponent("executor")
 	return &Runner{
-		backend:           backend,
-		planBackend:       backend,
-		execBackend:       backend,
-		reviewBackend:     backend,
-		running:           make(map[string]*exec.Cmd),
-		progressCallbacks: make(map[string]ProgressCallback),
-		tokenCallbacks:    make(map[string]TokenCallback),
-		taskProgress:      make(map[string]int),
-		log:               log,
-		enableRecording:   true, // Recording enabled by default
-		modelRouter:       NewModelRouter(nil, nil),
-		signalParser:      NewSignalParser(log),
-		titleRejections:   newTitleRejectionTracker(),
+		backend:            backend,
+		planBackend:        backend,
+		execBackend:        backend,
+		reviewBackend:      backend,
+		architectBackend:   backend,
+		testAuthorBackend:  backend,
+		implementerBackend: backend,
+		qaBackend:          backend,
+		running:            make(map[string]*exec.Cmd),
+		progressCallbacks:  make(map[string]ProgressCallback),
+		tokenCallbacks:     make(map[string]TokenCallback),
+		taskProgress:       make(map[string]int),
+		log:                log,
+		enableRecording:    true, // Recording enabled by default
+		modelRouter:        NewModelRouter(nil, nil),
+		signalParser:       NewSignalParser(log),
+		titleRejections:    newTitleRejectionTracker(),
 	}
 }
 
@@ -163,19 +175,23 @@ func NewRunnerWithBackend(backend Backend) *Runner {
 	}
 	log := logging.WithComponent("executor")
 	return &Runner{
-		backend:           backend,
-		planBackend:       backend,
-		execBackend:       backend,
-		reviewBackend:     backend,
-		running:           make(map[string]*exec.Cmd),
-		progressCallbacks: make(map[string]ProgressCallback),
-		tokenCallbacks:    make(map[string]TokenCallback),
-		taskProgress:      make(map[string]int),
-		log:               log,
-		enableRecording:   true,
-		modelRouter:       NewModelRouter(nil, nil),
-		signalParser:      NewSignalParser(log),
-		titleRejections:   newTitleRejectionTracker(),
+		backend:            backend,
+		planBackend:        backend,
+		execBackend:        backend,
+		reviewBackend:      backend,
+		architectBackend:   backend,
+		testAuthorBackend:  backend,
+		implementerBackend: backend,
+		qaBackend:          backend,
+		running:            make(map[string]*exec.Cmd),
+		progressCallbacks:  make(map[string]ProgressCallback),
+		tokenCallbacks:     make(map[string]TokenCallback),
+		taskProgress:       make(map[string]int),
+		log:                log,
+		enableRecording:    true,
+		modelRouter:        NewModelRouter(nil, nil),
+		signalParser:       NewSignalParser(log),
+		titleRejections:    newTitleRejectionTracker(),
 	}
 }
 
@@ -203,6 +219,13 @@ func NewRunnerWithConfig(config *BackendConfig) (*Runner, error) {
 	// pipeline (or a nil stage) the field reuses the single `backend` instance,
 	// so plan/exec/review are the identical pointer and behavior is unchanged.
 	if err := runner.resolveStageBackends(config); err != nil {
+		return nil, err
+	}
+
+	// Resolve per-role backends for the optional opt-in TDD mode. With TDD
+	// disabled (or a nil role) each field reuses the single `backend`, so all
+	// four roles are the identical pointer and behavior is unchanged.
+	if err := runner.resolveTDDBackends(config); err != nil {
 		return nil, err
 	}
 

@@ -180,6 +180,81 @@ func TestValidate(t *testing.T) {
 			wantErr:     true,
 			errContains: "type is required",
 		},
+		{
+			name: "NilTDDPasses",
+			config: func() *Config {
+				c := DefaultConfig()
+				c.Executor.TDD = nil
+				return c
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "DisabledTDDPasses",
+			config: func() *Config {
+				c := DefaultConfig()
+				c.Executor.TDD = &executor.TDDConfig{
+					Enabled:    false,
+					TestAuthor: &executor.StageConfig{Type: "codex-app-server"},
+				}
+				return c
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "ValidFourRoleTDD",
+			config: func() *Config {
+				c := DefaultConfig()
+				c.Executor.TDD = &executor.TDDConfig{
+					Enabled:     true,
+					Architect:   &executor.StageConfig{Type: executor.BackendTypeClaudeCode},
+					TestAuthor:  &executor.StageConfig{Type: executor.BackendTypeCodexExec},
+					Implementer: &executor.StageConfig{Type: executor.BackendTypeClaudeCode},
+					QA:          &executor.StageConfig{Type: executor.BackendTypeClaudeCode},
+				}
+				return c
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "TDDRejectsCodexAppServer",
+			config: func() *Config {
+				c := DefaultConfig()
+				c.Executor.TDD = &executor.TDDConfig{
+					Enabled:    true,
+					TestAuthor: &executor.StageConfig{Type: "codex-app-server"},
+				}
+				return c
+			}(),
+			wantErr:     true,
+			errContains: "is not a runnable Backend",
+		},
+		{
+			name: "TDDRejectsUnknownType",
+			config: func() *Config {
+				c := DefaultConfig()
+				c.Executor.TDD = &executor.TDDConfig{
+					Enabled:   true,
+					Architect: &executor.StageConfig{Type: "bogus-backend"},
+				}
+				return c
+			}(),
+			wantErr:     true,
+			errContains: "is not a known backend",
+		},
+		{
+			name: "TDDRejectsEmptyRoleType",
+			config: func() *Config {
+				c := DefaultConfig()
+				c.Executor.TDD = &executor.TDDConfig{
+					Enabled:     true,
+					Implementer: &executor.StageConfig{},
+				}
+				return c
+			}(),
+			wantErr:     true,
+			errContains: "type is required",
+		},
 	}
 
 	for _, tt := range tests {

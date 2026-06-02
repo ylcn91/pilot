@@ -104,7 +104,6 @@ func (r *Runner) executeWithOptions(ctx context.Context, task *Task, allowWorktr
 	selectedEffort := s.selectedEffort
 	repoWorkflow := s.repoWorkflow
 	hookEnv := s.hookEnv
-	workflowMaxTurns := s.workflowMaxTurns
 	prompt := s.prompt
 	state := s.state
 	recorder := s.recorder
@@ -140,56 +139,16 @@ func (r *Runner) executeWithOptions(ctx context.Context, task *Task, allowWorktr
 
 	watchdogTimeout := 2 * timeout
 	allowedTools, mcpConfigPath := r.executionToolOptions()
-	backendResult, err := r.execBackend.Execute(stallExecutionCtx, ExecuteOptions{
-		Prompt:          prompt,
-		ProjectPath:     executionPath, // Use worktree path if active
-		Verbose:         task.Verbose,
-		Model:           selectedModel,
-		Effort:          selectedEffort,
-		MaxTurns:        workflowMaxTurns, // TASK-304: per-repo .pilot/workflow.yaml override
-		FromPR:          task.FromPR,      // GH-1267: session resumption from PR context
-		WatchdogTimeout: watchdogTimeout,
-		AllowedTools:    allowedTools,
-		MCPConfigPath:   mcpConfigPath,
-		WatchdogCallback: func(pid int, watchdogDuration time.Duration) {
-			log.Warn("Watchdog killed subprocess",
-				slog.Int("pid", pid),
-				slog.Duration("watchdog_timeout", watchdogDuration),
-				slog.Duration("configured_timeout", timeout),
-			)
-			r.reportProgress(task.ID, "Watchdog Kill", 100, fmt.Sprintf("Process killed by watchdog after %v (2x timeout)", watchdogDuration))
 
-			// Emit watchdog kill alert
-			r.emitAlertEvent(AlertEvent{
-				Type:      AlertEventTypeWatchdogKill,
-				TaskID:    task.ID,
-				TaskTitle: task.Title,
-				Project:   task.ProjectPath,
-				Error:     fmt.Sprintf("subprocess killed by watchdog after %v", watchdogDuration),
-				Metadata: map[string]string{
-					"pid":                fmt.Sprintf("%d", pid),
-					"watchdog_timeout":   watchdogDuration.String(),
-					"configured_timeout": timeout.String(),
-					"complexity":         complexity.String(),
-				},
-				Timestamp: time.Now(),
-			})
-		},
-		EventHandler: func(event BackendEvent) {
-			// TASK-308: touch the last-event timestamp so the stall watchdog resets.
-			lastEventAt.Store(time.Now().UnixNano())
-
-			// Record the event
-			if recorder != nil {
-				if recErr := recorder.RecordEvent(event.Raw); recErr != nil {
-					log.Warn("Failed to record event", slog.Any("error", recErr))
-				}
-			}
-
-			// Process event for progress tracking
-			r.processBackendEvent(task.ID, event, state)
-		},
-	})
+	var backendResult *BackendResult
+	var err error
+	if r.config != nil && r.config.TDD != nil && r.config.TDD.Enabled {
+		// Opt-in TDD mode: ARCHITECT -> TEST-AUTHOR -> RED -> IMPLEMENTER -> GREEN.
+		// Returns the IMPLEMENTER result so the finalize tail (QA/PR) runs unchanged.
+		backendResult, err = r.runTDDSequence(s)
+	} else {
+		backendResult, err = r.executePrimaryBackend(s, stallExecutionCtx, timeout, watchdogTimeout, allowedTools, mcpConfigPath, &lastEventAt)
+	}
 
 	// Stop stall watchdog and release stall context resources.
 	close(stallDone)

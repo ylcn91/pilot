@@ -45,6 +45,12 @@ type executeState struct {
 	// Pipeline plan stage (opt-in): raw spec injected into the execute prompt.
 	planOutput string
 
+	// TDD mode (opt-in): advisory design from the ARCHITECT role and the test
+	// names emitted by the TEST-AUTHOR (TESTS_ADDED), used to scope the RED/GREEN
+	// gates. Both empty unless config.TDD.Enabled.
+	tddArchitectDesign string
+	tddTestNames       []string
+
 	// Prompt + progress + recording
 	prompt          string
 	state           *progressState

@@ -13,6 +13,11 @@ type BackendConfig struct {
 	// review). When nil (default), every phase uses Type — today's behavior.
 	Pipeline *PipelineConfig `yaml:"pipeline,omitempty"`
 
+	// TDD optionally enables an opt-in test-driven-development run mode
+	// (architect/test-author/implementer/qa with RED/GREEN gates). When nil or
+	// disabled (default), execution is byte-identical to today's behavior.
+	TDD *TDDConfig `yaml:"tdd,omitempty"`
+
 	// AutoCreatePR controls whether PRs are created by default after successful execution.
 	// Default: true. Use --no-pr flag to disable for individual tasks.
 	AutoCreatePR *bool `yaml:"auto_create_pr,omitempty"`
