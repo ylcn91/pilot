@@ -15,14 +15,16 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ylcn91/pilot/internal/codexruntime"
+	"github.com/ylcn91/pilot/internal/executor"
 )
 
 type chatOptions struct {
-	cwd     string
-	command string
-	model   string
-	sandbox string
-	prompt  string
+	cwd       string
+	command   string
+	model     string
+	sandbox   string
+	prompt    string
+	noPriming bool
 }
 
 func newChatCmd() *cobra.Command {
@@ -59,6 +61,7 @@ Examples:
 	cmd.Flags().StringVar(&opts.command, "command", "codex", "Codex CLI command")
 	cmd.Flags().StringVar(&opts.model, "model", "", "Model override for this thread")
 	cmd.Flags().StringVar(&opts.sandbox, "sandbox", string(codexruntime.SandboxReadOnly), "Sandbox mode: read-only, workspace-write, danger-full-access")
+	cmd.Flags().BoolVar(&opts.noPriming, "no-priming", false, "Skip injecting .agent guidance on the first turn")
 
 	return cmd
 }
@@ -136,12 +139,21 @@ func runChat(ctx context.Context, opts chatOptions, stdout, stderr io.Writer) er
 		return err
 	}
 
+	// Prime the first turn with .agent guidance so the codex-app-server backend
+	// receives the same project context Claude Code gets via BuildPrompt.
+	firstPrompt := opts.prompt
+	if !opts.noPriming {
+		if preamble := executor.BuildGuidancePreamble(filepath.Join(cwd, ".agent"), opts.prompt); preamble != "" {
+			firstPrompt = preamble + "\n\n" + opts.prompt
+		}
+	}
+
 	turn, err := client.TurnStart(ctx, codexruntime.TurnStartParams{
 		ThreadID:       thread.Thread.ID,
 		Cwd:            cwd,
 		ApprovalPolicy: codexruntime.ApprovalNever,
 		Model:          opts.model,
-		Input:          []codexruntime.UserInput{codexruntime.TextUserInput(opts.prompt)},
+		Input:          []codexruntime.UserInput{codexruntime.TextUserInput(firstPrompt)},
 	})
 	if err != nil {
 		return err

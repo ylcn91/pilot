@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ylcn91/pilot/internal/codexruntime"
+	"github.com/ylcn91/pilot/internal/executor"
 	"github.com/ylcn91/pilot/internal/logging"
 )
 
@@ -40,13 +41,17 @@ type CodexRuntimeConfig struct {
 	Args    []string `yaml:"args,omitempty"`
 	Model   string   `yaml:"model,omitempty"`
 	Sandbox string   `yaml:"sandbox,omitempty"`
+	// DisablePriming opts out of injecting the .agent guidance preamble on the
+	// first turn (see BuildGuidancePreamble). Priming is on by default.
+	DisablePriming bool `yaml:"disable_priming,omitempty"`
 }
 
 type resolvedCodexRuntimeConfig struct {
-	Command string
-	Args    []string
-	Model   string
-	Sandbox codexruntime.SandboxMode
+	Command        string
+	Args           []string
+	Model          string
+	Sandbox        codexruntime.SandboxMode
+	DisablePriming bool
 }
 
 type runtimeProgressPayload struct {
@@ -226,12 +231,22 @@ func (s *Server) runRuntimeSession(ctx context.Context, session *Session, task r
 		return err
 	}
 
+	// Prime the first turn with .agent guidance so the codex-app-server backend
+	// receives the same project context Claude Code gets via BuildPrompt. Only
+	// the start turn is primed; follow-up turns (startTurn) carry the raw prompt.
+	firstPrompt := task.Prompt
+	if !runtimeConfig.DisablePriming {
+		if preamble := executor.BuildGuidancePreamble(filepath.Join(absCwd, ".agent"), task.Prompt); preamble != "" {
+			firstPrompt = preamble + "\n\n" + task.Prompt
+		}
+	}
+
 	if _, err := client.TurnStart(ctx, codexruntime.TurnStartParams{
 		ThreadID:       thread.Thread.ID,
 		Cwd:            absCwd,
 		ApprovalPolicy: codexruntime.ApprovalNever,
 		Model:          runtimeConfig.Model,
-		Input:          []codexruntime.UserInput{codexruntime.TextUserInput(task.Prompt)},
+		Input:          []codexruntime.UserInput{codexruntime.TextUserInput(firstPrompt)},
 	}); err != nil {
 		return err
 	}
@@ -323,10 +338,11 @@ func (s *Server) resolveCodexRuntimeConfig(task runtimeTaskPayload) (resolvedCod
 		return resolvedCodexRuntimeConfig{}, err
 	}
 	return resolvedCodexRuntimeConfig{
-		Command: cfg.Command,
-		Args:    cfg.Args,
-		Model:   cfg.Model,
-		Sandbox: sandbox,
+		Command:        cfg.Command,
+		Args:           cfg.Args,
+		Model:          cfg.Model,
+		Sandbox:        sandbox,
+		DisablePriming: cfg.DisablePriming,
 	}, nil
 }
 
