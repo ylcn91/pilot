@@ -188,6 +188,29 @@ executor:
   #     effort: "medium"
   #   review:
   #     type: "claude-code"
+
+  # Optional opt-in test-driven-development (TDD) run mode.
+  # When omitted or enabled=false (default), execution is byte-identical to today.
+  # When enabled, a run is split into four sequential roles — architect (read-only
+  # design), test_author (writes FAILING tests, commits; RED gate asserts they fail),
+  # implementer (makes them pass, commits; GREEN gate asserts they pass), and qa
+  # (the existing finalize/PR tail). Each role is an optional backend override that
+  # falls back to `type` above. Role `type` must be a runnable backend (claude-code,
+  # codex-exec, qwen-code, anthropic-api, openai-api, opencode); "codex-app-server"
+  # is NOT runnable here — use codex-exec instead.
+  # tdd:
+  #   enabled: true
+  #   architect:
+  #     type: "claude-code"
+  #   test_author:
+  #     type: "claude-code"
+  #   implementer:
+  #     type: "codex-exec"
+  #   qa:
+  #     type: "claude-code"
+  #   green_max_retries: 2   # IMPLEMENTER retries on a failing GREEN gate (default 2)
+  #   role_max_retries: 1    # per-role retries, e.g. TEST-AUTHOR before RED gate (default 1)
+  #   scope_red_to_new: true # scope RED/GREEN gate to only the new test names (default true)
   # direct_commit: false       # DANGER: Enable direct commit to main (requires --direct-commit flag)
                                # When enabled with flag, skips branches and PRs, pushes directly to main
                                # Intended for users who rely on manual QA instead of code review

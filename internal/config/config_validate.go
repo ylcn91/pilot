@@ -53,6 +53,13 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Validate optional opt-in TDD mode (fail fast on a bad role backend).
+	if c.Executor != nil && c.Executor.TDD != nil {
+		if err := c.Executor.TDD.Validate(); err != nil {
+			return fmt.Errorf("executor.%w", err)
+		}
+	}
+
 	// Validate default project exists if specified
 	if c.DefaultProject != "" && len(c.Projects) > 0 {
 		found := false
