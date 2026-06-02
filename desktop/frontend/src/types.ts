@@ -64,6 +64,7 @@ export interface ServerStatus {
   running: boolean
   version?: string
   gatewayURL?: string
+  projectPath?: string
   startedByApp?: boolean
   error?: string
 }

@@ -34,6 +34,7 @@ type App struct {
 	gatewayStarting     bool
 	gatewayStartedByApp bool
 	gatewayConfigDir    string
+	gatewayProjectPath  string
 	startGatewayProcess func(configPath, projectPath string) (*exec.Cmd, error)
 	getwd               func() (string, error)
 	sleep               func(time.Duration)
@@ -71,6 +72,14 @@ func (a *App) startup(ctx context.Context) {
 		a.gatewayURL = fmt.Sprintf("http://%s:%d", cfg.Gateway.Host, cfg.Gateway.Port)
 	} else {
 		a.gatewayURL = "http://127.0.0.1:9090"
+	}
+	if cfg != nil {
+		a.gatewayProjectPath = resolveConfiguredProjectPath(cfg)
+	}
+	if a.gatewayProjectPath == "" {
+		if cwd, err := a.getwd(); err == nil {
+			a.gatewayProjectPath = cwd
+		}
 	}
 }
 
@@ -138,6 +147,7 @@ func (a *App) EnsureGatewayRunning() ServerStatus {
 	a.gatewayDone = done
 	a.gatewayStartedByApp = true
 	a.gatewayConfigDir = configDir
+	a.gatewayProjectPath = runtimeProjectPath
 	a.mu.Unlock()
 
 	go a.waitManagedGateway(cmd, done)
@@ -221,15 +231,19 @@ func (a *App) stopManagedGateway() {
 	}
 }
 
-func (a *App) prepareManagedGatewayConfig(_ string) (configPath, projectPath, configDir string, err error) {
+func (a *App) prepareManagedGatewayConfig(projectPath string) (configPath, runtimeProjectPath, configDir string, err error) {
 	host, port := parseGatewayAddress(a.gatewayURL)
 	configDir, err = os.MkdirTemp("", "pilot-desktop-runtime.")
 	if err != nil {
 		return "", "", "", err
 	}
-	projectPath = filepath.Join(configDir, "project")
 	memoryPath := filepath.Join(configDir, "memory")
-	if err := os.MkdirAll(projectPath, 0o755); err != nil {
+	runtimeProjectPath, err = filepath.Abs(projectPath)
+	if err != nil {
+		_ = os.RemoveAll(configDir)
+		return "", "", "", err
+	}
+	if err := os.MkdirAll(runtimeProjectPath, 0o755); err != nil {
 		_ = os.RemoveAll(configDir)
 		return "", "", "", err
 	}
@@ -243,11 +257,11 @@ func (a *App) prepareManagedGatewayConfig(_ string) (configPath, projectPath, co
 	}
 
 	configPath = filepath.Join(configDir, "config.yaml")
-	if err := os.WriteFile(configPath, []byte(managedGatewayConfigYAML(host, port, projectPath, memoryPath)), 0o600); err != nil {
+	if err := os.WriteFile(configPath, []byte(managedGatewayConfigYAML(host, port, runtimeProjectPath, memoryPath)), 0o600); err != nil {
 		_ = os.RemoveAll(configDir)
 		return "", "", "", err
 	}
-	return configPath, projectPath, configDir, nil
+	return configPath, runtimeProjectPath, configDir, nil
 }
 
 func parseGatewayAddress(gatewayURL string) (string, int) {
@@ -271,11 +285,33 @@ func parseGatewayAddress(gatewayURL string) (string, int) {
 	return host, port
 }
 
+func resolveConfiguredProjectPath(cfg *config.Config) string {
+	if cfg == nil {
+		return ""
+	}
+	if cfg.DefaultProject != "" {
+		for _, project := range cfg.Projects {
+			if project != nil && project.Name == cfg.DefaultProject && project.Path != "" {
+				return project.Path
+			}
+		}
+	}
+	for _, project := range cfg.Projects {
+		if project != nil && project.Path != "" {
+			return project.Path
+		}
+	}
+	return ""
+}
+
 func managedGatewayConfigYAML(host string, port int, projectPath, memoryPath string) string {
 	return fmt.Sprintf(`version: "1.0"
 gateway:
   host: %q
   port: %d
+  codex_runtime:
+    command: "codex"
+    sandbox: "read-only"
 auth:
   type: "claude-code"
 adapters:
@@ -697,8 +733,9 @@ func (a *App) GetServerStatus() ServerStatus {
 	}
 
 	status := ServerStatus{
-		Running:    true,
-		GatewayURL: a.gatewayURL,
+		Running:     true,
+		GatewayURL:  a.gatewayURL,
+		ProjectPath: a.gatewayProjectPath,
 	}
 	a.mu.Lock()
 	status.StartedByApp = a.gatewayStartedByApp

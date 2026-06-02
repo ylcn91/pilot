@@ -81,6 +81,7 @@ type ServerStatus struct {
 	Running      bool   `json:"running"`
 	Version      string `json:"version,omitempty"`
 	GatewayURL   string `json:"gatewayURL,omitempty"`
+	ProjectPath  string `json:"projectPath,omitempty"`
 	StartedByApp bool   `json:"startedByApp,omitempty"`
 	Error        string `json:"error,omitempty"`
 }

@@ -38,7 +38,7 @@ function App() {
 
         {/* Right column */}
         <div className="flex flex-col flex-1 min-w-0 min-h-0 gap-1.5">
-          <CodexChatPanel gatewayURL={server.gatewayURL} />
+          <CodexChatPanel gatewayURL={server.gatewayURL} projectPath={server.projectPath} />
           <GitGraphPanel data={gitGraph} />
         </div>
       </div>

@@ -81,8 +81,9 @@ func TestGetServerStatus_DaemonRunning(t *testing.T) {
 	defer srv.Close()
 
 	app := &App{
-		httpClient: &http.Client{Timeout: 2 * time.Second},
-		gatewayURL: srv.URL,
+		httpClient:         &http.Client{Timeout: 2 * time.Second},
+		gatewayURL:         srv.URL,
+		gatewayProjectPath: "/repo/pilot",
 	}
 
 	status := app.GetServerStatus()
@@ -94,6 +95,9 @@ func TestGetServerStatus_DaemonRunning(t *testing.T) {
 	}
 	if status.GatewayURL != srv.URL {
 		t.Fatalf("expected GatewayURL=%q, got %q", srv.URL, status.GatewayURL)
+	}
+	if status.ProjectPath != "/repo/pilot" {
+		t.Fatalf("expected ProjectPath=/repo/pilot, got %q", status.ProjectPath)
 	}
 }
 
@@ -151,6 +155,7 @@ func TestEnsureGatewayRunning_DaemonAlreadyRunning(t *testing.T) {
 }
 
 func TestEnsureGatewayRunning_StartsDaemon(t *testing.T) {
+	projectRoot := t.TempDir()
 	var healthy atomic.Bool
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -181,18 +186,20 @@ func TestEnsureGatewayRunning_StartsDaemon(t *testing.T) {
 				"enabled: false",
 				"auto_create_issues: false",
 				"source_enabled: false",
+				"codex_runtime:",
+				`sandbox: "read-only"`,
 			} {
 				if !strings.Contains(configText, want) {
 					t.Fatalf("managed gateway config missing %q", want)
 				}
 			}
-			if projectPath == "." {
-				t.Fatal("managed gateway must not start against the caller cwd")
+			if projectPath != projectRoot {
+				t.Fatalf("projectPath = %q, want %q", projectPath, projectRoot)
 			}
 			healthy.Store(true)
 			return &exec.Cmd{}, nil
 		},
-		getwd: func() (string, error) { return ".", nil },
+		getwd: func() (string, error) { return projectRoot, nil },
 		sleep: func(time.Duration) {},
 	}
 
@@ -207,8 +214,9 @@ func TestEnsureGatewayRunning_StartsDaemon(t *testing.T) {
 
 func TestPrepareManagedGatewayConfig_DisablesExternalWorkSources(t *testing.T) {
 	app := &App{gatewayURL: "http://127.0.0.1:19091"}
+	projectRoot := t.TempDir()
 
-	configPath, projectPath, configDir, err := app.prepareManagedGatewayConfig(".")
+	configPath, projectPath, configDir, err := app.prepareManagedGatewayConfig(projectRoot)
 	if err != nil {
 		t.Fatalf("prepareManagedGatewayConfig error: %v", err)
 	}
@@ -228,13 +236,15 @@ func TestPrepareManagedGatewayConfig_DisablesExternalWorkSources(t *testing.T) {
 		"auto_create_issues: false",
 		"source_enabled: false",
 		"cross_project: false",
+		"codex_runtime:",
+		`sandbox: "read-only"`,
 	} {
 		if !strings.Contains(configText, want) {
 			t.Fatalf("runtime config missing %q", want)
 		}
 	}
-	if !strings.HasPrefix(projectPath, configDir) {
-		t.Fatalf("projectPath = %q, want under %q", projectPath, configDir)
+	if projectPath != projectRoot {
+		t.Fatalf("projectPath = %q, want %q", projectPath, projectRoot)
 	}
 	if _, err := os.Stat(configDir + "/bin/gh"); err != nil {
 		t.Fatalf("gh block shim missing: %v", err)

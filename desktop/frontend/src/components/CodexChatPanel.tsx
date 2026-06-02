@@ -5,6 +5,7 @@ import type { RuntimeApprovalRequest, RuntimeSandbox } from '../types'
 
 interface CodexChatPanelProps {
   gatewayURL?: string
+  projectPath?: string
 }
 
 const SANDBOX_OPTIONS: RuntimeSandbox[] = ['read-only', 'workspace-write', 'danger-full-access']
@@ -45,12 +46,19 @@ function ApprovalRequest({
   )
 }
 
-export function CodexChatPanel({ gatewayURL }: CodexChatPanelProps) {
+export function CodexChatPanel({ gatewayURL, projectPath }: CodexChatPanelProps) {
   const [prompt, setPrompt] = useState('')
   const [cwd, setCwd] = useState('.')
   const [sandbox, setSandbox] = useState<RuntimeSandbox>('read-only')
   const scrollRef = useRef<HTMLDivElement>(null)
+  const cwdEdited = useRef(false)
   const runtime = useCodexRuntime(gatewayURL)
+
+  useEffect(() => {
+    if (!cwdEdited.current && projectPath) {
+      setCwd(projectPath)
+    }
+  }, [projectPath])
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -118,7 +126,10 @@ export function CodexChatPanel({ gatewayURL }: CodexChatPanelProps) {
           <input
             className="bg-bg border border-border px-2 py-1 text-[11px] text-lightgray outline-none focus:border-steel min-w-0"
             value={cwd}
-            onChange={(event) => setCwd(event.target.value)}
+            onChange={(event) => {
+              cwdEdited.current = true
+              setCwd(event.target.value)
+            }}
           />
           <select
             className="bg-bg border border-border px-2 py-1 text-[11px] text-lightgray outline-none focus:border-steel"
