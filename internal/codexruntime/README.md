@@ -30,3 +30,7 @@ go run ./cmd/codexruntime-spike --cwd . --prompt "Reply with exactly PONG. Do no
 ## A2 method boundary
 
 The typed method layer covers the first interactive flow only: `initialize`, `thread/start`, `turn/start`, `turn/steer`, and `turn/interrupt`. The structs are intentionally smaller than the generated schema and include only fields Pilot needs before gateway event mapping.
+
+## A3 event boundary
+
+`MapNotification` converts app-server notifications into stable runtime events while preserving raw params for fields not modeled yet. It is still transport-local; gateway fan-out, desktop state, and approval callbacks remain separate slices.

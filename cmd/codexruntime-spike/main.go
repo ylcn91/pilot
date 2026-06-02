@@ -219,61 +219,39 @@ func (a *app) read(ctx context.Context, client *codexruntime.Client) error {
 }
 
 func (a *app) handleNotification(msg codexruntime.Message) (bool, error) {
-	entry := logEntry{Direction: "server", Method: msg.Method}
-	fields, err := objectFields(msg.Params)
+	event, err := codexruntime.MapNotification(msg)
 	if err != nil {
 		return false, err
 	}
 
-	entry.ThreadID = stringField(fields, "threadId")
-	entry.TurnID = stringField(fields, "turnId")
-	entry.ItemID = stringField(fields, "itemId")
-	entry.Delta = stringField(fields, "delta")
-	if status, ok := fields["status"]; ok {
-		entry.Status = status
+	entry := logEntry{
+		Direction: "server",
+		Method:    event.Method,
+		ThreadID:  event.ThreadID,
+		TurnID:    event.TurnID,
+		ItemID:    event.ItemID,
+		Delta:     event.Delta,
+		Status:    event.Status,
+		Error:     event.Error,
 	}
 
-	if msg.Method == "item/agentMessage/delta" && entry.Delta != "" {
+	if event.Type == codexruntime.EventAgentMessageDelta && entry.Delta != "" {
 		a.assistant.WriteString(entry.Delta)
 	}
-	if msg.Method == "error" {
-		entry.Error = stringField(fields, "message")
-	}
-	if msg.Method == "turn/completed" {
+	if event.Type == codexruntime.EventTurnCompleted {
 		entry.Assistant = a.assistant.String()
 	}
 
 	if err := a.log.Encode(entry); err != nil {
 		return false, err
 	}
-	if msg.Method == "error" {
+	if event.Type == codexruntime.EventError {
 		if entry.Error == "" {
 			entry.Error = "app-server error"
 		}
 		return false, errors.New(entry.Error)
 	}
-	return msg.Method == "turn/completed", nil
-}
-
-func objectFields(raw json.RawMessage) (map[string]any, error) {
-	if len(raw) == 0 {
-		return map[string]any{}, nil
-	}
-
-	var fields map[string]any
-	if err := json.Unmarshal(raw, &fields); err != nil {
-		return nil, err
-	}
-	return fields, nil
-}
-
-func stringField(fields map[string]any, key string) string {
-	value, ok := fields[key]
-	if !ok {
-		return ""
-	}
-	text, _ := value.(string)
-	return text
+	return event.Type == codexruntime.EventTurnCompleted, nil
 }
 
 func realCWD(path string) (string, error) {
