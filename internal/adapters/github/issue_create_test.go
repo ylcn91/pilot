@@ -41,6 +41,13 @@ func TestValidateIssueRepo_FailClosed_C7(t *testing.T) {
 	}
 }
 
+func TestValidateIssueRepo_BlocksProtectedUpstream(t *testing.T) {
+	t.Setenv(envBypassIssueAllowlist, "1")
+	if err := validateIssueRepo(AllowAllIssueRepos(), "qf-studio", "pilot"); err == nil {
+		t.Fatal("protected upstream must fail even with AllowAllIssueRepos and bypass env")
+	}
+}
+
 func TestConventionalCommitRE(t *testing.T) {
 	accept := []string{
 		"feat: add OAuth login",

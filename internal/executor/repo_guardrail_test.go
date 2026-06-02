@@ -86,7 +86,8 @@ func TestValidateTargetRepo(t *testing.T) {
 	t.Setenv(envBypassRepoAllowlist, "")
 
 	allow := &fakeAllowlist{repos: map[string]string{
-		"qf-studio/pilot": "/Users/me/projects/pilot",
+		"ylcn91/pilot":    "/Users/me/projects/pilot",
+		"qf-studio/pilot": "/Users/me/projects/upstream",
 		"alice/site":      "/Users/me/projects/site",
 	}}
 
@@ -102,14 +103,14 @@ func TestValidateTargetRepo(t *testing.T) {
 		{
 			name:        "happy_path_repo_and_projectPath_match",
 			allow:       allow,
-			owner:       "qf-studio",
+			owner:       "ylcn91",
 			repo:        "pilot",
 			projectPath: "/Users/me/projects/pilot",
 		},
 		{
 			name:        "happy_path_repo_match_empty_projectPath",
 			allow:       allow,
-			owner:       "qf-studio",
+			owner:       "ylcn91",
 			repo:        "pilot",
 			projectPath: "",
 		},
@@ -124,7 +125,7 @@ func TestValidateTargetRepo(t *testing.T) {
 		{
 			name:        "reject_repo_match_but_projectPath_mismatch",
 			allow:       allow,
-			owner:       "qf-studio",
+			owner:       "ylcn91",
 			repo:        "pilot",
 			projectPath: "/Users/me/projects/site", // configured for alice/site, not qf-studio/pilot
 			wantErr:     ErrRepoNotInConfig,
@@ -146,8 +147,8 @@ func TestValidateTargetRepo(t *testing.T) {
 		{
 			name:    "reject_nil_allowlist_no_bypass",
 			allow:   nil,
-			owner:   "qf-studio",
-			repo:    "pilot",
+			owner:   "tenlisboa",
+			repo:    "pilot-fork",
 			wantErr: ErrRepoNotInConfig,
 		},
 		{
@@ -160,9 +161,18 @@ func TestValidateTargetRepo(t *testing.T) {
 		{
 			name:   "bypass_via_env_var_with_nil_allowlist",
 			allow:  nil,
-			owner:  "qf-studio",
-			repo:   "pilot",
+			owner:  "tenlisboa",
+			repo:   "pilot-fork",
 			bypass: "1",
+		},
+		{
+			name:        "reject_protected_upstream_even_when_configured_and_bypassed",
+			allow:       allow,
+			owner:       "qf-studio",
+			repo:        "pilot",
+			projectPath: "/Users/me/projects/upstream",
+			bypass:      "1",
+			wantErr:     ErrRepoNotInConfig,
 		},
 		{
 			name:    "bypass_set_to_0_is_NOT_a_bypass",

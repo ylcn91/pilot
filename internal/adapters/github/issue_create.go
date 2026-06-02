@@ -14,12 +14,18 @@ var conventionalCommitRE = regexp.MustCompile(`^(feat|fix|chore|refactor|test|do
 
 // envBypassIssueAllowlist is the env var that bypasses the repo allowlist check at
 // the CreatePilotIssue level. Must match executor.envBypassRepoAllowlist.
+// The protected upstream repo is never bypassable.
 const envBypassIssueAllowlist = "PILOT_ALLOW_UNMANAGED_REPO"
+
+const (
+	protectedUpstreamOwner = "qf-studio"
+	protectedUpstreamRepo  = "pilot"
+)
 
 // IssueAllowlist is the minimal surface CreatePilotIssue needs to validate that the
 // target (owner, repo) is in the user's configured project list. executor.RepoAllowlist
-// satisfies this interface — callers can pass it directly. When nil, the check is skipped
-// but a WARN is logged so the omission is visible in audit logs.
+// satisfies this interface — callers can pass it directly. When nil, the check fails
+// closed unless PILOT_ALLOW_UNMANAGED_REPO=1 is set.
 //
 // This interface is defined here (rather than importing executor.RepoAllowlist) to avoid
 // an import cycle: internal/config imports internal/adapters/github, so neither executor
@@ -75,6 +81,10 @@ func CreatePilotIssue(ctx context.Context, c *Client, allow IssueAllowlist, owne
 func validateIssueRepo(allow IssueAllowlist, owner, repo string) error {
 	bypass := os.Getenv(envBypassIssueAllowlist) == "1"
 
+	if isProtectedUpstreamRepo(owner, repo) {
+		return fmt.Errorf("refusing to create issues on protected upstream %s/%s", owner, repo)
+	}
+
 	if allow == nil {
 		// C7 (TASK-347): fail closed to match executor.ValidateTargetRepo — a future
 		// caller that forgets to wire an allowlist must not silently get zero
@@ -108,4 +118,8 @@ func validateIssueRepo(allow IssueAllowlist, owner, repo string) error {
 
 	return fmt.Errorf("%s/%s not in configured projects [%s]",
 		owner, repo, strings.Join(allow.ConfiguredRepos(), ","))
+}
+
+func isProtectedUpstreamRepo(owner, repo string) bool {
+	return strings.EqualFold(owner, protectedUpstreamOwner) && strings.EqualFold(repo, protectedUpstreamRepo)
 }

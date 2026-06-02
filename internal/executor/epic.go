@@ -1005,10 +1005,9 @@ func (r *Runner) CreateSubIssues(ctx context.Context, plan *EpicPlan, executionP
 	// because that helper also shells out to `gh` against the worktree's
 	// inferred origin remote. Without this ordering, a misconfigured Pilot
 	// would still leak `gh issue list` calls to an unmanaged repo even if
-	// no sub-issue was created. Only enforced when a RepoAllowlist has been
-	// wired onto the Runner; production callers do this in cmd/pilot via
-	// SetRepoAllowlist(newConfigRepoAllowlist(cfg)).
-	if !useAdapterCreator && r.repoAllowlist != nil && executionPath != "" {
+	// no sub-issue was created. Missing allowlist/remote now fails closed;
+	// the GitHub path may not infer a target repo from ambient gh state.
+	if !useAdapterCreator {
 		owner, repo, remoteErr := resolveGitRemote(ctx, executionPath)
 		if remoteErr != nil {
 			r.log.Error("sub-issue guardrail: could not resolve origin remote",
@@ -1025,9 +1024,6 @@ func (r *Runner) CreateSubIssues(ctx context.Context, plan *EpicPlan, executionP
 			r.log.Debug("sub-issue guardrail passed",
 				"owner", owner, "repo", repo, "execution_path", executionPath)
 		}
-	} else if !useAdapterCreator && r.repoAllowlist == nil {
-		r.log.Warn("sub-issue guardrail skipped: no RepoAllowlist configured on Runner; production callers must invoke Runner.SetRepoAllowlist",
-			"execution_path", executionPath)
 	}
 
 	if plan.ParentTask != nil {

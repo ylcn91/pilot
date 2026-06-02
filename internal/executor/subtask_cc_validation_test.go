@@ -144,6 +144,8 @@ func TestDecomposeEpicTitlesConventional(t *testing.T) {
 func TestCreateSubIssues_SkipsWhenChildrenExist(t *testing.T) {
 	r := NewRunner()
 	r.dryRun = true // prevent any accidental gh calls
+	r.SetRepoAllowlist(&staticAllowlist{repos: []string{"ylcn91/pilot"}})
+	worktree := makeAllowedGitHubWorktree(t, "ylcn91/pilot")
 	r.openSubIssueCheck = func(_ context.Context, _, _ string) (bool, error) {
 		return true, nil // simulate existing open children
 	}
@@ -158,7 +160,7 @@ func TestCreateSubIssues_SkipsWhenChildrenExist(t *testing.T) {
 		},
 	}
 
-	_, err := r.CreateSubIssues(context.Background(), plan, "")
+	_, err := r.CreateSubIssues(context.Background(), plan, worktree)
 	if err != ErrSubIssuesAlreadyExist {
 		t.Errorf("expected ErrSubIssuesAlreadyExist, got %v", err)
 	}
