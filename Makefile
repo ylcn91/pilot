@@ -1,4 +1,4 @@
-.PHONY: build run test test-e2e clean install lint fmt deps dev install-hooks check-secrets gate check-integration auto-fix test-short test-integration test-chaos test-wiring package release desktop-dev desktop-build desktop-build-windows desktop-build-linux desktop desktop-deps desktop-package desktop-dmg desktop-clean build-with-dashboard
+.PHONY: build run test test-e2e clean install lint fmt deps dev install-hooks check-secrets gate check-integration auto-fix test-short test-integration test-chaos test-wiring smoke-codex-runtime package release desktop-dev desktop-build desktop-build-windows desktop-build-linux desktop desktop-deps desktop-package desktop-dmg desktop-clean build-with-dashboard
 
 # Variables
 BINARY_NAME=pilot
@@ -141,6 +141,9 @@ test-chaos:
 test-wiring:
 	go test -v -count=1 -timeout 30s ./internal/wiring/...
 
+smoke-codex-runtime:
+	@./scripts/smoke-codex-runtime.sh
+
 # Run integration checks (orphan commands, build tags, etc.)
 check-integration:
 	@./scripts/check-integration.sh
@@ -258,6 +261,7 @@ help:
 	@echo "  make test-short     Run tests in short mode"
 	@echo "  make test-integration Run integration tests"
 	@echo "  make test-chaos     Run chaos/fault injection tests"
+	@echo "  make smoke-codex-runtime Run isolated Codex app-server gateway smoke"
 	@echo "  make package        Package binaries into tar.gz archives"
 	@echo "  make release        Create release (V=0.x.x required)"
 	@echo "  make build-with-dashboard  Build with embedded React dashboard"
