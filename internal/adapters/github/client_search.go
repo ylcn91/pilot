@@ -108,6 +108,27 @@ func (c *Client) FindOpenPRByBranch(ctx context.Context, owner, repo, branch str
 	return false, nil
 }
 
+// SearchIssuesContaining counts issues in a repo whose body or title contains the
+// given literal phrase. It is a thin, marker-oriented wrapper over the Search API
+// used by the Architect family to detect an already-filed proposal: the phrase is
+// the hidden dedup marker embedded in a previously-created issue body. Both open
+// and closed issues are matched so a resolved-then-reopened signal is not re-filed.
+//
+// The phrase is wrapped in quotes for an exact-substring search and is:issue
+// constrains results to issues (not PRs). Returns the total match count.
+func (c *Client) SearchIssuesContaining(ctx context.Context, owner, repo, phrase string) (int, error) {
+	q := fmt.Sprintf(`repo:%s/%s is:issue %q`, owner, repo, phrase)
+	path := fmt.Sprintf("/search/issues?q=%s&per_page=1", url.QueryEscape(q))
+
+	var result struct {
+		TotalCount int `json:"total_count"`
+	}
+	if err := c.doRequest(ctx, http.MethodGet, path, nil, &result); err != nil {
+		return 0, fmt.Errorf("search issues containing %q in %s/%s: %w", phrase, owner, repo, err)
+	}
+	return result.TotalCount, nil
+}
+
 // SearchOpenSubIssues counts open issues in a repo whose body contains "Parent: GH-{parentNum}".
 // Uses the GitHub Search API to find sub-issues referencing the given parent.
 func (c *Client) SearchOpenSubIssues(ctx context.Context, owner, repo string, parentNum int) (int, error) {
