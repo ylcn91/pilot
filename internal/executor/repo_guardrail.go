@@ -1,12 +1,9 @@
 // Package executor — TASK-286 / GH-3027
 //
 // Guardrail that refuses to create GitHub issues on repositories that are not
-// in the user's configured project list. Closes the incident on 2026-05-20
-// where an external Pilot user accidentally pointed his daemon at the upstream
-// `qf-studio/pilot` repo and the epic decomposer fired 6 duplicate sub-issues
-// (#3021-#3026). The decomposer at internal/executor/epic.go shelled out
-// `gh issue create` with `cmd.Dir` set to the worktree path; `gh` infers
-// owner/repo from the directory's origin remote, with no cross-check that
+// in the user's configured project list. The decomposer at internal/executor/epic.go
+// shells out to `gh issue create` with `cmd.Dir` set to the worktree path; `gh`
+// infers owner/repo from the directory's origin remote, with no cross-check that
 // the repo is one Pilot is supposed to write to.
 //
 // This file defines the chokepoint. Callers must hold a RepoAllowlist
@@ -14,7 +11,6 @@
 // decoupled from the top-level config types).
 //
 // Bypass: PILOT_ALLOW_UNMANAGED_REPO=1 (logs WARN with the resolved repo).
-// The protected upstream repo is never bypassable.
 
 package executor
 
@@ -33,11 +29,6 @@ import (
 // nil, allowing the call to proceed. Intended for ad-hoc CLI invocations
 // against repos that are not registered as Pilot projects; never the default.
 const envBypassRepoAllowlist = "PILOT_ALLOW_UNMANAGED_REPO"
-
-const (
-	protectedUpstreamOwner = "qf-studio"
-	protectedUpstreamRepo  = "pilot"
-)
 
 // ErrRepoNotInConfig is the sentinel returned when the resolved (owner, repo)
 // pair does not match any project in the user's configured allowlist.
@@ -80,11 +71,6 @@ func ValidateTargetRepo(allow RepoAllowlist, owner, repo, projectPath string) er
 		return fmt.Errorf("%w: empty owner or repo", ErrRepoNotInConfig)
 	}
 
-	if isProtectedUpstreamRepo(owner, repo) {
-		return fmt.Errorf("%w: refusing to create issues on protected upstream %s/%s",
-			ErrRepoNotInConfig, owner, repo)
-	}
-
 	if allow != nil && allow.RepoIsAllowed(owner, repo, projectPath) {
 		return nil
 	}
@@ -111,10 +97,6 @@ func ValidateTargetRepo(allow RepoAllowlist, owner, repo, projectPath string) er
 
 	return fmt.Errorf("%w: %s/%s not in configured projects [%s]",
 		ErrRepoNotInConfig, owner, repo, strings.Join(allow.ConfiguredRepos(), ","))
-}
-
-func isProtectedUpstreamRepo(owner, repo string) bool {
-	return strings.EqualFold(owner, protectedUpstreamOwner) && strings.EqualFold(repo, protectedUpstreamRepo)
 }
 
 // resolveGitRemote returns the (owner, repo) parsed from the `origin` remote

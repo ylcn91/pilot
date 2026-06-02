@@ -125,5 +125,5 @@ golangci-lint run ./internal/approval/... ./internal/autopilot/...
 
 ---
 
-**GitHub Issue**: [#2638](https://github.com/qf-studio/pilot/issues/2638)
+**GitHub Issue**: [#2638](https://github.com/ylcn91/pilot/issues/2638)
 **Last Updated**: 2026-05-05

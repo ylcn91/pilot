@@ -233,6 +233,10 @@ type BackendConfig struct {
 	// Default: true. Use --no-pr flag to disable for individual tasks.
 	AutoCreatePR *bool `yaml:"auto_create_pr,omitempty"`
 
+	// CreateSubIssues controls whether epic planning may create GitHub sub-issues.
+	// Default: false. When disabled, planned epics execute as one task instead.
+	CreateSubIssues bool `yaml:"create_sub_issues,omitempty"`
+
 	// DirectCommit enables committing directly to main without branches or PRs.
 	// DANGER: Requires BOTH this config option AND --direct-commit CLI flag.
 	// Intended for users who rely on manual QA instead of code review.

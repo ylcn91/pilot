@@ -1,6 +1,6 @@
 # TASK-286: Guardrail — refuse issue creation on repos outside the user's project list
 
-**Status**: implemented in [pilot/GH-3027](https://github.com/qf-studio/pilot/tree/pilot/GH-3027), PR pending (closes [#3027](https://github.com/qf-studio/pilot/issues/3027))
+**Status**: implemented in [pilot/GH-3027](https://github.com/ylcn91/pilot/tree/pilot/GH-3027), PR pending (closes [#3027](https://github.com/ylcn91/pilot/issues/3027))
 **Priority**: P1 (data-integrity / reputation)
 **Estimated Effort**: S (3-4 person-hours)
 **Risk Level**: Low (additive validation; opt-out via env var for power users)
@@ -8,7 +8,7 @@
 ## Problem
 
 On 2026-05-20 an external Pilot user (@tenlisboa) accidentally pointed his
-local `pilot start` instance at the **upstream** `qf-studio/pilot` repo
+local `pilot start` instance at the **upstream** `ylcn91/pilot` repo
 instead of his own fork. The epic decomposer fired and created 6 duplicate
 sub-issues (#3021–#3026) titled `feat(auth): add OAuth provider integration`,
 each carrying `<!--autopilot-meta parent: GH-201 inherited-spec: true-->`.
@@ -84,7 +84,7 @@ two remaining holes.
 - In `internal/executor/epic.go`, in `createSubIssuesViaGitHub()`:
   - Before the loop that shells `gh issue create` (`:1218`-ish), call `resolveGitRemote(executionPath)`, then `ValidateTargetRepo(ctx, r.config, owner, repo, executionPath)`.
   - On error: return wrapped error; abort the whole sub-issue batch (do **not** create some-but-not-all).
-- Add one integration-style test in `epic_test.go` that uses a temp dir with a fake `origin` pointing at `qf-studio/pilot` and an empty `Config.Projects`, asserting no `gh` call is made (use a mock `exec.Cmd` runner if available; otherwise gate the test behind a build tag).
+- Add one integration-style test in `epic_test.go` that uses a temp dir with a fake `origin` pointing at `ylcn91/pilot` and an empty `Config.Projects`, asserting no `gh` call is made (use a mock `exec.Cmd` runner if available; otherwise gate the test behind a build tag).
 
 ### Step 3 — Wire into adapter (S, 0.5h)
 - In `internal/adapters/github/issue_create.go`, top of `CreatePilotIssue`:
@@ -98,7 +98,7 @@ two remaining holes.
 
 ## Acceptance Criteria
 
-- [ ] Running `pilot start` against a fresh `~/.pilot/config.yaml` whose `projects[]` does NOT include `qf-studio/pilot` cannot create issues on `qf-studio/pilot`, regardless of which directory it's invoked from. Confirmed by integration test.
+- [ ] Running `pilot start` against a fresh `~/.pilot/config.yaml` whose `projects[]` does NOT include `ylcn91/pilot` cannot create issues on `ylcn91/pilot`, regardless of which directory it's invoked from. Confirmed by integration test.
 - [ ] The same scenario with `PILOT_ALLOW_UNMANAGED_REPO=1` proceeds, but logs `WARN` containing the resolved `owner/repo`.
 - [ ] Existing happy-path projects continue to work — no regression on the 323-feature smoke. Confirmed by `make test`.
 - [ ] `CreatePilotIssue` cannot be called from any in-tree caller without a `*config.Config` (compiler-enforced via signature change).
@@ -120,8 +120,8 @@ target.
 
 ## References
 
-- Incident: closed dupes `qf-studio/pilot#3021`–`#3026` (2026-05-20)
-- Diagnosis comment: `qf-studio/pilot#3021#issuecomment-4508477616`
+- Incident: closed dupes `ylcn91/pilot#3021`–`#3026` (2026-05-20)
+- Diagnosis comment: `ylcn91/pilot#3021#issuecomment-4508477616`
 - Existing parent-task guard pattern: `internal/executor/runner.go:1130`
   (`ValidateRepoProjectMatch`) — reuse style and error wrapping.
 - Knowledge graph: link to `pitfall_*` once written (see Step 5 below).

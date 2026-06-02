@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/qf-studio/pilot/internal/comms"
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/comms"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // Handler processes incoming Discord events and coordinates task execution

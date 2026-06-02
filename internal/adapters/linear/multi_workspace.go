@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // MultiWorkspaceHandler manages multiple Linear workspaces and routes webhooks to the correct handler

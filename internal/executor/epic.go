@@ -849,19 +849,36 @@ func validateAndFixSubtaskTitles(ctx context.Context, subtasks []PlannedSubtask,
 	return applyParentTypeScopeFallback(subtasks, invalid, parentTitle, parentBody)
 }
 
+// ghRepoSlug returns "owner/repo" for a guardrail-validated remote, or "" when
+// either part is empty. Callers append "--repo <slug>" to gh invocations only
+// when the slug is non-empty; an empty slug falls back to gh's ambient repo
+// resolution (the pre-GH-3411 behavior), which the guardrail above only permits
+// after it has already validated the resolved owner/repo.
+func ghRepoSlug(owner, repo string) string {
+	if owner == "" || repo == "" {
+		return ""
+	}
+	return owner + "/" + repo
+}
+
 // queryRecentSubIssues returns true when there are open or recently-closed GitHub
 // issues (created within the last 24 hours) that include "Parent: <parentID>" in
 // their body. Used by CreateSubIssues as a dedup guard (GH-2867).
 // Non-fatal: if the gh CLI call fails the check returns (false, nil) to allow creation.
-func queryRecentSubIssues(ctx context.Context, dir, parentID string) (bool, error) {
+func queryRecentSubIssues(ctx context.Context, dir, repoSlug, parentID string) (bool, error) {
 	since := time.Now().UTC().Add(-24 * time.Hour).Format("2006-01-02T15:04:05Z")
-	args := []string{
-		"issue", "list",
+	args := []string{"issue", "list"}
+	if repoSlug != "" {
+		// GH-3411: pin to the validated repo so the dedup search reads the fork,
+		// not its upstream parent that gh would otherwise resolve.
+		args = append(args, "--repo", repoSlug)
+	}
+	args = append(args,
 		"--state", "all",
 		"--search", fmt.Sprintf("\"Parent: %s\" in:body created:>=%s", parentID, since),
 		"--json", "number",
 		"--limit", "3",
-	}
+	)
 	cmd := exec.CommandContext(ctx, "gh", args...)
 	if dir != "" {
 		cmd.Dir = dir
@@ -882,14 +899,19 @@ func queryRecentSubIssues(ctx context.Context, dir, parentID string) (bool, erro
 // "Parent: <parentID>" and reconstructs them as []CreatedIssue so the epic
 // orchestrator can decide whether to no-op or continue executing open children.
 // Non-fatal: returns an empty slice on gh CLI failure.
-func recoverExistingSubIssues(ctx context.Context, dir, parentID string) ([]CreatedIssue, error) {
-	args := []string{
-		"issue", "list",
+func recoverExistingSubIssues(ctx context.Context, dir, repoSlug, parentID string) ([]CreatedIssue, error) {
+	args := []string{"issue", "list"}
+	if repoSlug != "" {
+		// GH-3411: pin to the validated repo so recovery reads the fork's children,
+		// not the upstream parent's.
+		args = append(args, "--repo", repoSlug)
+	}
+	args = append(args,
 		"--state", "all",
 		"--search", fmt.Sprintf("\"Parent: %s\" in:body", parentID),
 		"--json", "number,url,state",
 		"--limit", "50",
-	}
+	)
 	cmd := exec.CommandContext(ctx, "gh", args...)
 	if dir != "" {
 		cmd.Dir = dir
@@ -973,17 +995,9 @@ func parsePRNumberFromURL(url string) int {
 	return n
 }
 
-// issueCreationDisabled reports whether issue creation has been globally turned
-// off via PILOT_DISABLE_ISSUE_CREATION ("1"/"true"/"yes"/"on"). Hard kill-switch
-// added after the GH-201 OAuth-cascade incident to stop upstream issue spam.
-// Kept local to avoid an executor→adapters/github dependency.
-func issueCreationDisabled() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("PILOT_DISABLE_ISSUE_CREATION"))) {
-	case "1", "true", "yes", "on":
-		return true
-	}
-	return false
-}
+// ErrIssueCreationDisabled is returned when a caller asks the runner to create
+// tracker issues while executor.create_sub_issues is not enabled.
+var ErrIssueCreationDisabled = errors.New("issue creation is disabled")
 
 // CreateSubIssues creates issues from the planned subtasks.
 // For GitHub-sourced tasks (or when no SubIssueCreator is set), uses gh CLI.
@@ -1005,16 +1019,16 @@ func (r *Runner) CreateSubIssues(ctx context.Context, plan *EpicPlan, executionP
 		return nil, ErrParentDone
 	}
 
-	if issueCreationDisabled() {
+	if !r.issueCreationEnabled {
 		parentID := ""
 		if plan.ParentTask != nil {
 			parentID = plan.ParentTask.ID
 		}
-		r.log.Warn("Skipping sub-issue creation: issue creation disabled (PILOT_DISABLE_ISSUE_CREATION)",
+		r.log.Warn("Skipping sub-issue creation: issue creation disabled",
 			"parent_id", parentID,
 			"subtasks", len(plan.Subtasks),
 		)
-		return nil, nil
+		return nil, ErrIssueCreationDisabled
 	}
 
 	// GH-1471: pick the creation backend up front. The adapter path is
@@ -1031,6 +1045,12 @@ func (r *Runner) CreateSubIssues(ctx context.Context, plan *EpicPlan, executionP
 	// would still leak `gh issue list` calls to an unmanaged repo even if
 	// no sub-issue was created. Missing allowlist/remote now fails closed;
 	// the GitHub path may not infer a target repo from ambient gh state.
+	// ghOwner/ghRepo capture the guardrail-validated origin repo so every `gh`
+	// shell-out below can pin --repo to it (GH-3411). Without an explicit target,
+	// `gh` resolves the base repo from ambient state (origin's fork parent, an
+	// `upstream` remote, GH_REPO, or `gh repo set-default`) and can read from or
+	// create issues on the upstream repo instead of the one the guardrail validated.
+	var ghOwner, ghRepo string
 	if !useAdapterCreator {
 		owner, repo, remoteErr := resolveGitRemote(ctx, executionPath)
 		if remoteErr != nil {
@@ -1047,6 +1067,7 @@ func (r *Runner) CreateSubIssues(ctx context.Context, plan *EpicPlan, executionP
 		} else {
 			r.log.Debug("sub-issue guardrail passed",
 				"owner", owner, "repo", repo, "execution_path", executionPath)
+			ghOwner, ghRepo = owner, repo
 		}
 	}
 
@@ -1055,7 +1076,13 @@ func (r *Runner) CreateSubIssues(ctx context.Context, plan *EpicPlan, executionP
 		// Uses an injectable checker so tests can control the result without spawning gh CLI.
 		checker := r.openSubIssueCheck
 		if checker == nil {
-			checker = queryRecentSubIssues
+			// GH-3411: pin the dedup `gh issue list` to the validated origin repo
+			// so it cannot drift to the fork's upstream parent via gh's ambient
+			// base-repo resolution. Empty slug falls back to ambient gh behavior.
+			repoSlug := ghRepoSlug(ghOwner, ghRepo)
+			checker = func(ctx context.Context, dir, parentID string) (bool, error) {
+				return queryRecentSubIssues(ctx, dir, repoSlug, parentID)
+			}
 		}
 		if exists, _ := checker(ctx, executionPath, plan.ParentTask.ID); exists {
 			r.log.Info("Skipping sub-issue creation: open children already exist",
@@ -1069,7 +1096,7 @@ func (r *Runner) CreateSubIssues(ctx context.Context, plan *EpicPlan, executionP
 		return r.createSubIssuesViaAdapter(ctx, plan)
 	}
 
-	return r.createSubIssuesViaGitHub(ctx, plan, executionPath)
+	return r.createSubIssuesViaGitHub(ctx, plan, executionPath, ghOwner, ghRepo)
 }
 
 // createSubIssuesViaAdapter creates sub-issues using the SubIssueCreator interface.
@@ -1187,7 +1214,7 @@ func (r *Runner) createSubIssuesViaAdapter(ctx context.Context, plan *EpicPlan) 
 //
 // The TASK-286 / GH-3027 repo guardrail runs one level up in CreateSubIssues
 // (it must fire before queryRecentSubIssues, which also shells out to gh).
-func (r *Runner) createSubIssuesViaGitHub(ctx context.Context, plan *EpicPlan, executionPath string) ([]CreatedIssue, error) {
+func (r *Runner) createSubIssuesViaGitHub(ctx context.Context, plan *EpicPlan, executionPath, owner, repo string) ([]CreatedIssue, error) {
 	var created []CreatedIssue
 
 	// Map subtask order → created GitHub issue number for dependency annotation (GH-1794)
@@ -1276,7 +1303,14 @@ func (r *Runner) createSubIssuesViaGitHub(ctx context.Context, plan *EpicPlan, e
 
 		// Create issue using gh CLI
 		subLabels := append([]string{"pilot"}, filterPropagatableLabels(plan.ParentTask.Labels)...)
-		args := []string{"issue", "create", "--title", title, "--body", body}
+		args := []string{"issue", "create"}
+		if slug := ghRepoSlug(owner, repo); slug != "" {
+			// GH-3411: target the guardrail-validated repo explicitly. Without --repo,
+			// `gh` infers the base repo from ambient state and can create the issue on
+			// the fork's upstream parent (e.g. ylcn91/pilot) instead of this repo.
+			args = append(args, "--repo", slug)
+		}
+		args = append(args, "--title", title, "--body", body)
 		for _, l := range subLabels {
 			args = append(args, "--label", l)
 		}

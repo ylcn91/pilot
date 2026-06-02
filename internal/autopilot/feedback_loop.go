@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/qf-studio/pilot/internal/adapters/github"
-	"github.com/qf-studio/pilot/internal/memory"
-	"github.com/qf-studio/pilot/internal/text"
+	"github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/text"
 )
 
 // FeedbackLoop creates issues when CI fails or bugs are detected.
@@ -26,6 +26,9 @@ type FeedbackLoop struct {
 
 // NewFeedbackLoop creates a feedback loop for automatic issue creation.
 func NewFeedbackLoop(ghClient *github.Client, owner, repo string, cfg *Config) *FeedbackLoop {
+	if ghClient != nil && cfg != nil {
+		ghClient.SetIssueCreationEnabled(cfg.AutoCreateIssues)
+	}
 	return &FeedbackLoop{
 		ghClient:    ghClient,
 		owner:       owner,

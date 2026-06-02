@@ -19,31 +19,31 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
-	"github.com/qf-studio/pilot/internal/adapters/discord"
-	"github.com/qf-studio/pilot/internal/adapters/github"
-	"github.com/qf-studio/pilot/internal/adapters/linear"
-	"github.com/qf-studio/pilot/internal/adapters/plane"
-	"github.com/qf-studio/pilot/internal/adapters/slack"
-	"github.com/qf-studio/pilot/internal/adapters/telegram"
-	"github.com/qf-studio/pilot/internal/alerts"
-	"github.com/qf-studio/pilot/internal/approval"
-	"github.com/qf-studio/pilot/internal/autopilot"
-	"github.com/qf-studio/pilot/internal/banner"
-	"github.com/qf-studio/pilot/internal/briefs"
-	"github.com/qf-studio/pilot/internal/budget"
-	"github.com/qf-studio/pilot/internal/comms"
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/dashboard"
-	"github.com/qf-studio/pilot/internal/executor"
-	"github.com/qf-studio/pilot/internal/gateway"
-	"github.com/qf-studio/pilot/internal/intent"
-	"github.com/qf-studio/pilot/internal/logging"
-	"github.com/qf-studio/pilot/internal/memory"
-	"github.com/qf-studio/pilot/internal/pilot"
-	"github.com/qf-studio/pilot/internal/quality"
-	"github.com/qf-studio/pilot/internal/teams"
-	"github.com/qf-studio/pilot/internal/tunnel"
-	"github.com/qf-studio/pilot/internal/upgrade"
+	"github.com/ylcn91/pilot/internal/adapters/discord"
+	"github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/adapters/linear"
+	"github.com/ylcn91/pilot/internal/adapters/plane"
+	"github.com/ylcn91/pilot/internal/adapters/slack"
+	"github.com/ylcn91/pilot/internal/adapters/telegram"
+	"github.com/ylcn91/pilot/internal/alerts"
+	"github.com/ylcn91/pilot/internal/approval"
+	"github.com/ylcn91/pilot/internal/autopilot"
+	"github.com/ylcn91/pilot/internal/banner"
+	"github.com/ylcn91/pilot/internal/briefs"
+	"github.com/ylcn91/pilot/internal/budget"
+	"github.com/ylcn91/pilot/internal/comms"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/dashboard"
+	"github.com/ylcn91/pilot/internal/executor"
+	"github.com/ylcn91/pilot/internal/gateway"
+	"github.com/ylcn91/pilot/internal/intent"
+	"github.com/ylcn91/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/pilot"
+	"github.com/ylcn91/pilot/internal/quality"
+	"github.com/ylcn91/pilot/internal/teams"
+	"github.com/ylcn91/pilot/internal/tunnel"
+	"github.com/ylcn91/pilot/internal/upgrade"
 )
 
 var (
@@ -149,18 +149,6 @@ Examples:
   pilot start --dashboard              # With TUI dashboard
   pilot start --no-gateway             # Polling only (no HTTP server)`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// SAFETY KILL-SWITCH (anti upstream-spam, GH-201 OAuth cascade):
-			// default GitHub issue creation to OFF for this fork unless the
-			// operator explicitly opts back in. A misconfigured daemon once
-			// re-dispatched a closed parent and spawned hundreds of hallucinated
-			// sub-issues on the upstream repo; making "create no issues" the
-			// default prevents a recurrence. Re-enable with
-			// PILOT_DISABLE_ISSUE_CREATION=0.
-			if _, ok := os.LookupEnv("PILOT_DISABLE_ISSUE_CREATION"); !ok {
-				_ = os.Setenv("PILOT_DISABLE_ISSUE_CREATION", "1")
-				fmt.Fprintln(os.Stderr, "[pilot] GitHub issue creation is DISABLED by default; set PILOT_DISABLE_ISSUE_CREATION=0 to enable")
-			}
-
 			// Load config
 			configPath := cfgFile
 			if configPath == "" {

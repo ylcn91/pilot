@@ -10,15 +10,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/adapters/skipreason"
-	"github.com/qf-studio/pilot/internal/testutil"
+	"github.com/ylcn91/pilot/internal/adapters/skipreason"
+	"github.com/ylcn91/pilot/internal/testutil"
 )
 
 // fakePollerMetrics records all calls to PollerMetricsRecorder methods for assertions.
 type fakePollerMetrics struct {
-	mu                  sync.Mutex
-	skipped             map[string]int // reason → count
-	dispatched          int
+	mu                   sync.Mutex
+	skipped              map[string]int // reason → count
+	dispatched           int
 	deferredScopeOverlap int
 }
 

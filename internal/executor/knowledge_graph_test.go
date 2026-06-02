@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/memory"
 )
 
 // mockKnowledgeGraphRecorder implements KnowledgeGraphRecorder for testing.

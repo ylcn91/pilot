@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/adapters/github"
 )
 
 func TestSyncBoardStatus_NilBoardSync(t *testing.T) {

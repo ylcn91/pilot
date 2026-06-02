@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/adapters/github"
-	"github.com/qf-studio/pilot/internal/adapters/telegram"
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/testutil"
+	"github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/adapters/telegram"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/testutil"
 )
 
 // TestParseGitURL tests URL parsing for various git remote formats.

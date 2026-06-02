@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/testutil"
+	"github.com/ylcn91/pilot/internal/testutil"
 )
 
 // computeSlackSig produces a valid Slack request signature.

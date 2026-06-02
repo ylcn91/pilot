@@ -68,7 +68,7 @@ when 0 commits were produced (fold into [[TASK-355]]).
 PRs that **escalate to approval** (large/size-gated — small PRs bypass) get an autopilot comment
 `🚧 Merge blocked: approval not wired` and never auto-merge. Observed: tiny PRs #13(+66)/#15(+27) auto-merged;
 large PRs #19(+2811)/#21(+2060)/#23(+3157)/#25(+2301) all blocked → **manual `gh pr merge` required** (the
-comment itself recommends this; tracked in qf-studio/pilot #2598).
+comment itself recommends this; tracked in ylcn91/pilot #2598).
 
 **Side effect:** a manual merge skips the autopilot's on-merge board write-back (`controller.go:1245`), so the
 card stays In Review even though the issue is closed `pilot-done` → needs a **manual → Done** move. ([[TASK-354]] family.)

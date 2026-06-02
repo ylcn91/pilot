@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/testutil"
+	"github.com/ylcn91/pilot/internal/testutil"
 )
 
 // TestNewNotifier tests notifier creation

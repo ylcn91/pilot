@@ -245,7 +245,7 @@ func containsTaskNumber(line, taskNum string) bool {
 }
 
 // ExtractRepoName extracts the repository name from "owner/repo" format.
-// Returns just the repo part (e.g., "pilot" from "qf-studio/pilot").
+// Returns just the repo part (e.g., "pilot" from "ylcn91/pilot").
 func ExtractRepoName(repo string) string {
 	parts := strings.Split(repo, "/")
 	if len(parts) == 2 {

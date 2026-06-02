@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // EffortClassifier uses an LLM (Haiku) to classify task effort level.

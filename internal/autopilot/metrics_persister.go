@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/memory"
 )
 
 // MetricsPersister periodically saves metrics snapshots to SQLite for history.

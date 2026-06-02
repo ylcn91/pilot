@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/alerts"
+	"github.com/ylcn91/pilot/internal/alerts"
 )
 
 // tripTracker tracks circuit breaker trips over time for escalation detection.

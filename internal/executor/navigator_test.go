@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 func TestDetectProjectInfo_GoProject(t *testing.T) {

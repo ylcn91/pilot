@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // MessageType defines the type of control plane message

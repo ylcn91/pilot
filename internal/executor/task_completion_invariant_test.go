@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/memory"
 )
 
 // TestTaskCompletionInvariant verifies that IsTaskShipped (Go predicate) and

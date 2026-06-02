@@ -35,7 +35,7 @@ behavior — the daemon is outdated.
 
 ### 3. Repo rename fully landed (GH-2175)
 All functional `alekspetrov/pilot` and `anthropics/pilot` refs on `origin/main`
-replaced with `qf-studio/pilot`. Residuals remaining are intentional:
+replaced with `ylcn91/pilot`. Residuals remaining are intentional:
 - `.agent/tasks/archive/TASK-43/44/45*.md` — historical nav docs
 - `.agent/tasks/gh-2175.md` — the migration task doc itself (meta)
 - `internal/executor/title_rejection_test.go` — fixtures for the GH-2363
@@ -44,4 +44,4 @@ replaced with `qf-studio/pilot`. Residuals remaining are intentional:
 
 **Debugging implication:** if a user hits `ghcr.io/anthropics/pilot:latest`
 404, they're on outdated docs; pilot.quantflow.studio now serves correct
-`ghcr.io/qf-studio/pilot`.
+`ghcr.io/ylcn91/pilot`.

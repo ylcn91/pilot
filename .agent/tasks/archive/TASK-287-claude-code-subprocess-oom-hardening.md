@@ -1,6 +1,6 @@
 # TASK-287: Harden Claude Code subprocess against OOM-kills
 
-**Status**: in-progress (handed off to Pilot as [#3028](https://github.com/qf-studio/pilot/issues/3028))
+**Status**: in-progress (handed off to Pilot as [#3028](https://github.com/ylcn91/pilot/issues/3028))
 **Priority**: P1 (recurring failure mode, masks real progress)
 **Estimated Effort**: M (5-7 person-hours)
 **Risk Level**: Low-Medium (resource limits + retry classification changes touch hot paths; mitigated by feature flag + tests)

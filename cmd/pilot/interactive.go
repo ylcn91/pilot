@@ -12,10 +12,10 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/executor"
-	"github.com/qf-studio/pilot/internal/memory"
-	"github.com/qf-studio/pilot/internal/replay"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/executor"
+	"github.com/ylcn91/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/replay"
 )
 
 var (

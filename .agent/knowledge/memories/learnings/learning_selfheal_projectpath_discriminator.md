@@ -14,7 +14,7 @@ via `SelfHealExecutionAfterMerge` (`internal/memory/store.go`), called from the 
 **The bug (3 compounding, found 2026-06-01 on TASK-322 Wave 3):**
 1. **Wrong discriminator (regression from D3/#3354).** D3 added `AND project_path = ?` to prevent
    cross-repo clobber, and the controller passed `projectPath := c.owner + "/" + c.repo`
-   (`qf-studio/pilot`). But `executions.project_path` stores the **absolute filesystem path**
+   (`ylcn91/pilot`). But `executions.project_path` stores the **absolute filesystem path**
    (`/Users/.../pilot`; set at `runner.go` `ProjectPath: executionPath`). The two never match →
    self-heal matched **0 rows on every merge path** since #3354. Confirmed against the live DB
    `~/.pilot/data/pilot.db`.

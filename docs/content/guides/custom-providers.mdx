@@ -5,7 +5,7 @@ import { Callout, Steps, Tabs } from 'nextra/components'
 Route Pilot to any Anthropic-compatible endpoint — Z.AI (GLM), OpenRouter, LiteLLM, or a self-hosted proxy — from a single config block. Pilot propagates the base URL, auth token, and default model to both its own LLM calls **and** the Claude Code subprocess, so you don't need to edit `~/.claude/settings.json`.
 
 <Callout type="info">
-  Shipped in v2.98.0 ([GH-2287](https://github.com/qf-studio/pilot/issues/2287), [GH-2371](https://github.com/qf-studio/pilot/issues/2371)). Requires an endpoint that speaks Anthropic's Messages API wire format.
+  Shipped in v2.98.0 ([GH-2287](https://github.com/ylcn91/pilot/issues/2287), [GH-2371](https://github.com/ylcn91/pilot/issues/2371)). Requires an endpoint that speaks Anthropic's Messages API wire format.
 </Callout>
 
 ## Why
@@ -188,7 +188,7 @@ executor:
 Use `type: "openai-api"` to drive Pilot with any provider that exposes an OpenAI-compatible `/v1/chat/completions` endpoint — **without a CLI wrapper**.
 
 <Callout type="info">
-  Shipped in v2.105.0 ([GH-2382](https://github.com/qf-studio/pilot/issues/2382)). Use this backend when you want direct HTTP control (no `claude`/`qwen` CLI installed) or when your provider speaks OpenAI wire format but not Anthropic format.
+  Shipped in v2.105.0 ([GH-2382](https://github.com/ylcn91/pilot/issues/2382)). Use this backend when you want direct HTTP control (no `claude`/`qwen` CLI installed) or when your provider speaks OpenAI wire format but not Anthropic format.
 </Callout>
 
 ### When to use `openai-api` vs `claude-code` with `api_base_url`

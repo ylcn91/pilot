@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/dashboard"
-	"github.com/qf-studio/pilot/internal/executor"
+	"github.com/ylcn91/pilot/internal/dashboard"
+	"github.com/ylcn91/pilot/internal/executor"
 )
 
 // =============================================================================

@@ -14,7 +14,7 @@ Pilot is source-available under [BSL 1.1](LICENSE). Contributions are welcome an
 ### Clone and Build
 
 ```bash
-git clone https://github.com/qf-studio/pilot.git
+git clone https://github.com/ylcn91/pilot.git
 cd pilot
 make build
 ```
@@ -43,7 +43,7 @@ make fmt
 
 ### Report Bugs
 
-Open a [GitHub Issue](https://github.com/qf-studio/pilot/issues/new) with:
+Open a [GitHub Issue](https://github.com/ylcn91/pilot/issues/new) with:
 - Steps to reproduce
 - Expected vs actual behavior
 - Pilot version (`pilot --version`)
@@ -105,7 +105,7 @@ Never use realistic API key patterns in test code. GitHub push protection blocks
 token := "xoxb-123456789012-1234567890123-abcdefghij"
 
 // Good — use test utilities
-import "github.com/qf-studio/pilot/internal/testutil"
+import "github.com/ylcn91/pilot/internal/testutil"
 token := testutil.FakeSlackBotToken
 ```
 

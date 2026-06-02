@@ -15,33 +15,11 @@ var conventionalCommitRE = regexp.MustCompile(`^(feat|fix|chore|refactor|test|do
 
 // envBypassIssueAllowlist is the env var that bypasses the repo allowlist check at
 // the CreatePilotIssue level. Must match executor.envBypassRepoAllowlist.
-// The protected upstream repo is never bypassable.
 const envBypassIssueAllowlist = "PILOT_ALLOW_UNMANAGED_REPO"
 
-const (
-	protectedUpstreamOwner = "qf-studio"
-	protectedUpstreamRepo  = "pilot"
-)
-
-// envDisableIssueCreation is the global kill-switch that disables ALL GitHub
-// issue creation. Added after the GH-201 OAuth-cascade incident, where a daemon
-// pointed at the upstream repo re-dispatched a closed parent and spawned hundreds
-// of hallucinated "feat(auth): add OAuth provider integration" sub-issues. When
-// set truthy ("1"/"true"/"yes"/"on") every creation chokepoint refuses to create.
-const envDisableIssueCreation = "PILOT_DISABLE_ISSUE_CREATION"
-
-// ErrIssueCreationDisabled is returned by the creation chokepoints when the
-// kill-switch is engaged. Callers should treat it as a clean skip, not a failure.
-var ErrIssueCreationDisabled = errors.New("github issue creation disabled (PILOT_DISABLE_ISSUE_CREATION)")
-
-// IssueCreationDisabled reports whether the issue-creation kill-switch is engaged.
-func IssueCreationDisabled() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(envDisableIssueCreation))) {
-	case "1", "true", "yes", "on":
-		return true
-	}
-	return false
-}
+// ErrIssueCreationDisabled is returned by creation chokepoints when the caller
+// has not explicitly enabled GitHub issue creation on the client.
+var ErrIssueCreationDisabled = errors.New("github issue creation disabled")
 
 // IssueAllowlist is the minimal surface CreatePilotIssue needs to validate that the
 // target (owner, repo) is in the user's configured project list. executor.RepoAllowlist
@@ -84,7 +62,7 @@ func AllowAllIssueRepos() IssueAllowlist { return allowAllIssueRepos{} }
 // Returns an error if the title does not match conventional-commits format, if the
 // allowlist rejects the repo, or if the GitHub API call fails.
 func CreatePilotIssue(ctx context.Context, c *Client, allow IssueAllowlist, owner, repo, title, body string, labels []string) (*Issue, error) {
-	if IssueCreationDisabled() {
+	if !c.IssueCreationEnabled() {
 		slog.Warn("CreatePilotIssue skipped: issue creation disabled",
 			"component", "adapters.github.issue_create",
 			"owner", owner,
@@ -110,10 +88,6 @@ func CreatePilotIssue(ctx context.Context, c *Client, allow IssueAllowlist, owne
 // but is defined here to avoid the executor→github import cycle.
 func validateIssueRepo(allow IssueAllowlist, owner, repo string) error {
 	bypass := os.Getenv(envBypassIssueAllowlist) == "1"
-
-	if isProtectedUpstreamRepo(owner, repo) {
-		return fmt.Errorf("refusing to create issues on protected upstream %s/%s", owner, repo)
-	}
 
 	if allow == nil {
 		// C7 (TASK-347): fail closed to match executor.ValidateTargetRepo — a future
@@ -148,8 +122,4 @@ func validateIssueRepo(allow IssueAllowlist, owner, repo string) error {
 
 	return fmt.Errorf("%s/%s not in configured projects [%s]",
 		owner, repo, strings.Join(allow.ConfiguredRepos(), ","))
-}
-
-func isProtectedUpstreamRepo(owner, repo string) bool {
-	return strings.EqualFold(owner, protectedUpstreamOwner) && strings.EqualFold(repo, protectedUpstreamRepo)
 }

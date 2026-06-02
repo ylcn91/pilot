@@ -10,8 +10,8 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/replay"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/replay"
 )
 
 func newConfigCmd() *cobra.Command {

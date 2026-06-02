@@ -15,10 +15,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/dashboard"
-	"github.com/qf-studio/pilot/internal/memory"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/dashboard"
+	"github.com/ylcn91/pilot/internal/memory"
 )
 
 // App is the Wails application struct. Its exported methods are bound to the
@@ -743,7 +743,7 @@ func issueURL(taskID string) string {
 	id := issueIDFromTaskID(taskID)
 	if strings.HasPrefix(id, "GH-") {
 		num := strings.TrimPrefix(id, "GH-")
-		return fmt.Sprintf("https://github.com/qf-studio/pilot/issues/%s", num)
+		return fmt.Sprintf("https://github.com/ylcn91/pilot/issues/%s", num)
 	}
 	return ""
 }

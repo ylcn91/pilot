@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS autopilot_processed (
 );
 ```
 
-`LoadProcessedIssues()` (`state_store.go:306-322`) returns `map[int]bool` of all rows globally. The GitHub poller applies it to every repo it manages. With 5 polled repos (the user's daemon polls `qf-studio/pilot`, `qf-studio/gitnation-companion`, `alekspetrov/boston-team-group`, `alekspetrov/navigator`, `qf-studio/auth-service`), any issue number processed in one repo blocks the same number in all other repos. Issue #21 in `qf-studio/pilot` is collision-equivalent to issue #21 in `gitnation-companion`.
+`LoadProcessedIssues()` (`state_store.go:306-322`) returns `map[int]bool` of all rows globally. The GitHub poller applies it to every repo it manages. With 5 polled repos (the user's daemon polls `ylcn91/pilot`, `qf-studio/gitnation-companion`, `alekspetrov/boston-team-group`, `alekspetrov/navigator`, `qf-studio/auth-service`), any issue number processed in one repo blocks the same number in all other repos. Issue #21 in `ylcn91/pilot` is collision-equivalent to issue #21 in `gitnation-companion`.
 
 This is the architectural shape that lets Bug A escalate. Even after the user's manual `DELETE FROM autopilot_processed WHERE issue_number IN (21,22,26)`, the very next poll tick on any of the 5 repos finding a stale `executions` row would re-insert. We confirmed during cleanup that pre-existing rows for `task_id='GH-21' project_path=/Users/aleks.petrov/Projects/startups/auth-service` from 2026-04-04 still exist, although they did not directly cause the demo failure (the SQL in `HasCompletedExecution` also filters by `project_path`).
 

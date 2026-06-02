@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/comms"
-	"github.com/qf-studio/pilot/internal/testutil"
+	"github.com/ylcn91/pilot/internal/comms"
+	"github.com/ylcn91/pilot/internal/testutil"
 )
 
 // Compile-time interface check.

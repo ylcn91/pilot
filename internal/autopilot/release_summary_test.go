@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/adapters/github"
-	"github.com/qf-studio/pilot/internal/testutil"
+	"github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/testutil"
 )
 
 func TestNewReleaseSummaryGenerator_NilWhenNoAPIKey(t *testing.T) {

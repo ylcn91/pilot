@@ -9,10 +9,10 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/qf-studio/pilot/internal/adapters/telegram"
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/transcription"
 	"github.com/spf13/cobra"
+	"github.com/ylcn91/pilot/internal/adapters/telegram"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/transcription"
 )
 
 var noSleep bool

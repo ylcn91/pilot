@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/adapters/github"
-	"github.com/qf-studio/pilot/internal/testutil"
+	"github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/testutil"
 )
 
 // TestController_ReconcileOrphanPRs_RegistersOrphan verifies that a pilot/ PR

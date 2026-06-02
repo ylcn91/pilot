@@ -11,7 +11,7 @@ against GitHub issue-closed / PR-merged state. A row flips `failed → completed
 
 - **Bug 0 — D3 regression (PR #3354, merged 2026-06-01).** D3 scoped self-heal with
   `WHERE task_id=? AND project_path=? AND status='failed'`, and the controller passes
-  `projectPath := c.owner + "/" + c.repo` (`qf-studio/pilot`). But `executions.project_path` stores
+  `projectPath := c.owner + "/" + c.repo` (`ylcn91/pilot`). But `executions.project_path` stores
   the **absolute filesystem path** (`/Users/.../pilot` — set at `runner.go:1878 ProjectPath: executionPath`;
   confirmed in the live DB: `~/.pilot/data/pilot.db`). The two never match → self-heal updates **zero
   rows on every merge path**, controller-driven included. D3's intent (prevent cross-repo clobber) was

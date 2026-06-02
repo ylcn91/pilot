@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/testutil"
+	"github.com/ylcn91/pilot/internal/testutil"
 )
 
 // TestPoller_Sequential_FreshCandidate_MergedWorkGuard covers GH-3269 fix 1:

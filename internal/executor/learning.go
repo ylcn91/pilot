@@ -3,7 +3,7 @@ package executor
 import (
 	"context"
 
-	"github.com/qf-studio/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/memory"
 )
 
 // LearningRecorder records execution outcomes for pattern learning.

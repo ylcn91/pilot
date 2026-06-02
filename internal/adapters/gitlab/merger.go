@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // MergeWaitResult represents the outcome of waiting for an MR to merge

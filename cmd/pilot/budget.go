@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/qf-studio/pilot/internal/budget"
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/memory"
 	"github.com/spf13/cobra"
+	"github.com/ylcn91/pilot/internal/budget"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/memory"
 )
 
 // Budget status TUI constants

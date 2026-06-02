@@ -8,7 +8,7 @@ NEVER allow the bench agent to access oracle test files (test_outputs.py, test.s
 
 **Why:** Harbor disqualified our 82.9% #1 submission because the agent could read oracle tests. Three violation vectors: (1) test files copied to /tests/ before execution, (2) quality gates running pytest during execution, (3) bootstrap context dumping test file contents. All three had to be removed.
 
-**Plus a fourth vector found 2026-04-25:** the **prompt itself** can be a violation. `internal/executor/prompt_builder.go:321` (`buildLocalModePrompt`) instructed the agent to `cat /tests/test_outputs.py`. Even when containment removed the file at runtime, the prompt language itself is a scaffold-level oracle hint comparable to ForgeCode's AGENTS.md (which got their score adjusted -10pp). Pilot's source code is public — Harbor reviewers WILL read it. Fixed in qf-studio/pilot#2392 (Apr 2026).
+**Plus a fourth vector found 2026-04-25:** the **prompt itself** can be a violation. `internal/executor/prompt_builder.go:321` (`buildLocalModePrompt`) instructed the agent to `cat /tests/test_outputs.py`. Even when containment removed the file at runtime, the prompt language itself is a scaffold-level oracle hint comparable to ForgeCode's AGENTS.md (which got their score adjusted -10pp). Pilot's source code is public — Harbor reviewers WILL read it. Fixed in ylcn91/pilot#2392 (Apr 2026).
 
 **How to apply:** Before ANY bench run, verify:
 1. Test files are NOT copied into the container before pilot runs

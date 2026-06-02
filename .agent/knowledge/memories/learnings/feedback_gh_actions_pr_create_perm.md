@@ -42,9 +42,9 @@ disabled and unchecked** — repo cannot override the org policy.
 made by `GITHUB_TOKEN` (e.g. `gh pr merge --auto`) do NOT trigger other
 `push`-event workflows. If you need a chained pipeline, swap to a PAT.
 See [Docs deploy pipeline](reference_docs_deploy_pipeline.md) for the
-qf-studio/pilot resolution (PILOT_DOCS_PAT).
+ylcn91/pilot resolution (PILOT_DOCS_PAT).
 
-**Repo state at qf-studio/pilot (2026-04-27):**
+**Repo state at ylcn91/pilot (2026-04-27):**
 - Org-level: enabled
 - Repo-level: `can_approve_pull_request_reviews: true`
 - PAT secret `PILOT_DOCS_PAT` created for chained-trigger workflows.

@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/config"
 )
 
 func TestAllowCommand_ValidateUserID(t *testing.T) {

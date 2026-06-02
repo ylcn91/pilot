@@ -17,7 +17,7 @@ Nelya created the AWS infrastructure in `qf-studio/aws-infrastructure-pilot` rep
 - Management: `mgmt-infra-admin-runner` (t3.small, running), `pilot-agent-deployer-runner` (t3.medium, running)
 - Deployer runner: self-hosted `aws-agent-deployer` GH Actions label
 
-**Validation**: `qf-studio/pilot-moulage` repo — smoke tests (tools, DNS, HTTPS, S3, git clone, Claude Code).
+**Validation**: `ylcn91/pilot-moulage` repo — smoke tests (tools, DNS, HTTPS, S3, git clone, Claude Code).
 
 **Verified 2026-04-10**: All resources confirmed live. ASG idle (0 desired), 5 warm pool instances stopped, 2 mgmt runners active, S3 bucket present.
 

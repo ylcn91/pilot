@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/qf-studio/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/memory"
 )
 
 // PatternContext provides learned patterns for task execution

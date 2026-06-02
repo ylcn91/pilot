@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/memory"
 )
 
 // ModelRouter selects the appropriate model, timeout, and effort level based on task complexity.

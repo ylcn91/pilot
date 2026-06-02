@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/testutil"
+	"github.com/ylcn91/pilot/internal/testutil"
 )
 
 type fakeIssueAllowlist struct{ allowed bool }
@@ -17,28 +17,21 @@ type fakeIssueAllowlist struct{ allowed bool }
 func (f fakeIssueAllowlist) RepoIsAllowed(string, string, string) bool { return f.allowed }
 func (f fakeIssueAllowlist) ConfiguredRepos() []string                 { return []string{"owner/allowed"} }
 
-// TestIssueCreationKillSwitch verifies the PILOT_DISABLE_ISSUE_CREATION kill-switch:
-// when engaged, CreatePilotIssue refuses without touching the network and returns
-// ErrIssueCreationDisabled. Guards the GH-201 upstream-spam regression class.
-func TestIssueCreationKillSwitch(t *testing.T) {
-	t.Setenv("PILOT_DISABLE_ISSUE_CREATION", "1")
-	if !IssueCreationDisabled() {
-		t.Fatal("IssueCreationDisabled() = false, want true when env=1")
-	}
-	// nil client is safe: the guard returns before any HTTP call is made.
-	_, err := CreatePilotIssue(context.Background(), nil, AllowAllIssueRepos(),
+// TestIssueCreationDisabledByDefault verifies CreatePilotIssue refuses without
+// touching the network until the caller explicitly enables issue creation.
+func TestIssueCreationDisabledByDefault(t *testing.T) {
+	_, err := CreatePilotIssue(context.Background(), NewClient(testutil.FakeGitHubToken), AllowAllIssueRepos(),
 		"owner", "repo", "feat: add thing", "body", nil)
 	if !errors.Is(err, ErrIssueCreationDisabled) {
 		t.Fatalf("CreatePilotIssue err = %v, want ErrIssueCreationDisabled", err)
 	}
 }
 
-// TestIssueCreationEnabledByDefault verifies creation is allowed when the
-// kill-switch env var is unset/empty (preserves default behavior and tests).
-func TestIssueCreationEnabledByDefault(t *testing.T) {
-	t.Setenv("PILOT_DISABLE_ISSUE_CREATION", "")
-	if IssueCreationDisabled() {
-		t.Fatal("IssueCreationDisabled() = true, want false when env empty")
+func TestIssueCreationCanBeEnabled(t *testing.T) {
+	c := NewClient(testutil.FakeGitHubToken)
+	c.SetIssueCreationEnabled(true)
+	if !c.IssueCreationEnabled() {
+		t.Fatal("IssueCreationEnabled() = false, want true after SetIssueCreationEnabled(true)")
 	}
 }
 
@@ -64,13 +57,6 @@ func TestValidateIssueRepo_FailClosed_C7(t *testing.T) {
 	}
 	if err := validateIssueRepo(fakeIssueAllowlist{allowed: false}, "owner", "repo"); err == nil {
 		t.Error("disallowed repo must error")
-	}
-}
-
-func TestValidateIssueRepo_BlocksProtectedUpstream(t *testing.T) {
-	t.Setenv(envBypassIssueAllowlist, "1")
-	if err := validateIssueRepo(AllowAllIssueRepos(), "qf-studio", "pilot"); err == nil {
-		t.Fatal("protected upstream must fail even with AllowAllIssueRepos and bypass env")
 	}
 }
 
@@ -136,6 +122,7 @@ func TestCreatePilotIssue_TitleValidation(t *testing.T) {
 			defer server.Close()
 
 			c := NewClientWithBaseURL(testutil.FakeGitHubToken, server.URL)
+			c.SetIssueCreationEnabled(true)
 			_, err := CreatePilotIssue(context.Background(), c, AllowAllIssueRepos(), "owner", "repo", tt.title, "body", []string{"pilot"})
 			if (err != nil) != tt.wantErr {
 				t.Errorf("createPilotIssue(%q) error = %v, wantErr %v", tt.title, err, tt.wantErr)
@@ -176,6 +163,7 @@ func TestCreatePilotIssue_APIForwarding(t *testing.T) {
 	defer server.Close()
 
 	c := NewClientWithBaseURL(testutil.FakeGitHubToken, server.URL)
+	c.SetIssueCreationEnabled(true)
 	issue, err := CreatePilotIssue(context.Background(), c, AllowAllIssueRepos(), "owner", "repo", wantTitle, wantBody, []string{"pilot"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

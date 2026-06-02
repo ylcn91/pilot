@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/memory"
 )
 
 // mockDashboardStore implements DashboardStore for testing.
@@ -581,7 +581,7 @@ func TestDashboardIssueURL(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"GH-100", "https://github.com/qf-studio/pilot/issues/100"},
+		{"GH-100", "https://github.com/ylcn91/pilot/issues/100"},
 		{"LINEAR-123", ""},
 		{"", ""},
 	}

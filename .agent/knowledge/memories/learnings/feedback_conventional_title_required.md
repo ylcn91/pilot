@@ -10,10 +10,10 @@ rejects PR creation otherwise, and Pilot will burn a full Claude Code run each
 retry attempt.
 
 **Why:** Observed on GH-2175 (2026-04-18). An issue titled "Migrate all
-alekspetrov/pilot references to qf-studio/pilot" produced 4 consecutive
+alekspetrov/pilot references to ylcn91/pilot" produced 4 consecutive
 failures ("PR creation refused: title is not a conventional commit") over
 12 minutes before a human renamed it to `chore(repo): replace
-alekspetrov/pilot and anthropics/pilot refs with qf-studio/pilot`.
+alekspetrov/pilot and anthropics/pilot refs with ylcn91/pilot`.
 
 **How to apply:**
 - When filing a new `pilot`-labeled issue, start the title with

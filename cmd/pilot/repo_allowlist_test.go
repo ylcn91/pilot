@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/config"
 )
 
 // TestRepoIsAllowed_WorktreeAcceptance verifies GH-3050 follow-up: a git

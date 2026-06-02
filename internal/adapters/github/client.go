@@ -68,10 +68,11 @@ type GraphQLError struct {
 
 // Client is a GitHub API client
 type Client struct {
-	token      string
-	httpClient *http.Client
-	baseURL    string       // For testing - defaults to githubAPIURL
-	retryOpts  RetryOptions // Retry config for doRequest; overridable in tests
+	token                string
+	httpClient           *http.Client
+	baseURL              string       // For testing - defaults to githubAPIURL
+	retryOpts            RetryOptions // Retry config for doRequest; overridable in tests
+	issueCreationEnabled bool
 }
 
 // NewClient creates a new GitHub client
@@ -84,6 +85,18 @@ func NewClient(token string) *Client {
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+// SetIssueCreationEnabled controls whether this client may create GitHub issues.
+func (c *Client) SetIssueCreationEnabled(enabled bool) {
+	if c != nil {
+		c.issueCreationEnabled = enabled
+	}
+}
+
+// IssueCreationEnabled reports whether this client may create GitHub issues.
+func (c *Client) IssueCreationEnabled() bool {
+	return c != nil && c.issueCreationEnabled
 }
 
 // NewClientWithBaseURL creates a new GitHub client with a custom base URL (for testing).
@@ -528,9 +541,7 @@ type IssueInput struct {
 
 // CreateIssue creates a new issue in a repository
 func (c *Client) CreateIssue(ctx context.Context, owner, repo string, input *IssueInput) (*Issue, error) {
-	// Kill-switch defense-in-depth: refuse the REST POST when issue creation is
-	// globally disabled (see ErrIssueCreationDisabled / GH-201 cascade).
-	if IssueCreationDisabled() {
+	if !c.IssueCreationEnabled() {
 		return nil, ErrIssueCreationDisabled
 	}
 	path := fmt.Sprintf("/repos/%s/%s/issues", owner, repo)

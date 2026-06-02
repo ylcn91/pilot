@@ -11,7 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/qf-studio/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/config"
 )
 
 func newProjectCmd() *cobra.Command {

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/testutil"
+	"github.com/ylcn91/pilot/internal/testutil"
 )
 
 // gh3270ProcessedStore is a minimal ProcessedStore for GH-3270 tests that
@@ -64,10 +64,10 @@ func (s *gh3270ProcessedStore) Load(source, repo string) (map[string]time.Time, 
 // A retriable failure (same shape but non-permanent error) MUST still unmark.
 func TestPoller_UnmarkProcessed_PermanentFailureRetainsMarker(t *testing.T) {
 	tests := []struct {
-		name         string
-		resultErr    error  // error returned by onIssueWithResult
-		wantMarked   bool   // should the durable row still be present after dispatch?
-		wantUnmarks  int    // expected Unmark() call count
+		name        string
+		resultErr   error // error returned by onIssueWithResult
+		wantMarked  bool  // should the durable row still be present after dispatch?
+		wantUnmarks int   // expected Unmark() call count
 	}{
 		{
 			name:        "permanent failure (no new commit produced) retains marker",

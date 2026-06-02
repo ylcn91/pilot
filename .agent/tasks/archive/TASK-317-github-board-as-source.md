@@ -2,7 +2,7 @@
 
 **Status:** ready to hand off to Pilot — spec hardened against executor no-op (durable fix tracked in TASK-320)
 **Priority:** P1 — prerequisite for driving `qf-studio/studio-sdk` from its Project board
-**Repo:** `qf-studio/pilot`
+**Repo:** `ylcn91/pilot`
 **Area:** `internal/adapters/github/`
 
 > ⚠️ **Pilot execution note (read first).** A prior dispatch (GH-3228) failed 4×

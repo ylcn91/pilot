@@ -12,7 +12,7 @@ labels: [cli, ux, onboarding, github]
 **Status**: Queued (issue filed, `pilot` label withheld — add manually to dispatch)
 **Priority**: P3 — quality-of-life
 **Created**: 2026-05-19
-**GitHub Issue**: https://github.com/qf-studio/pilot/issues/3017
+**GitHub Issue**: https://github.com/ylcn91/pilot/issues/3017
 
 ---
 
@@ -58,7 +58,7 @@ $ pilot project add
 ✓ Wrote adapters.github.token
 
 ? Pick a repo:
-  ▸ qf-studio/pilot           (private) — AI that ships your tickets
+  ▸ ylcn91/pilot           (private) — AI that ships your tickets
     qf-studio/navigator       (public)  — Plan-execute pipeline
     alex-petrov/dotfiles      (public)
     alex-petrov/scratch       (private)
@@ -70,7 +70,7 @@ $ pilot project add
 
 ✓ Project added: pilot
    Path:      /Users/alex/Projects/startups/pilot
-   GitHub:    qf-studio/pilot
+   GitHub:    ylcn91/pilot
    Branch:    main (detected)
    Navigator: enabled
    Default:   yes

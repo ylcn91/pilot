@@ -25,7 +25,7 @@ adapters:
   github:
     enabled: true
     token: "${GITHUB_TOKEN}"
-    repo: qf-studio/pilot
+    repo: ylcn91/pilot
     polling:
       enabled: true
       interval: 30s

@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/qf-studio/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/adapters/github"
 )
 
 // applySpecGuard runs the two-strike spec validation gate for a GitHub issue.

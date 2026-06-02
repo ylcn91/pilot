@@ -1,9 +1,9 @@
 # Pilot installer for Windows
-# Usage: irm https://raw.githubusercontent.com/qf-studio/pilot/main/install.ps1 | iex
+# Usage: irm https://raw.githubusercontent.com/ylcn91/pilot/main/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 
-$REPO = "qf-studio/pilot"
+$REPO = "ylcn91/pilot"
 $BINARY_NAME = "pilot.exe"
 $INSTALL_DIR = "$env:LOCALAPPDATA\pilot\bin"
 

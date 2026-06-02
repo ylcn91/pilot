@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // ComplexityClassifier uses Claude Code (Haiku model) to classify task complexity

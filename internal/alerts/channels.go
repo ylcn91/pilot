@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/adapters/slack"
-	"github.com/qf-studio/pilot/internal/adapters/telegram"
+	"github.com/ylcn91/pilot/internal/adapters/slack"
+	"github.com/ylcn91/pilot/internal/adapters/telegram"
 )
 
 // SlackChannel sends alerts to Slack

@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/config"
 )
 
 // Status represents feature or dependency status
@@ -139,7 +139,7 @@ var brewTapHTTPGet httpGetter = func(url string) (*http.Response, error) {
 // Uses unauthenticated GitHub API calls (public repo, 60 req/hour limit).
 func checkBrewTapHealth(get httpGetter) ConfigCheck {
 	const checkName = "brew-tap-token"
-	const runsURL = "https://api.github.com/repos/qf-studio/pilot/actions/workflows/release.yml/runs?per_page=1"
+	const runsURL = "https://api.github.com/repos/ylcn91/pilot/actions/workflows/release.yml/runs?per_page=1"
 
 	resp, err := get(runsURL)
 	if err != nil {
@@ -175,7 +175,7 @@ func checkBrewTapHealth(get httpGetter) ConfigCheck {
 	}
 
 	// Run failed — check if the failed step name contains "homebrew".
-	jobsURL := fmt.Sprintf("https://api.github.com/repos/qf-studio/pilot/actions/runs/%d/jobs", lastRun.ID)
+	jobsURL := fmt.Sprintf("https://api.github.com/repos/ylcn91/pilot/actions/runs/%d/jobs", lastRun.ID)
 	jobsResp, err := get(jobsURL)
 	if err != nil || jobsResp.StatusCode != http.StatusOK {
 		return ConfigCheck{

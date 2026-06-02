@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/adapters/linear"
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/adapters/linear"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 func linearPollerRegistration() PollerRegistration {

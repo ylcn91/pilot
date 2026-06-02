@@ -1,7 +1,7 @@
 package telegram
 
 import (
-	"github.com/qf-studio/pilot/internal/comms"
+	"github.com/ylcn91/pilot/internal/comms"
 	"testing"
 	"time"
 )

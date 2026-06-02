@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/qf-studio/pilot/internal/banner"
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/executor"
+	"github.com/ylcn91/pilot/internal/banner"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/executor"
 )
 
 // Persona represents the user's workflow persona

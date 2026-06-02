@@ -477,8 +477,8 @@ func TestExtractPRURL(t *testing.T) {
 		},
 		{
 			name:  "gh CLI already exists output",
-			input: "a pull request for branch `feature` into `main` already exists:\nhttps://github.com/qf-studio/pilot/pull/285",
-			want:  "https://github.com/qf-studio/pilot/pull/285",
+			input: "a pull request for branch `feature` into `main` already exists:\nhttps://github.com/ylcn91/pilot/pull/285",
+			want:  "https://github.com/ylcn91/pilot/pull/285",
 		},
 		{
 			name:  "URL with trailing text",

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/memory"
 )
 
 // mockMessenger captures messages sent by the command handler.

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // SchedulerConfig configures retry scheduler behavior

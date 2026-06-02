@@ -8,14 +8,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/qf-studio/pilot/e2e/mocks"
-	"github.com/qf-studio/pilot/internal/adapters/github"
-	"github.com/qf-studio/pilot/internal/approval"
-	"github.com/qf-studio/pilot/internal/autopilot"
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/executor"
-	"github.com/qf-studio/pilot/internal/memory"
-	"github.com/qf-studio/pilot/internal/teams"
+	"github.com/ylcn91/pilot/e2e/mocks"
+	"github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/approval"
+	"github.com/ylcn91/pilot/internal/autopilot"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/executor"
+	"github.com/ylcn91/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/teams"
 )
 
 // Harness holds all components wired together for a single test scenario.

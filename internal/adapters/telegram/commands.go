@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/briefs"
-	"github.com/qf-studio/pilot/internal/comms"
-	"github.com/qf-studio/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/briefs"
+	"github.com/ylcn91/pilot/internal/comms"
+	"github.com/ylcn91/pilot/internal/memory"
 )
 
 // CommandHandler processes bot commands with access to memory store

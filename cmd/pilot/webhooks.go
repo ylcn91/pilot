@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/webhooks"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/webhooks"
 )
 
 func newWebhooksCmd() *cobra.Command {

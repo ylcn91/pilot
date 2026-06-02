@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/adapters/skipreason"
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/adapters/skipreason"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // ExecutionMode determines how issues are processed

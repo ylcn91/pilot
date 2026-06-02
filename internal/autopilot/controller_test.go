@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/adapters/github"
-	"github.com/qf-studio/pilot/internal/approval"
-	"github.com/qf-studio/pilot/internal/memory"
-	"github.com/qf-studio/pilot/internal/testutil"
+	"github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/approval"
+	"github.com/ylcn91/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/testutil"
 )
 
 func TestNewController(t *testing.T) {
@@ -438,6 +438,7 @@ func TestController_ProcessPR_CIFailure(t *testing.T) {
 	cfg.CIPollInterval = 10 * time.Millisecond
 	cfg.CIWaitTimeout = 1 * time.Second
 	cfg.RequiredChecks = []string{"build", "test", "lint"}
+	cfg.AutoCreateIssues = true
 
 	c := NewController(cfg, ghClient, nil, "owner", "repo")
 	c.OnPRCreated(42, "https://github.com/owner/repo/pull/42", 10, "abc1234", "pilot/GH-10", "")
@@ -2848,6 +2849,7 @@ func TestController_CIFixCascadeLimit(t *testing.T) {
 	cfg.CIPollInterval = 10 * time.Millisecond
 	cfg.CIWaitTimeout = 1 * time.Second
 	cfg.MaxCIFixIterations = 3
+	cfg.AutoCreateIssues = true
 
 	c := NewController(cfg, ghClient, nil, "owner", "repo")
 	c.OnPRCreated(42, "https://github.com/owner/repo/pull/42", 10, "abc1234", "pilot/GH-10", "")
@@ -2928,6 +2930,7 @@ func TestController_CIFixCascade_UnderLimit(t *testing.T) {
 	cfg.CIPollInterval = 10 * time.Millisecond
 	cfg.CIWaitTimeout = 1 * time.Second
 	cfg.MaxCIFixIterations = 3
+	cfg.AutoCreateIssues = true
 
 	c := NewController(cfg, ghClient, nil, "owner", "repo")
 	c.OnPRCreated(42, "https://github.com/owner/repo/pull/42", 10, "abc1234", "pilot/GH-10", "")
@@ -2986,6 +2989,7 @@ func TestController_CIFixCascade_OriginalPR(t *testing.T) {
 	cfg.CIPollInterval = 10 * time.Millisecond
 	cfg.CIWaitTimeout = 1 * time.Second
 	cfg.MaxCIFixIterations = 3
+	cfg.AutoCreateIssues = true
 
 	c := NewController(cfg, ghClient, nil, "owner", "repo")
 	c.OnPRCreated(42, "https://github.com/owner/repo/pull/42", 10, "abc1234", "pilot/GH-10", "")
@@ -3544,6 +3548,7 @@ func TestHandleCIFailed_LearnsFromCIFailure(t *testing.T) {
 	ghClient := github.NewClientWithBaseURL(testutil.FakeGitHubToken, server.URL)
 	cfg := DefaultConfig()
 	cfg.Environment = EnvDev
+	cfg.AutoCreateIssues = true
 
 	c := NewController(cfg, ghClient, nil, "owner", "repo")
 	loop, cleanup := newTestLearningLoop(t)
@@ -3657,6 +3662,7 @@ func TestHandlePostMergeCI_LearnsFromCIFailure(t *testing.T) {
 	cfg.CIPollInterval = 10 * time.Millisecond
 	cfg.CIWaitTimeout = 1 * time.Second
 	cfg.RequiredChecks = []string{"e2e"}
+	cfg.AutoCreateIssues = true
 
 	c := NewController(cfg, ghClient, nil, "owner", "repo")
 	loop, cleanup := newTestLearningLoop(t)
@@ -4048,6 +4054,7 @@ func TestController_HandleReviewRequested_CreatesIssue(t *testing.T) {
 	ghClient := github.NewClientWithBaseURL(testutil.FakeGitHubToken, server.URL)
 	cfg := DefaultConfig()
 	cfg.ReviewFeedback = &ReviewFeedbackConfig{Enabled: true, MaxIterations: 3}
+	cfg.AutoCreateIssues = true
 
 	c := NewController(cfg, ghClient, nil, "owner", "repo")
 	c.SetNotifier(&mockNotifier{
@@ -5361,6 +5368,7 @@ func TestCIFixSizeGuard_OversizedPR_BlocksFixIssue(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Environment = EnvStage
 	cfg.MaxCIFixPRSize = 200
+	cfg.AutoCreateIssues = true
 
 	c := NewController(cfg, ghClient, nil, "owner", "repo")
 
@@ -5436,6 +5444,7 @@ func TestCIFixSizeGuard_SmallPR_AllowsFixIssue(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Environment = EnvStage
 	cfg.MaxCIFixPRSize = 200
+	cfg.AutoCreateIssues = true
 
 	c := NewController(cfg, ghClient, nil, "owner", "repo")
 
@@ -5499,6 +5508,7 @@ func TestCIFixSizeGuard_APIError_FailOpen(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Environment = EnvStage
 	cfg.MaxCIFixPRSize = 200
+	cfg.AutoCreateIssues = true
 
 	c := NewController(cfg, ghClient, nil, "owner", "repo")
 

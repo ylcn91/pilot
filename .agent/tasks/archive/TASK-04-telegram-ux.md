@@ -87,7 +87,7 @@ Make Telegram bot intelligent - detect intent, confirm tasks, show clean output.
 --- PASS: TestFormatTaskResult
 ... (51 total tests)
 PASS
-ok  	github.com/qf-studio/pilot/internal/adapters/telegram
+ok  	github.com/ylcn91/pilot/internal/adapters/telegram
 ```
 
 ---

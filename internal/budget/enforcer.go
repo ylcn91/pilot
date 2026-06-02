@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/logging"
-	"github.com/qf-studio/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/memory"
 )
 
 // UsageProvider interface for getting usage data

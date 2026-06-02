@@ -4,8 +4,8 @@
 
 ## Who is reading this file?
 
-This project ships an autonomous executor (Pilot) that runs Claude Code
-against this very repo to implement tickets. That means this `CLAUDE.md`
+This project ships an autonomous executor (Pilot) that runs Codex
+against this very repo to implement tickets. That means this `AGENTS.md`
 is read by two very different kinds of sessions:
 
 1. **Pilot-executor sessions** — spawned by `pilot start` to implement a
@@ -27,7 +27,7 @@ asking open-ended questions about the project, plan via Navigator.
 
 ## ⚠️ Git & Worktree Discipline (ALL sessions)
 
-Multiple sessions (interactive terminals, Claude Code sessions, and the
+Multiple sessions (interactive terminals, Codex sessions, and the
 Pilot daemon) operate on this repo **concurrently**. Running `git checkout`
 in the shared repo root rips the branch out from under every other session
 — this has repeatedly left the root on a stranger's PR branch with orphaned
@@ -38,8 +38,8 @@ uncommitted changes and a graveyard of stashes.
 - ❌ **NEVER `git checkout <branch>` / `git switch` in the repo root**
   (`/Users/.../startups/pilot`). Keep the root pinned to `main`; treat it as
   reference + build-from-main only.
-- ✅ **Do all branch work in your own worktree.** Interactive Claude sessions:
-  use the worktree flow (sessions land in `.claude/worktrees/<name>`). The
+- ✅ **Do all branch work in your own worktree.** Interactive Codex sessions:
+  use the worktree flow (sessions land in `.Codex/worktrees/<name>`). The
   Pilot daemon already isolates via `pilot-worktree-GH-*` — leave those alone.
 - ✅ Base worktrees on `origin/main` (fresh), not on whatever the root
   happens to be pointing at.
@@ -98,12 +98,12 @@ and push — that's their entire job.
 
 ## Memory: Navigator only (auto-memory disabled for this project)
 
-**This project uses Navigator's memory system as the single source of truth for persistent knowledge.** The Claude Code auto-memory system at `~/.claude/projects/-Users-aleks-petrov-Projects-startups-pilot/memory/` is **deprecated for new writes** in this project.
+**This project uses Navigator's memory system as the single source of truth for persistent knowledge.** The Codex auto-memory system at `~/.Codex/projects/-Users-aleks-petrov-Projects-startups-pilot/memory/` is **deprecated for new writes** in this project.
 
 **Rules:**
 
-- ❌ **Do not write to** `~/.claude/projects/.../memory/MEMORY.md` or any file under that directory. Treat the auto-memory `MEMORY.md` index as read-only legacy context.
-- ❌ Do not invoke the auto-memory "save a memory" flow described in the user's global instructions (the `user`/`feedback`/`project`/`reference` taxonomy under `~/.claude/projects/...`).
+- ❌ **Do not write to** `~/.Codex/projects/.../memory/MEMORY.md` or any file under that directory. Treat the auto-memory `MEMORY.md` index as read-only legacy context.
+- ❌ Do not invoke the auto-memory "save a memory" flow described in the user's global instructions (the `user`/`feedback`/`project`/`reference` taxonomy under `~/.Codex/projects/...`).
 - ✅ **Write all new memory to Navigator:**
   - **Experiential knowledge** (patterns, pitfalls, decisions, learnings) → `.agent/knowledge/memories/{type}s/{slug}.md`, with the entry indexed in `.agent/knowledge/graph.json`. The four types are `pattern`, `pitfall`, `decision`, `learning` (see `nav-graph` skill / `memory_writer.py` for the file template).
   - **Architecture / long-lived system docs** → `.agent/system/{topic}.md`
@@ -125,7 +125,7 @@ and push — that's their entire job.
 
 Pilot is an autonomous AI development pipeline that:
 - Receives tickets from Linear/Jira/Asana
-- Plans and executes implementation using Claude Code
+- Plans and executes implementation using Codex
 - Creates PRs and notifies via Slack
 - Learns patterns across projects
 
@@ -147,7 +147,7 @@ make dev
 ```
 Gateway (Go)      → WebSocket control plane + HTTP webhooks
 Adapters          → Telegram, GitHub, GitLab, Azure DevOps, Linear, Jira, Slack
-Executor          → Claude Code process management + Navigator integration
+Executor          → Codex process management + Navigator integration
 Autopilot         → CI monitoring, auto-merge, feedback loop, release pipeline
 Memory            → SQLite + knowledge graph
 Dashboard         → Terminal UI (bubbletea)
@@ -161,7 +161,7 @@ pilot/
 ├── internal/
 │   ├── gateway/         # WebSocket + HTTP server
 │   ├── adapters/        # Telegram, GitHub, GitLab, AzureDevOps, Linear, Jira, Slack
-│   ├── executor/        # Claude Code runner + intent judge
+│   ├── executor/        # Codex runner + intent judge
 │   ├── autopilot/       # CI monitor, auto-merge, release pipeline
 │   ├── alerts/          # Alert engine + multi-channel dispatch
 │   ├── memory/          # SQLite + knowledge graph
@@ -253,7 +253,7 @@ Documentation in `.agent/`:
 - ❌ No secrets in code
 - ❌ No package.json modifications without approval
 - ❌ No bulk doc loading (use Navigator lazy loading)
-- ❌ No Claude Code mentions in commits
+- ❌ No Codex mentions in commits
 - ❌ No `git checkout`/`git switch` in the repo root — work in a worktree (see "Git & Worktree Discipline")
 
 ## Development Workflow

@@ -8,11 +8,11 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/adapters/asana"
-	"github.com/qf-studio/pilot/internal/adapters/jira"
-	"github.com/qf-studio/pilot/internal/adapters/plane"
-	"github.com/qf-studio/pilot/internal/gateway"
-	"github.com/qf-studio/pilot/internal/testutil"
+	"github.com/ylcn91/pilot/internal/adapters/asana"
+	"github.com/ylcn91/pilot/internal/adapters/jira"
+	"github.com/ylcn91/pilot/internal/adapters/plane"
+	"github.com/ylcn91/pilot/internal/gateway"
+	"github.com/ylcn91/pilot/internal/testutil"
 )
 
 // computeTestHMAC produces a valid HMAC-SHA256 for handler gating tests.

@@ -163,5 +163,5 @@ Manual smoke (after merge + hot-upgrade, requires TASK-26):
 
 ---
 
-**GitHub Issue**: [#2642](https://github.com/qf-studio/pilot/issues/2642)
+**GitHub Issue**: [#2642](https://github.com/ylcn91/pilot/issues/2642)
 **Last Updated**: 2026-05-05

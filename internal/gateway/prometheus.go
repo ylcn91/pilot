@@ -6,8 +6,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/alerts"
-	"github.com/qf-studio/pilot/internal/autopilot"
+	"github.com/ylcn91/pilot/internal/alerts"
+	"github.com/ylcn91/pilot/internal/autopilot"
 )
 
 // PrometheusExporter formats metrics for Prometheus scraping.

@@ -3,8 +3,8 @@ package linear
 import (
 	"log/slog"
 
-	"github.com/qf-studio/pilot/internal/logging"
-	"github.com/qf-studio/pilot/internal/text"
+	"github.com/ylcn91/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/text"
 )
 
 // sanitizeIssueInPlace strips invisible Unicode format characters from

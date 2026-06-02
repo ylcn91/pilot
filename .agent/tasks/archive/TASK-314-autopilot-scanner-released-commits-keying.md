@@ -29,7 +29,7 @@ The merged-PR scanner builds a `releasedCommits` set keyed by `release.TargetCom
 $ gh release view v2.156.0 --json targetCommitish
 {"targetCommitish":"main"}   # branch ref, not the merge SHA
 
-$ gh api repos/qf-studio/pilot/git/refs/tags/v2.156.0 --jq '.object.sha'
+$ gh api repos/ylcn91/pilot/git/refs/tags/v2.156.0 --jq '.object.sha'
 5e9298ca9acd7ef02c4259512ac11920a7305db4   # this IS PR #3205's merge SHA
 ```
 

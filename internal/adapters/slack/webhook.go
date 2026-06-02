@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // InteractionHandler handles Slack interactive component callbacks

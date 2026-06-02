@@ -12,10 +12,10 @@ import (
 // added in GH-3136: a non-zero codesign exit must surface a Gatekeeper-aware error.
 func TestInstallBinary_PrepareForExecution(t *testing.T) {
 	tests := []struct {
-		name        string
-		prepareErr  error
-		wantErr     bool
-		wantErrMsg  string
+		name       string
+		prepareErr error
+		wantErr    bool
+		wantErrMsg string
 	}{
 		{
 			name:       "happy path — codesign succeeds",

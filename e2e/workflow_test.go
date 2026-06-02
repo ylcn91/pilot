@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qf-studio/pilot/e2e/mocks"
-	"github.com/qf-studio/pilot/internal/adapters/github"
-	"github.com/qf-studio/pilot/internal/autopilot"
-	"github.com/qf-studio/pilot/internal/testutil"
+	"github.com/ylcn91/pilot/e2e/mocks"
+	"github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/autopilot"
+	"github.com/ylcn91/pilot/internal/testutil"
 )
 
 // TestFullWorkflow_IssueToMerge tests the complete issue→execution→PR→CI→merge cycle.

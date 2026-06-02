@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/executor/workflow"
+	"github.com/ylcn91/pilot/internal/executor/workflow"
 )
 
 func writeWorkflow(t *testing.T, dir, content string) {

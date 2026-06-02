@@ -2,7 +2,7 @@
 
 **Status:** ✅ **DONE — full lifecycle LIVE-VERIFIED end-to-end (2026-06-01)**. Board-sourced `studio-sdk#12` walked `Todo → In Progress → In Review → Done` automatically (~5 min board-placement → squash-merge); `Blocked` verified manually last session. All five columns exercised. Code complete + go-live configured (board 5 cols, global adapter dedicated to studio-sdk, gitnation-companion excluded). Closeable.
 **Priority:** P1 — completes the board-as-source-of-truth roadmap (Studio SDK)
-**Repo:** `qf-studio/pilot` (code) — drives `qf-studio/studio-sdk` work via `qf-studio/projects/1`
+**Repo:** `ylcn91/pilot` (code) — drives `qf-studio/studio-sdk` work via `qf-studio/projects/1`
 **Depends on:** #3228 / TASK-317 (`FindIssuesFromProject`, read path) — must merge first
 **Decisions (2026-05-29):** **full 5-state loop (Option B)** · Studio SDK board only · the `ghp_` PAT in `~/.pilot/config.yaml` (scopes `project, read:org, repo`) is the board token
 
@@ -140,7 +140,7 @@ Both live in the autopilot controller, alongside the existing Done/Failed calls.
 ### PR-4 / runbook — Auth (workstream F, operational)
 Fine-grained PAT (chosen). Document in an SOP (`.agent/sops/integrations/`):
 - Create a fine-grained PAT at github.com/settings/tokens (qf-studio resource owner)
-- Repository access: `qf-studio/studio-sdk` (+ `qf-studio/pilot` if it drives itself later)
+- Repository access: `qf-studio/studio-sdk` (+ `ylcn91/pilot` if it drives itself later)
 - Permissions: **Projects: Read and write** (org-level), **Issues: Read and write**,
   **Contents/Pull requests** as the executor already needs
 - Set as the GitHub adapter token (or a dedicated `GITHUB_PROJECT_TOKEN` if we want
@@ -196,7 +196,7 @@ All four workstreams are implemented and merged. Do **not** re-file these:
 
 ## Execution-ready issues (file once #3228 lands + columns added)
 
-Each becomes a `pilot`-labeled issue in `qf-studio/pilot`. Sequencing per the diagram below.
+Each becomes a `pilot`-labeled issue in `ylcn91/pilot`. Sequencing per the diagram below.
 
 1. **`feat(github): move board card to In Progress on issue pickup`** — workstream B / PR-1. Add `WithBoardSync` poller option; on accepted dispatch call `UpdateProjectItemStatus(nodeID, statuses.InProgress)`; node ID from `Issue.NodeID` (board read) or `GetIssueNodeID` fallback; no-op when board disabled/nodeID empty. Tests: fake GraphQL transport.
 2. **`feat(autopilot): move card to In Review on PR open + Blocked on failure`** — workstream C+D / PR-2. In `OnPRCreated` write `statuses.Review`; extend failure handling (exec-fail + CI-fail) to write `statuses.Failed`; extend `WithProjectBoardSync` to carry InProgress/Review (backward-compatible). Tests for both transitions.

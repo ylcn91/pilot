@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/memory"
 )
 
 func setupSchedulerTestStore(t *testing.T) (*memory.Store, func()) {

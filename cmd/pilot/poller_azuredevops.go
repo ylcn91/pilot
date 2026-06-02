@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/adapters/azuredevops"
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/adapters/azuredevops"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 func azuredevopsPollerRegistration() PollerRegistration {

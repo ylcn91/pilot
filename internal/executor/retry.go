@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // RetryStrategy defines how to retry based on error type.
@@ -97,7 +97,7 @@ func DefaultRetryConfig() *RetryConfig {
 			TimeoutMultiplier: 1.5,
 		},
 		OOMKilled: &RetryStrategy{
-			MaxAttempts:       2,    // Retry once — GH-22/sub-43 succeeded in 33s on first retry
+			MaxAttempts:       2, // Retry once — GH-22/sub-43 succeeded in 33s on first retry
 			InitialBackoff:    10 * time.Second,
 			BackoffMultiplier: 1.0, // flat backoff; OOM is not time-sensitive
 		},

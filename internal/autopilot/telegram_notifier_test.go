@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/adapters/telegram"
+	"github.com/ylcn91/pilot/internal/adapters/telegram"
 )
 
 func newTestNotifier(t *testing.T, captureText *string) (*TelegramNotifier, *httptest.Server) {

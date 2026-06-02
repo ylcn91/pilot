@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/health"
 	"github.com/spf13/cobra"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/health"
 )
 
 func newDoctorCmd() *cobra.Command {

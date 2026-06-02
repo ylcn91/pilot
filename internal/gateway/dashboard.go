@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/memory"
 )
 
 // GitGraphFetcher fetches git graph state for a project path and commit limit.
@@ -343,7 +343,7 @@ func dashboardIssueURL(taskID string) string {
 	id := issueIDFromTaskID(taskID)
 	if strings.HasPrefix(id, "GH-") {
 		num := strings.TrimPrefix(id, "GH-")
-		return fmt.Sprintf("https://github.com/qf-studio/pilot/issues/%s", num)
+		return fmt.Sprintf("https://github.com/ylcn91/pilot/issues/%s", num)
 	}
 	return ""
 }

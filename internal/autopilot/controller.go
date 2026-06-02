@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/adapters/github"
-	"github.com/qf-studio/pilot/internal/approval"
-	"github.com/qf-studio/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/approval"
+	"github.com/ylcn91/pilot/internal/memory"
 )
 
 // approvalPersister is the subset of memory.Store used for approval persistence

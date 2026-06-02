@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/adapters/azuredevops"
-	"github.com/qf-studio/pilot/internal/adapters/github"
-	"github.com/qf-studio/pilot/internal/adapters/gitlab"
-	"github.com/qf-studio/pilot/internal/budget"
-	"github.com/qf-studio/pilot/internal/executor"
+	"github.com/ylcn91/pilot/internal/adapters/azuredevops"
+	"github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/adapters/gitlab"
+	"github.com/ylcn91/pilot/internal/budget"
+	"github.com/ylcn91/pilot/internal/executor"
 )
 
 // TestHandleIssueGeneric_BudgetExceeded verifies that handleIssueGeneric returns early

@@ -958,6 +958,7 @@ func TestParsePRNumber(t *testing.T) {
 
 func TestSetOnSubIssuePRCreated(t *testing.T) {
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 
 	// Callback should be nil by default
 	if runner.onSubIssuePRCreated != nil {
@@ -1016,7 +1017,7 @@ func TestParseIssueNumber(t *testing.T) {
 	}{
 		{
 			name:     "standard github issue url",
-			url:      "https://github.com/qf-studio/pilot/issues/123",
+			url:      "https://github.com/ylcn91/pilot/issues/123",
 			expected: 123,
 		},
 		{
@@ -1108,6 +1109,7 @@ func (m *mockSubIssueCreator) CreateIssue(ctx context.Context, parentID, title, 
 
 func TestSetSubIssueCreator(t *testing.T) {
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 
 	// Should be nil by default
 	if runner.subIssueCreator != nil {
@@ -1123,8 +1125,28 @@ func TestSetSubIssueCreator(t *testing.T) {
 	}
 }
 
+func TestCreateSubIssues_DisabledByDefault(t *testing.T) {
+	runner := NewRunner()
+	plan := &EpicPlan{
+		ParentTask: &Task{
+			ID:            "APP-100",
+			SourceAdapter: "linear",
+			SourceIssueID: "APP-100",
+		},
+		Subtasks: []PlannedSubtask{
+			{Title: "feat(linear): add first subtask", Description: "Do first thing", Order: 1},
+		},
+	}
+
+	_, err := runner.CreateSubIssues(context.Background(), plan, "")
+	if !errors.Is(err, ErrIssueCreationDisabled) {
+		t.Fatalf("CreateSubIssues error = %v, want ErrIssueCreationDisabled", err)
+	}
+}
+
 func TestCreateSubIssues_UsesAdapterForNonGitHub(t *testing.T) {
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 
 	mock := &mockSubIssueCreator{
 		Returns: []mockCreateIssueReturn{
@@ -1196,6 +1218,7 @@ func TestCreateSubIssues_FallsBackToGitHubWhenNoAdapter(t *testing.T) {
 	// This test verifies the dispatch logic chooses GitHub path when SourceAdapter is empty.
 	// We test this by verifying the mock is NOT called, regardless of gh CLI outcome.
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 
 	mock := &mockSubIssueCreator{
 		Returns: []mockCreateIssueReturn{
@@ -1230,6 +1253,7 @@ func TestCreateSubIssues_FallsBackToGitHubWhenAdapterIsGitHub(t *testing.T) {
 	// This test verifies the dispatch logic chooses GitHub path when SourceAdapter is "github".
 	// We test this by verifying the mock is NOT called, regardless of gh CLI outcome.
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 
 	mock := &mockSubIssueCreator{
 		Returns: []mockCreateIssueReturn{
@@ -1265,6 +1289,7 @@ func TestCreateSubIssues_FallsBackToGitHubWhenNoCreator(t *testing.T) {
 	// This test verifies that when SubIssueCreator is nil, even with a non-GitHub
 	// SourceAdapter, we fall back to the GitHub path (and don't panic).
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 	// SubIssueCreator not set
 
 	plan := &EpicPlan{
@@ -1292,6 +1317,7 @@ func TestCreateSubIssues_FallsBackToGitHubWhenNoCreator(t *testing.T) {
 
 func TestCreateSubIssues_AdapterError(t *testing.T) {
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 
 	expectedErr := fmt.Errorf("Linear API error: rate limited")
 	mock := &mockSubIssueCreator{
@@ -1329,6 +1355,7 @@ func TestCreateSubIssues_AdapterError(t *testing.T) {
 func TestCreateSubIssues_AdapterWiresDependsOnAnnotations(t *testing.T) {
 	// GH-1794: Verify DependsOn annotations are written into sub-issue bodies
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 
 	mock := &mockSubIssueCreator{
 		Returns: []mockCreateIssueReturn{
@@ -1384,6 +1411,7 @@ func TestCreateSubIssues_AdapterWiresDependsOnAnnotations(t *testing.T) {
 func TestCreateSubIssues_AdapterNoDependsOnWhenEmpty(t *testing.T) {
 	// GH-1794: Verify no annotation is added when DependsOn is empty
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 
 	mock := &mockSubIssueCreator{
 		Returns: []mockCreateIssueReturn{
@@ -1497,6 +1525,7 @@ func (m *mockSubIssueLinker) LinkSubIssue(_ context.Context, owner, repo string,
 
 func TestSetSubIssueLinker_WiresField(t *testing.T) {
 	r := NewRunner()
+	r.SetIssueCreationEnabled(true)
 	if r.subIssueLinker != nil {
 		t.Fatal("expected nil subIssueLinker before Set")
 	}
@@ -1520,6 +1549,7 @@ func TestCreateSubIssues_LinkerInvokedAfterGhCreate(t *testing.T) {
 
 	mock := &mockSubIssueLinker{}
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 	runner.SetSubIssueLinker(mock)
 	runner.SetRepoAllowlist(&staticAllowlist{repos: []string{"ylcn91/pilot"}})
 	worktree := makeAllowedGitHubWorktree(t, "ylcn91/pilot")
@@ -1584,6 +1614,7 @@ func TestCreateSubIssues_LinkerErrorIsNonFatal(t *testing.T) {
 		},
 	}
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 	runner.SetSubIssueLinker(mock)
 	runner.SetRepoAllowlist(&staticAllowlist{repos: []string{"ylcn91/pilot"}})
 	worktree := makeAllowedGitHubWorktree(t, "ylcn91/pilot")
@@ -1626,6 +1657,7 @@ func TestCreateSubIssues_LinkerSkippedWhenSourceRepoEmpty(t *testing.T) {
 
 	mock := &mockSubIssueLinker{}
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 	runner.SetSubIssueLinker(mock)
 	runner.SetRepoAllowlist(&staticAllowlist{repos: []string{"ylcn91/pilot"}})
 	worktree := makeAllowedGitHubWorktree(t, "ylcn91/pilot")
@@ -1853,6 +1885,7 @@ func TestApplyParentTypeScopeFallback_CascadeGuardEndToEnd(t *testing.T) {
 // the tracker verbatim; a synthetic fallback is used instead.
 func TestCreateSubIssues_RejectsAnalysisTitle(t *testing.T) {
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 
 	mock := &mockSubIssueCreator{
 		Returns: []mockCreateIssueReturn{
@@ -1905,9 +1938,11 @@ func TestCreateSubIssuesViaGitHub_InjectsAutopilotMetaMarker(t *testing.T) {
 	bodyFile := filepath.Join(t.TempDir(), "captured_body.txt")
 
 	// Fake "gh" binary that captures the --body argument and returns a valid URL.
+	// Parses argv for --body rather than a fixed position so the capture survives
+	// arg-order changes (e.g. the GH-3411 --repo flag inserted before --title).
 	fakeBin := t.TempDir()
 	script := filepath.Join(fakeBin, "gh")
-	scriptContent := fmt.Sprintf("#!/bin/sh\nprintf '%%s' \"$6\" > %q\necho https://github.com/owner/repo/issues/77\n", bodyFile)
+	scriptContent := fmt.Sprintf("#!/bin/sh\nwhile [ $# -gt 0 ]; do\n  if [ \"$1\" = \"--body\" ]; then shift; printf '%%s' \"$1\" > %q; fi\n  shift\ndone\necho https://github.com/owner/repo/issues/77\n", bodyFile)
 	if err := os.WriteFile(script, []byte(scriptContent), 0o755); err != nil {
 		t.Fatalf("write fake gh: %v", err)
 	}
@@ -1915,6 +1950,7 @@ func TestCreateSubIssuesViaGitHub_InjectsAutopilotMetaMarker(t *testing.T) {
 	t.Setenv("PATH", fakeBin+string(filepath.ListSeparator)+origPATH)
 
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 	runner.SetRepoAllowlist(&staticAllowlist{repos: []string{"ylcn91/pilot"}})
 	worktree := makeAllowedGitHubWorktree(t, "ylcn91/pilot")
 	plan := &EpicPlan{
@@ -1964,6 +2000,72 @@ func TestCreateSubIssuesViaGitHub_InjectsAutopilotMetaMarker(t *testing.T) {
 	}
 }
 
+// TestCreateSubIssues_PinsGhRepoToValidatedOrigin verifies GH-3411: every `gh`
+// shell-out (the issue-list dedup check and `gh issue create`) must pass
+// --repo <validated origin> so it cannot drift to the fork's upstream parent
+// (e.g. ylcn91/pilot) via gh's ambient base-repo resolution. This reproduces
+// the #3411 incident shape: a GH-201 parent decomposed into a feat(auth) subtask.
+func TestCreateSubIssues_PinsGhRepoToValidatedOrigin(t *testing.T) {
+	argsFile := filepath.Join(t.TempDir(), "argv.log")
+	fakeBin := t.TempDir()
+	script := filepath.Join(fakeBin, "gh")
+	// Record each invocation's full argv (space-joined) one line per call, then emit
+	// a URL. `gh issue create` parses the URL for the issue number; the dedup
+	// `gh issue list --json` gets the same non-JSON output, so json.Unmarshal fails
+	// and the dedup treats it as "no existing children" and proceeds to create.
+	scriptContent := fmt.Sprintf("#!/bin/sh\necho \"$*\" >> %q\necho https://github.com/ylcn91/pilot/issues/77\n", argsFile)
+	if err := os.WriteFile(script, []byte(scriptContent), 0o755); err != nil {
+		t.Fatalf("write fake gh: %v", err)
+	}
+	t.Setenv("PATH", fakeBin+string(filepath.ListSeparator)+os.Getenv("PATH"))
+
+	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
+	runner.SetRepoAllowlist(&staticAllowlist{repos: []string{"ylcn91/pilot"}})
+	worktree := makeAllowedGitHubWorktree(t, "ylcn91/pilot")
+	plan := &EpicPlan{
+		ParentTask: &Task{ID: "GH-201", SourceRepo: "ylcn91/pilot", SourceIssueID: "201"},
+		Subtasks: []PlannedSubtask{
+			{Title: "feat(auth): add OAuth provider integration", Description: "Wire OAuth.", Order: 1},
+		},
+	}
+
+	created, err := runner.CreateSubIssues(context.Background(), plan, worktree)
+	if err != nil {
+		t.Fatalf("CreateSubIssues failed: %v", err)
+	}
+	if len(created) != 1 || created[0].Number != 77 {
+		t.Fatalf("unexpected created issues: %+v", created)
+	}
+
+	raw, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatalf("read argv log: %v", err)
+	}
+
+	var sawCreate, sawList bool
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		switch {
+		case strings.HasPrefix(line, "issue create "):
+			sawCreate = true
+			if !strings.HasPrefix(line, "issue create --repo ylcn91/pilot ") {
+				t.Errorf("gh issue create not pinned to validated repo; argv = %q", line)
+			}
+		case strings.HasPrefix(line, "issue list "):
+			sawList = true
+			if !strings.Contains(line, "--repo ylcn91/pilot") {
+				t.Errorf("gh issue list (dedup) not pinned to validated repo; argv = %q", line)
+			}
+		}
+	}
+	if !sawCreate {
+		t.Error("expected a `gh issue create` invocation")
+	}
+	if !sawList {
+		t.Error("expected a `gh issue list` (dedup) invocation")
+	}
+}
+
 // TestCreateSubIssuesViaAdapter_InjectsAutopilotMetaMarker verifies parity with the
 // GitHub path: the adapter path must also inject the autopilot-meta marker (GH-2695).
 func TestCreateSubIssuesViaAdapter_InjectsAutopilotMetaMarker(t *testing.T) {
@@ -1974,6 +2076,7 @@ func TestCreateSubIssuesViaAdapter_InjectsAutopilotMetaMarker(t *testing.T) {
 	}
 
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 	runner.SetSubIssueCreator(mock)
 
 	plan := &EpicPlan{
@@ -2100,6 +2203,7 @@ echo https://github.com/owner/repo/issues/99
 	t.Setenv("PATH", fakeBin+string(filepath.ListSeparator)+origPATH)
 
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 	runner.SetRepoAllowlist(&staticAllowlist{repos: []string{"ylcn91/pilot"}})
 	worktree := makeAllowedGitHubWorktree(t, "ylcn91/pilot")
 	plan := &EpicPlan{
@@ -2158,6 +2262,7 @@ func TestCreateSubIssuesViaAdapter_PropagatesParentLabels(t *testing.T) {
 	}
 
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 	runner.SetSubIssueCreator(mock)
 
 	plan := &EpicPlan{
@@ -2204,6 +2309,7 @@ func TestCreateSubIssues_RefusesClosedParent(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			r := NewRunner()
+			r.SetIssueCreationEnabled(true)
 			r.dryRun = true
 			r.openSubIssueCheck = func(_ context.Context, _, _ string) (bool, error) {
 				return false, nil // dedup guard must not be reached
@@ -2232,6 +2338,7 @@ func TestCreateSubIssues_RefusesClosedParent(t *testing.T) {
 // even when the parent itself is open.
 func TestCreateSubIssues_RefusesRecentlyClosedSiblings(t *testing.T) {
 	r := NewRunner()
+	r.SetIssueCreationEnabled(true)
 	r.dryRun = true
 	r.SetRepoAllowlist(&staticAllowlist{repos: []string{"ylcn91/pilot"}})
 	worktree := makeAllowedGitHubWorktree(t, "ylcn91/pilot")
@@ -2348,6 +2455,7 @@ func TestIsParentDone_LiveFallback(t *testing.T) {
 // are already closed, Execute returns a successful no-op without calling ExecuteSubIssues.
 func TestRunner_Execute_EpicRecoversExistingSubIssues(t *testing.T) {
 	r := NewRunner()
+	r.SetIssueCreationEnabled(true)
 	r.skipPreflightChecks = true
 	r.dryRun = true
 	r.SetRepoAllowlist(&staticAllowlist{repos: []string{"ylcn91/pilot"}})
@@ -2411,6 +2519,7 @@ func TestRunner_Execute_EpicRecoversExistingSubIssues(t *testing.T) {
 // are still open, Execute calls ExecuteSubIssues with only the open children.
 func TestRunner_Execute_EpicRecoversThenExecutesOpenChildren(t *testing.T) {
 	r := NewRunner()
+	r.SetIssueCreationEnabled(true)
 	r.skipPreflightChecks = true
 	r.dryRun = true
 	r.SetRepoAllowlist(&staticAllowlist{repos: []string{"ylcn91/pilot"}})
@@ -2522,6 +2631,7 @@ func TestCreateSubIssuesViaGitHub_GuardrailAllowsConfiguredRepo(t *testing.T) {
 	t.Setenv("PATH", fakeBin+string(filepath.ListSeparator)+os.Getenv("PATH"))
 
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 	runner.SetRepoAllowlist(&staticAllowlist{repos: []string{"ylcn91/pilot"}})
 
 	plan := &EpicPlan{
@@ -2546,7 +2656,7 @@ func TestCreateSubIssuesViaGitHub_GuardrailAllowsConfiguredRepo(t *testing.T) {
 // and the error wraps ErrRepoNotInConfig.
 //
 // Without this guardrail, an external user pointing his Pilot at
-// `qf-studio/pilot` created 6 dupes (#3021-#3026) on 2026-05-20.
+// `ylcn91/pilot` created 6 dupes (#3021-#3026) on 2026-05-20.
 func TestCreateSubIssuesViaGitHub_GuardrailBlocksUnmanagedRepo(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
@@ -2569,6 +2679,7 @@ func TestCreateSubIssuesViaGitHub_GuardrailBlocksUnmanagedRepo(t *testing.T) {
 	t.Setenv(envBypassRepoAllowlist, "") // belt-and-braces: no stray bypass
 
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 	runner.SetRepoAllowlist(&staticAllowlist{repos: []string{"alice/site"}}) // tenlisboa/pilot-fork intentionally missing
 
 	plan := &EpicPlan{
@@ -2612,6 +2723,7 @@ func TestCreateSubIssuesViaGitHub_GuardrailBypassEnvVar(t *testing.T) {
 	t.Setenv(envBypassRepoAllowlist, "1")
 
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 	runner.SetRepoAllowlist(&staticAllowlist{repos: []string{"alice/site"}})
 
 	plan := &EpicPlan{
@@ -2627,47 +2739,6 @@ func TestCreateSubIssuesViaGitHub_GuardrailBypassEnvVar(t *testing.T) {
 	}
 	if len(created) != 1 {
 		t.Fatalf("expected 1 issue created via bypass, got %d", len(created))
-	}
-}
-
-func TestCreateSubIssuesViaGitHub_GuardrailBlocksProtectedUpstreamEvenWithBypass(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not on PATH")
-	}
-
-	worktree := t.TempDir()
-	runGitForGuardrail(t, worktree, "init", "-q")
-	runGitForGuardrail(t, worktree, "remote", "add", "origin", "https://github.com/qf-studio/pilot.git")
-
-	callMarker := filepath.Join(t.TempDir(), "gh_was_called")
-	fakeBin := t.TempDir()
-	script := filepath.Join(fakeBin, "gh")
-	scriptBody := fmt.Sprintf("#!/bin/sh\ntouch %q\necho https://github.com/qf-studio/pilot/issues/9999\n", callMarker)
-	if err := os.WriteFile(script, []byte(scriptBody), 0o755); err != nil {
-		t.Fatalf("write fake gh: %v", err)
-	}
-	t.Setenv("PATH", fakeBin+string(filepath.ListSeparator)+os.Getenv("PATH"))
-	t.Setenv(envBypassRepoAllowlist, "1")
-
-	runner := NewRunner()
-	runner.SetRepoAllowlist(&staticAllowlist{repos: []string{"qf-studio/pilot"}})
-
-	plan := &EpicPlan{
-		ParentTask: &Task{ID: "GH-42"},
-		Subtasks: []PlannedSubtask{
-			{Title: "feat(guardrail): protected upstream blocked", Description: "blocked", Order: 1},
-		},
-	}
-
-	_, err := runner.CreateSubIssues(context.Background(), plan, worktree)
-	if err == nil {
-		t.Fatal("expected protected upstream to be blocked even with bypass")
-	}
-	if !errors.Is(err, ErrRepoNotInConfig) {
-		t.Fatalf("error %v should wrap ErrRepoNotInConfig", err)
-	}
-	if _, statErr := os.Stat(callMarker); statErr == nil {
-		t.Errorf("guardrail did not fire before `gh issue create`: marker %s exists", callMarker)
 	}
 }
 
@@ -2699,6 +2770,7 @@ echo "https://github.com/owner/repo/issues/$N"
 	t.Setenv("PATH", fakeBin+string(filepath.ListSeparator)+origPATH)
 
 	runner := NewRunner()
+	runner.SetIssueCreationEnabled(true)
 	runner.SetRepoAllowlist(&staticAllowlist{repos: []string{"ylcn91/pilot"}})
 	worktree := makeAllowedGitHubWorktree(t, "ylcn91/pilot")
 

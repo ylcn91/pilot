@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/qf-studio/pilot/internal/logging"
-	"github.com/qf-studio/pilot/internal/text"
+	"github.com/ylcn91/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/text"
 )
 
 // TaskInfo contains the extracted task information from a Jira issue

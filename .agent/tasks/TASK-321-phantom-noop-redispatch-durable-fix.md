@@ -2,7 +2,7 @@
 
 **Status:** planned (root-caused; ready to decompose into PR-sized `pilot` issues)
 **Priority:** P1 — autopilot marks *completed* work as failed; pollutes the board/queue and erodes trust in the signal
-**Repo:** `qf-studio/pilot`
+**Repo:** `ylcn91/pilot`
 **Origin:** 2026-05-29 — 7 queue entries (#3238/3240/3243/3244/3252/3253/3257/3260) all failed with the same error after their PRs had already merged. Investigated via Navigator research (2 agents). Sibling of TASK-320 (which shipped Layers A+B1) and TASK-288 (poller false-positive).
 
 ---

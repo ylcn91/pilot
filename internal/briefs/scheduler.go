@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/memory"
 	"github.com/robfig/cron/v3"
+	"github.com/ylcn91/pilot/internal/memory"
 )
 
 // Scheduler manages scheduled brief generation and delivery

@@ -8,15 +8,15 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/qf-studio/pilot/internal/adapters/asana"
-	"github.com/qf-studio/pilot/internal/adapters/github"
-	"github.com/qf-studio/pilot/internal/adapters/gitlab"
-	"github.com/qf-studio/pilot/internal/adapters/jira"
-	"github.com/qf-studio/pilot/internal/adapters/linear"
-	"github.com/qf-studio/pilot/internal/adapters/plane"
-	"github.com/qf-studio/pilot/internal/adapters/slack"
-	"github.com/qf-studio/pilot/internal/executor"
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/adapters/asana"
+	"github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/adapters/gitlab"
+	"github.com/ylcn91/pilot/internal/adapters/jira"
+	"github.com/ylcn91/pilot/internal/adapters/linear"
+	"github.com/ylcn91/pilot/internal/adapters/plane"
+	"github.com/ylcn91/pilot/internal/adapters/slack"
+	"github.com/ylcn91/pilot/internal/executor"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // Config holds orchestrator configuration

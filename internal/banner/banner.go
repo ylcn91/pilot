@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/health"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/health"
 )
 
 // Logo is the ASCII art logo for Pilot

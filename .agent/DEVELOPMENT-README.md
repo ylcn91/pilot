@@ -171,7 +171,7 @@ gh pr list --state open
 | P2 | Scope TUI dashboard to single project | Today `-p` scopes execution only; metrics/sparklines mix all projects — [TASK-284](tasks/TASK-284-dashboard-project-scope.md) |
 | P3 | GitHub App auth | PAT → installable GitHub App |
 | P3 | Add `project_path` to `eval_tasks` + scope eval panel | Follow-up to TASK-284; lets eval/bench panel scope per-project instead of `[global]` label — [TASK-285](tasks/TASK-285-eval-tasks-project-path.md) (blocked by TASK-284) |
-| P3 | `pilot project add` gh wizard | Interactive repo picker + token seed from `gh auth` — [TASK-282](tasks/TASK-282-project-add-gh-wizard.md) → [#3017](https://github.com/qf-studio/pilot/issues/3017) (not yet `pilot`-labeled) |
+| P3 | `pilot project add` gh wizard | Interactive repo picker + token seed from `gh auth` — [TASK-282](tasks/TASK-282-project-add-gh-wizard.md) → [#3017](https://github.com/ylcn91/pilot/issues/3017) (not yet `pilot`-labeled) |
 | P3 | Audit §3 Wave 4+ candidates | Not in Top 10 / not yet decomposed: `RecordAPIError` wiring beyond github · `AlertTypeOOMKilled` · multi-gate scanner phase discipline · subprocess migration end-to-end validation · `autopilot` adapter coupling refactor · SQL `withTx` helper · generic `Poller[T]` extraction · `Releaser` frozen-at-startup fix. Source: `.agent/audits/AUDIT-2026-05-25.md` §3. |
 
 > **Shipped (was Wave 2/3, now archived):** TASK-293 poller counters · TASK-294 `WithRetry` in `doRequest` · TASK-296 `IsTaskShipped` · TASK-297/gh-3099 docs drift · TASK-298 consolidate `*_processed` (incl. TASK-288 Steps 1+2) · TASK-314/316 release scanner. Plans in `.agent/tasks/archive/`.
@@ -259,7 +259,7 @@ pilot upgrade
 
 **Fresh Install:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/qf-studio/pilot/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ylcn91/pilot/main/install.sh | bash
 ```
 
 **Known Issue (GH-204):** Install script doesn't auto-configure PATH. Users must add `~/.local/bin` to PATH or open new terminal.

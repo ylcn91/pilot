@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/gateway"
+	"github.com/ylcn91/pilot/internal/gateway"
 )
 
 func TestDefaultConfig(t *testing.T) {

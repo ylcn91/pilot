@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // Client is a Discord REST API client with rate limit handling.

@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/qf-studio/pilot/internal/intent"
+	"github.com/ylcn91/pilot/internal/intent"
 )
 
 // handlerMock records all Messenger calls for assertion in handler tests.

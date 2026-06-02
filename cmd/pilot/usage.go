@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/memory"
 	"github.com/spf13/cobra"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/memory"
 )
 
 func newUsageCmd() *cobra.Command {

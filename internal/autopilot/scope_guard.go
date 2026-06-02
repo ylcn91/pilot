@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/qf-studio/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/adapters/github"
 )
 
 // Born from OAuth cascade #2 (2026-05-04). Two structural rails to ensure that

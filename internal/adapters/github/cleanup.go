@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/logging"
-	"github.com/qf-studio/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/memory"
 )
 
 // Cleaner handles automatic cleanup of stale pilot labels (pilot-in-progress and pilot-failed).

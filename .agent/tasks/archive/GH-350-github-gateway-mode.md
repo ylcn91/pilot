@@ -31,11 +31,11 @@ import (
     "fmt"
     "time"
 
-    "github.com/qf-studio/pilot/internal/adapters/github"
-    "github.com/qf-studio/pilot/internal/alerts"
-    "github.com/qf-studio/pilot/internal/autopilot"
-    "github.com/qf-studio/pilot/internal/executor"
-    "github.com/qf-studio/pilot/internal/logging"
+    "github.com/ylcn91/pilot/internal/adapters/github"
+    "github.com/ylcn91/pilot/internal/alerts"
+    "github.com/ylcn91/pilot/internal/autopilot"
+    "github.com/ylcn91/pilot/internal/executor"
+    "github.com/ylcn91/pilot/internal/logging"
 )
 
 // GitHubPollerConfig holds configuration for GitHub polling in gateway mode

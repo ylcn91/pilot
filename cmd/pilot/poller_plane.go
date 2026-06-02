@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/adapters/plane"
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/adapters/plane"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 func planePollerRegistration() PollerRegistration {

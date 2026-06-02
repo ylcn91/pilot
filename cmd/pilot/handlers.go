@@ -11,18 +11,18 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/qf-studio/pilot/internal/adapters/asana"
-	"github.com/qf-studio/pilot/internal/adapters/azuredevops"
-	"github.com/qf-studio/pilot/internal/adapters/github"
-	"github.com/qf-studio/pilot/internal/adapters/gitlab"
-	"github.com/qf-studio/pilot/internal/adapters/jira"
-	"github.com/qf-studio/pilot/internal/adapters/linear"
-	"github.com/qf-studio/pilot/internal/adapters/plane"
-	"github.com/qf-studio/pilot/internal/alerts"
-	"github.com/qf-studio/pilot/internal/budget"
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/executor"
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/adapters/asana"
+	"github.com/ylcn91/pilot/internal/adapters/azuredevops"
+	"github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/adapters/gitlab"
+	"github.com/ylcn91/pilot/internal/adapters/jira"
+	"github.com/ylcn91/pilot/internal/adapters/linear"
+	"github.com/ylcn91/pilot/internal/adapters/plane"
+	"github.com/ylcn91/pilot/internal/alerts"
+	"github.com/ylcn91/pilot/internal/budget"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/executor"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // syncBoardStatus updates a GitHub Projects V2 board column for an issue.

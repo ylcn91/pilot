@@ -4,10 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/budget"
-	"github.com/qf-studio/pilot/internal/executor"
-	"github.com/qf-studio/pilot/internal/gateway"
-	"github.com/qf-studio/pilot/internal/quality"
+	"github.com/ylcn91/pilot/internal/budget"
+	"github.com/ylcn91/pilot/internal/executor"
+	"github.com/ylcn91/pilot/internal/gateway"
+	"github.com/ylcn91/pilot/internal/quality"
 )
 
 // baseValidConfig returns a minimal valid config for testing

@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/executor"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/executor"
 )
 
 // configRepoAllowlist adapts *config.Config to the

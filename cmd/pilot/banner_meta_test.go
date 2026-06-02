@@ -4,14 +4,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/adapters/discord"
-	ghadapter "github.com/qf-studio/pilot/internal/adapters/github"
-	"github.com/qf-studio/pilot/internal/adapters/slack"
-	"github.com/qf-studio/pilot/internal/adapters/telegram"
-	"github.com/qf-studio/pilot/internal/autopilot"
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/dashboard"
-	"github.com/qf-studio/pilot/internal/executor"
+	"github.com/ylcn91/pilot/internal/adapters/discord"
+	ghadapter "github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/adapters/slack"
+	"github.com/ylcn91/pilot/internal/adapters/telegram"
+	"github.com/ylcn91/pilot/internal/autopilot"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/dashboard"
+	"github.com/ylcn91/pilot/internal/executor"
 )
 
 // GH-2459: applyDashboardBannerMeta wires env, model stack, and adapter list

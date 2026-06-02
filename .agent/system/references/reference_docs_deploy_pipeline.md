@@ -29,7 +29,7 @@ self-healing across binary releases.
 ### Fragile points
 
 - `PILOT_DOCS_PAT` is a fine-grained PAT (Contents r/w + Pull-requests r/w
-  on qf-studio/pilot only). When it expires, `docs-version-sync.yml`'s
+  on ylcn91/pilot only). When it expires, `docs-version-sync.yml`'s
   fallback to `GITHUB_TOKEN` keeps the auto-merge working but breaks
   step 3 — sync-docs no longer chains. Symptom: docs site stuck on the
   prior version while pilot.quantflow.studio still shows old header.
@@ -56,7 +56,7 @@ self-healing across binary releases.
 If sync-docs.yml didn't fire after a release:
 
 ```bash
-gh workflow run sync-docs.yml --repo qf-studio/pilot
+gh workflow run sync-docs.yml --repo ylcn91/pilot
 ```
 
 That re-pushes `docs/` + a fresh `prod-X.Y.Z-<ts>` tag to GitLab using

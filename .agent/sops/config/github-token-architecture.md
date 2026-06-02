@@ -56,7 +56,7 @@ import yaml, os, urllib.request, subprocess
 cfg = yaml.safe_load(open(os.path.expanduser("~/.pilot/config.yaml")))
 tok = cfg["adapters"]["github"]["token"]
 if tok.startswith("${"): tok = os.environ[tok[2:-1]]
-for repo in ["qf-studio/pilot","alekspetrov/navigator","qf-studio/studio-sdk"]:
+for repo in ["ylcn91/pilot","alekspetrov/navigator","qf-studio/studio-sdk"]:
     code = subprocess.run(["curl","-s","-o","/dev/null","-w","%{http_code}",
         "-H",f"Authorization: Bearer {tok}",
         f"https://api.github.com/repos/{repo}"],capture_output=True,text=True).stdout

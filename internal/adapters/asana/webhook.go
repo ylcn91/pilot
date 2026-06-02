@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // WebhookHandler handles Asana webhooks

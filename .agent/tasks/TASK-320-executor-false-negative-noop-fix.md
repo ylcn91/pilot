@@ -2,7 +2,7 @@
 
 **Status:** 🟡 in review — Layer A + B1 shipped (PR on `fix/task-320-executor-noop-guard`); Layer B2 deferred — **MANUAL** (Pilot cannot fix its own execution guard)
 **Priority:** P1 — systemic; blocks/poisons every explicit-spec task (GH-3222, GH-3228 class)
-**Repo:** `qf-studio/pilot`
+**Repo:** `ylcn91/pilot`
 **Area:** `internal/executor/`
 **Source bug:** GH-3224 (auto-filed). Instances: GH-3222 (`--version` one-liner, fixed manually in #3223), GH-3228 (board-as-source, 4× no-op).
 

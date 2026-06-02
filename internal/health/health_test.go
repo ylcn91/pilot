@@ -9,13 +9,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/adapters/github"
-	"github.com/qf-studio/pilot/internal/adapters/slack"
-	"github.com/qf-studio/pilot/internal/adapters/telegram"
-	"github.com/qf-studio/pilot/internal/approval"
-	"github.com/qf-studio/pilot/internal/autopilot"
-	"github.com/qf-studio/pilot/internal/config"
-	"github.com/qf-studio/pilot/internal/transcription"
+	"github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/adapters/slack"
+	"github.com/ylcn91/pilot/internal/adapters/telegram"
+	"github.com/ylcn91/pilot/internal/approval"
+	"github.com/ylcn91/pilot/internal/autopilot"
+	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/transcription"
 )
 
 // ---------------------------------------------------------------------------

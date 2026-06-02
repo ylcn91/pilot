@@ -17,7 +17,7 @@ Effort routing selects the right Claude model and API effort level for each task
 | Complex | Architecture changes, multi-file refactors | `claude-sonnet-4-6` | `high` |
 
 <Callout type="warning">
-  Opus is reserved for **planning** (epic decomposition), not execution. The `complex` execution tier uses Sonnet 4.6 — see [GH-2432](https://github.com/qf-studio/pilot/issues/2432) for the reasoning.
+  Opus is reserved for **planning** (epic decomposition), not execution. The `complex` execution tier uses Sonnet 4.6 — see [GH-2432](https://github.com/ylcn91/pilot/issues/2432) for the reasoning.
 </Callout>
 
 ## How Classification Works
@@ -97,7 +97,7 @@ The database is at `~/.pilot/data/pilot.db`.
 ## The `default_model` Precedence Landmine
 
 <Callout type="warning">
-  **Do not set both `default_model` and `model_routing.enabled: true` for Claude Code backends.** The routing result wins, but for non-Claude-Code backends `default_model` is used as the fallback when the router returns empty. See [`runner.go:688-701`](https://github.com/qf-studio/pilot/blob/main/internal/executor/runner.go) for the exact precedence logic (GH-2450).
+  **Do not set both `default_model` and `model_routing.enabled: true` for Claude Code backends.** The routing result wins, but for non-Claude-Code backends `default_model` is used as the fallback when the router returns empty. See [`runner.go:688-701`](https://github.com/ylcn91/pilot/blob/main/internal/executor/runner.go) for the exact precedence logic (GH-2450).
 </Callout>
 
 Precedence for Claude Code backend:

@@ -6,9 +6,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/qf-studio/pilot/internal/adapters/github"
-	"github.com/qf-studio/pilot/internal/adapters/linear"
-	"github.com/qf-studio/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/adapters/linear"
+	"github.com/ylcn91/pilot/internal/config"
 )
 
 // newTestStartCmd creates a start command and sets the given flag-name pairs

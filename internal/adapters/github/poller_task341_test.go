@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/testutil"
+	"github.com/ylcn91/pilot/internal/testutil"
 )
 
 // task341Server builds a mock GitHub API for the open-PR-awaiting-merge guard.

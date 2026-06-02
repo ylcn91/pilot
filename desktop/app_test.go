@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/dashboard"
+	"github.com/ylcn91/pilot/internal/dashboard"
 )
 
 var errTestGatewayStart = errors.New("gateway start failed")
@@ -174,7 +174,7 @@ func TestEnsureGatewayRunning_StartsDaemon(t *testing.T) {
 				t.Fatalf("managed gateway config missing: %v", err)
 			}
 			configText := string(configBytes)
-			if strings.Contains(configText, "qf-studio/pilot") {
+			if strings.Contains(configText, "ylcn91/pilot") {
 				t.Fatal("managed gateway config must not reference upstream")
 			}
 			for _, want := range []string{
@@ -219,7 +219,7 @@ func TestPrepareManagedGatewayConfig_DisablesExternalWorkSources(t *testing.T) {
 		t.Fatalf("read config: %v", err)
 	}
 	configText := string(configBytes)
-	if strings.Contains(configText, "qf-studio/pilot") {
+	if strings.Contains(configText, "ylcn91/pilot") {
 		t.Fatal("runtime config must not reference upstream")
 	}
 	for _, want := range []string{

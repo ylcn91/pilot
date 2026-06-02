@@ -48,7 +48,7 @@ export default async function RootLayout({
                   <span style={{ fontSize: '0.5em', opacity: 0.5, fontWeight: 400 }}>v2.166.10</span>
                 </span>
               }
-              projectLink="https://github.com/qf-studio/pilot"
+              projectLink="https://github.com/ylcn91/pilot"
               chatLink="https://discord.gg/Hsz63MTB3c"
             />
           }

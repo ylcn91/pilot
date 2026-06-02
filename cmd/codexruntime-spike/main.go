@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/codexruntime"
+	"github.com/ylcn91/pilot/internal/codexruntime"
 )
 
 type logEntry struct {

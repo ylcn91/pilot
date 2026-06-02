@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/config"
 )
 
 // TestAdapterPollerRegistrations_CoverAllAdapterTypes verifies that every adapter

@@ -235,7 +235,7 @@ Pilot sends the `X-OpenCode-Directory` header on the two endpoints that need it:
 - `POST /session` — directory the new session should attach to
 - `POST /session/:id/message` — directory the message executes against
 
-Without the header, OpenCode resolves sessions against the server process `cwd` and any tool calls (file reads, edits, shell commands) run in the wrong tree. Symptom: PRs land empty or commits target an unrelated repo. Fixed in [GH-2415](https://github.com/qf-studio/pilot/issues/2415) (v2.102.0).
+Without the header, OpenCode resolves sessions against the server process `cwd` and any tool calls (file reads, edits, shell commands) run in the wrong tree. Symptom: PRs land empty or commits target an unrelated repo. Fixed in [GH-2415](https://github.com/ylcn91/pilot/issues/2415) (v2.102.0).
 
 <Callout type="info">
 The header value is the URL-encoded absolute path. OpenCode also accepts a `directory=` query parameter; Pilot uses the header form. The legacy JSON `path` field on `POST /session` is no longer authoritative in OpenCode v1.4.x+.
@@ -253,7 +253,7 @@ executor:
     request_timeout: "10m"   # default; raise for very long planning passes
 ```
 
-The same timeout applies to session creation, message send, and SSE response headers. Tracked under [GH-2410](https://github.com/qf-studio/pilot/issues/2410) (v2.102.0) and [GH-2416](https://github.com/qf-studio/pilot/issues/2416) (v2.102.1).
+The same timeout applies to session creation, message send, and SSE response headers. Tracked under [GH-2410](https://github.com/ylcn91/pilot/issues/2410) (v2.102.0) and [GH-2416](https://github.com/ylcn91/pilot/issues/2416) (v2.102.1).
 
 ### Strengths
 

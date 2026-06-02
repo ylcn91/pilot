@@ -21,7 +21,7 @@ import (
 
 const (
 	// GitHubRepo is the GitHub repository for releases
-	GitHubRepo = "qf-studio/pilot"
+	GitHubRepo = "ylcn91/pilot"
 
 	// DefaultTimeout for HTTP requests
 	DefaultTimeout = 30 * time.Second
@@ -89,7 +89,7 @@ func NewUpgrader(currentVersion string) (*Upgrader, error) {
 			"  brew upgrade pilot\n\n"+
 			"Or reinstall without Homebrew:\n\n"+
 			"  brew uninstall pilot\n"+
-			"  curl -fsSL https://raw.githubusercontent.com/qf-studio/pilot/main/install.sh | bash",
+			"  curl -fsSL https://raw.githubusercontent.com/ylcn91/pilot/main/install.sh | bash",
 			resolvedPath)
 	}
 

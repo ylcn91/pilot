@@ -93,7 +93,7 @@ if [ $FOUND_SECRETS -eq 1 ]; then
     echo "  ✅ test-github-token"
     echo ""
     echo "Or use the constants in internal/testutil/tokens.go:"
-    echo "  import \"github.com/qf-studio/pilot/internal/testutil\""
+    echo "  import \"github.com/ylcn91/pilot/internal/testutil\""
     echo "  token := testutil.FakeSlackBotToken"
     echo ""
     echo "If the match is intentional educational content (showing what NOT"

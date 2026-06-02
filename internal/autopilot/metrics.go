@@ -77,10 +77,10 @@ type Metrics struct {
 // NewMetrics creates a new Metrics instance.
 func NewMetrics() *Metrics {
 	return &Metrics{
-		IssuesProcessed:       make(map[string]int64),
-		APIErrors:             make(map[string]int64),
-		LabelCleanups:         make(map[string]int64),
-		ApprovalPersistMisses: make(map[string]int64),
+		IssuesProcessed:            make(map[string]int64),
+		APIErrors:                  make(map[string]int64),
+		LabelCleanups:              make(map[string]int64),
+		ApprovalPersistMisses:      make(map[string]int64),
 		TokensConsumed:             make(map[tokenKey]int64),
 		ExecutionCostUSD:           make(map[string]float64),
 		ExecutionsByResult:         make(map[execKey]int64),
@@ -89,11 +89,11 @@ func NewMetrics() *Metrics {
 		PollerDeferredScopeOverlap: make(map[string]int64),
 		OrphanPRsRegistered:        make(map[string]int64),
 		ActivePRsByStage:           make(map[PRStage]int),
-		PRTimeToMerge:         make([]time.Duration, 0, 100),
-		CIWaitDurations:       make([]time.Duration, 0, 100),
-		ExecutionDurations:    make([]time.Duration, 0, 100),
-		apiErrorTimes:         make([]time.Time, 0, 100),
-		maxSamples:            1000,
+		PRTimeToMerge:              make([]time.Duration, 0, 100),
+		CIWaitDurations:            make([]time.Duration, 0, 100),
+		ExecutionDurations:         make([]time.Duration, 0, 100),
+		apiErrorTimes:              make([]time.Time, 0, 100),
+		maxSamples:                 1000,
 	}
 }
 
@@ -279,14 +279,14 @@ func (m *Metrics) Snapshot() MetricsSnapshot {
 	defer m.mu.RUnlock()
 
 	snap := MetricsSnapshot{
-		IssuesProcessed:       copyStringIntMap(m.IssuesProcessed),
-		PRsMerged:             m.PRsMerged,
-		PRsFailed:             m.PRsFailed,
-		PRsConflicting:        m.PRsConflicting,
-		CircuitBreakerTrips:   m.CircuitBreakerTrips,
-		APIErrors:             copyStringIntMap(m.APIErrors),
-		LabelCleanups:         copyStringIntMap(m.LabelCleanups),
-		ApprovalPersistMisses: copyStringIntMap(m.ApprovalPersistMisses),
+		IssuesProcessed:            copyStringIntMap(m.IssuesProcessed),
+		PRsMerged:                  m.PRsMerged,
+		PRsFailed:                  m.PRsFailed,
+		PRsConflicting:             m.PRsConflicting,
+		CircuitBreakerTrips:        m.CircuitBreakerTrips,
+		APIErrors:                  copyStringIntMap(m.APIErrors),
+		LabelCleanups:              copyStringIntMap(m.LabelCleanups),
+		ApprovalPersistMisses:      copyStringIntMap(m.ApprovalPersistMisses),
 		TokensConsumed:             copyTokenKeyMap(m.TokensConsumed),
 		ExecutionCostUSD:           copyStringFloatMap(m.ExecutionCostUSD),
 		ExecutionsByResult:         copyExecKeyMap(m.ExecutionsByResult),
@@ -295,14 +295,14 @@ func (m *Metrics) Snapshot() MetricsSnapshot {
 		PollerDeferredScopeOverlap: copyStringIntMap(m.PollerDeferredScopeOverlap),
 		OrphanPRsRegistered:        copyStringIntMap(m.OrphanPRsRegistered),
 		ActivePRsByStage:           copyStageIntMap(m.ActivePRsByStage),
-		QueueDepth:            m.QueueDepth,
-		FailedQueueDepth:      m.FailedQueueDepth,
-		TotalActivePRs:        sumStageMap(m.ActivePRsByStage),
-		AvgPRTimeToMerge:      avgDuration(m.PRTimeToMerge),
-		AvgCIWaitDuration:     avgDuration(m.CIWaitDurations),
-		AvgExecutionDuration:  avgDuration(m.ExecutionDurations),
-		APIErrorRate:          m.apiErrorRate(),
-		SnapshotAt:            time.Now(),
+		QueueDepth:                 m.QueueDepth,
+		FailedQueueDepth:           m.FailedQueueDepth,
+		TotalActivePRs:             sumStageMap(m.ActivePRsByStage),
+		AvgPRTimeToMerge:           avgDuration(m.PRTimeToMerge),
+		AvgCIWaitDuration:          avgDuration(m.CIWaitDurations),
+		AvgExecutionDuration:       avgDuration(m.ExecutionDurations),
+		APIErrorRate:               m.apiErrorRate(),
+		SnapshotAt:                 time.Now(),
 	}
 
 	// Calculate success rate

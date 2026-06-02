@@ -282,6 +282,7 @@ executor:
 | `timeout.simple` | duration | `10m` | Timeout for simple tasks |
 | `timeout.medium` | duration | `30m` | Timeout for medium tasks |
 | `timeout.complex` | duration | `60m` | Timeout for complex tasks |
+| `create_sub_issues` | bool | `false` | Create tracker sub-issues from epic planning. When false, planned epics execute as one task |
 | `decompose.enabled` | bool | `false` | Auto-decompose complex tasks into subtasks ([learn more](/features/epic-decomposition)) |
 | `decompose.min_complexity` | string | `"complex"` | Minimum complexity to trigger decomposition |
 | `decompose.max_subtasks` | int | `5` | Maximum subtasks created (2-10) |
@@ -329,10 +330,10 @@ executor:
 | `opencode.provider` | string | `"anthropic"` | LLM provider name |
 | `opencode.auto_start_server` | bool | `true` | Auto-start OpenCode server if not running |
 | `opencode.server_command` | string | `"opencode serve"` | Command to start the server |
-| `opencode.request_timeout` | duration | `"10m"` | HTTP timeout for session creation, message send, and SSE response headers ([GH-2410](https://github.com/qf-studio/pilot/issues/2410)) |
+| `opencode.request_timeout` | duration | `"10m"` | HTTP timeout for session creation, message send, and SSE response headers ([GH-2410](https://github.com/ylcn91/pilot/issues/2410)) |
 
 <Callout type="info">
-**Self-review timeout is backend-aware.** The self-review phase is capped at **10 minutes** for OpenCode and **2 minutes** for Claude Code / Qwen Code. OpenCode's SSE streaming legitimately runs slower than a Claude Code subprocess; a 2-minute cap cancels review while the backend is still working and surfaces as a false regression ([GH-2416](https://github.com/qf-studio/pilot/issues/2416)). The cap is not user-configurable today.
+**Self-review timeout is backend-aware.** The self-review phase is capped at **10 minutes** for OpenCode and **2 minutes** for Claude Code / Qwen Code. OpenCode's SSE streaming legitimately runs slower than a Claude Code subprocess; a 2-minute cap cancels review while the backend is still working and surfaces as a false regression ([GH-2416](https://github.com/ylcn91/pilot/issues/2416)). The cap is not user-configurable today.
 </Callout>
 
 ### Tool Restriction (per-subprocess token control)
@@ -348,7 +349,7 @@ executor:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `claude_code.allowed_tools` | []string | `["Read","Write","Edit","Bash","Grep","Glob","Task"]` | Whitelist passed via `--allowedTools`. Excludes MCP and Web* tools by default to cut per-turn context bloat ([GH-2432](https://github.com/qf-studio/pilot/issues/2432)). |
+| `claude_code.allowed_tools` | []string | `["Read","Write","Edit","Bash","Grep","Glob","Task"]` | Whitelist passed via `--allowedTools`. Excludes MCP and Web* tools by default to cut per-turn context bloat ([GH-2432](https://github.com/ylcn91/pilot/issues/2432)). |
 | `claude_code.mcp_config_path` | string | `""` | Path passed via `--mcp-config`. When empty, the subprocess loads **no** MCP servers. |
 
 <Callout type="warning">
@@ -496,7 +497,7 @@ orchestrator:
       - test
       - lint
 
-    auto_create_issues: true              # create fix issues on CI failure
+    auto_create_issues: false             # opt-in: create fix issues on CI failure
     issue_labels:
       - pilot
       - autopilot-fix
@@ -531,7 +532,7 @@ orchestrator:
 | `dev_ci_timeout` | duration | `5m` | CI timeout in dev environment |
 | `ci_poll_interval` | duration | `30s` | CI status polling interval |
 | `required_checks` | []string | `["test","lint"]` | CI checks that must pass |
-| `auto_create_issues` | bool | `true` | Create fix issues when CI fails |
+| `auto_create_issues` | bool | `false` | Create fix issues when CI fails |
 | `issue_labels` | []string | `["pilot","autopilot-fix"]` | Labels for auto-created fix issues |
 | `notify_on_failure` | bool | `true` | Send notification on failure |
 | `max_failures` | int | `3` | Max fix attempts before stopping |
@@ -1751,7 +1752,7 @@ matches against every configured `projects[].github.owner` /
 
 This closed a 2026-05-20 incident where a misconfigured external user
 accidentally created 6 duplicate sub-issues on the upstream
-`qf-studio/pilot` repo. See SOP
+`ylcn91/pilot` repo. See SOP
 `.agent/sops/integrations/repo-allowlist-guardrail.md` for the diagnosis
 runbook.
 

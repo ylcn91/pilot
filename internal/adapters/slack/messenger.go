@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/qf-studio/pilot/internal/comms"
+	"github.com/ylcn91/pilot/internal/comms"
 )
 
 // Compile-time check that SlackMessenger implements comms.Messenger.

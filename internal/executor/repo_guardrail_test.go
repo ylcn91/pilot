@@ -43,15 +43,15 @@ func TestParseGitHubRemoteURL(t *testing.T) {
 		wantRepo  string
 		wantErr   bool
 	}{
-		{"https with .git", "https://github.com/qf-studio/pilot.git", "qf-studio", "pilot", false},
-		{"https without .git", "https://github.com/qf-studio/pilot", "qf-studio", "pilot", false},
-		{"https with trailing slash", "https://github.com/qf-studio/pilot/", "qf-studio", "pilot", false},
-		{"ssh scp-like with .git", "git@github.com:qf-studio/pilot.git", "qf-studio", "pilot", false},
-		{"ssh scp-like without .git", "git@github.com:qf-studio/pilot", "qf-studio", "pilot", false},
-		{"ssh url form", "ssh://git@github.com/qf-studio/pilot.git", "qf-studio", "pilot", false},
-		{"http insecure", "http://github.com/qf-studio/pilot.git", "qf-studio", "pilot", false},
+		{"https with .git", "https://github.com/ylcn91/pilot.git", "ylcn91", "pilot", false},
+		{"https without .git", "https://github.com/ylcn91/pilot", "ylcn91", "pilot", false},
+		{"https with trailing slash", "https://github.com/ylcn91/pilot/", "ylcn91", "pilot", false},
+		{"ssh scp-like with .git", "git@github.com:ylcn91/pilot.git", "ylcn91", "pilot", false},
+		{"ssh scp-like without .git", "git@github.com:ylcn91/pilot", "ylcn91", "pilot", false},
+		{"ssh url form", "ssh://git@github.com/ylcn91/pilot.git", "ylcn91", "pilot", false},
+		{"http insecure", "http://github.com/ylcn91/pilot.git", "ylcn91", "pilot", false},
 		{"enterprise host", "https://github.enterprise.example.com/team/svc.git", "team", "svc", false},
-		{"bare owner/repo", "qf-studio/pilot", "qf-studio", "pilot", false},
+		{"bare owner/repo", "ylcn91/pilot", "ylcn91", "pilot", false},
 		{"empty url", "", "", "", true},
 		{"missing repo", "https://github.com/qf-studio", "", "", true},
 		{"trailing slash only", "https://github.com/qf-studio/", "", "", true},
@@ -86,9 +86,8 @@ func TestValidateTargetRepo(t *testing.T) {
 	t.Setenv(envBypassRepoAllowlist, "")
 
 	allow := &fakeAllowlist{repos: map[string]string{
-		"ylcn91/pilot":    "/Users/me/projects/pilot",
-		"qf-studio/pilot": "/Users/me/projects/upstream",
-		"alice/site":      "/Users/me/projects/site",
+		"ylcn91/pilot": "/Users/me/projects/pilot",
+		"alice/site":   "/Users/me/projects/site",
 	}}
 
 	tests := []struct {
@@ -127,7 +126,7 @@ func TestValidateTargetRepo(t *testing.T) {
 			allow:       allow,
 			owner:       "ylcn91",
 			repo:        "pilot",
-			projectPath: "/Users/me/projects/site", // configured for alice/site, not qf-studio/pilot
+			projectPath: "/Users/me/projects/site",
 			wantErr:     ErrRepoNotInConfig,
 		},
 		{
@@ -164,15 +163,6 @@ func TestValidateTargetRepo(t *testing.T) {
 			owner:  "tenlisboa",
 			repo:   "pilot-fork",
 			bypass: "1",
-		},
-		{
-			name:        "reject_protected_upstream_even_when_configured_and_bypassed",
-			allow:       allow,
-			owner:       "qf-studio",
-			repo:        "pilot",
-			projectPath: "/Users/me/projects/upstream",
-			bypass:      "1",
-			wantErr:     ErrRepoNotInConfig,
 		},
 		{
 			name:    "bypass_set_to_0_is_NOT_a_bypass",
@@ -218,8 +208,8 @@ func TestResolveGitRemote(t *testing.T) {
 		wantOwner string
 		wantRepo  string
 	}{
-		{"https", "https://github.com/qf-studio/pilot.git", "qf-studio", "pilot"},
-		{"ssh", "git@github.com:qf-studio/pilot.git", "qf-studio", "pilot"},
+		{"https", "https://github.com/ylcn91/pilot.git", "ylcn91", "pilot"},
+		{"ssh", "git@github.com:ylcn91/pilot.git", "ylcn91", "pilot"},
 	}
 
 	for _, tt := range tests {

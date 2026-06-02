@@ -122,7 +122,7 @@ Phase 1 identified the chain. Phase 1.5 must answer **why `result.PRUrl` is empt
 # Tail the dashboard TTY (find the tty from ps)
 tail -f /dev/ttys001 | grep "OnPRCreated skipped\|Notifying autopilot\|Pull request created"
 # Or trigger a synthetic test:
-pilot github run <issue_number> --repo qf-studio/pilot
+pilot github run <issue_number> --repo ylcn91/pilot
 ```
 
 Expected diagnostic patterns:

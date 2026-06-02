@@ -143,6 +143,7 @@ func TestDecomposeEpicTitlesConventional(t *testing.T) {
 // ErrSubIssuesAlreadyExist and does not spawn gh CLI when open children already exist.
 func TestCreateSubIssues_SkipsWhenChildrenExist(t *testing.T) {
 	r := NewRunner()
+	r.SetIssueCreationEnabled(true)
 	r.dryRun = true // prevent any accidental gh calls
 	r.SetRepoAllowlist(&staticAllowlist{repos: []string{"ylcn91/pilot"}})
 	worktree := makeAllowedGitHubWorktree(t, "ylcn91/pilot")
@@ -170,6 +171,7 @@ func TestCreateSubIssues_SkipsWhenChildrenExist(t *testing.T) {
 // normally when the open-children check returns false.
 func TestCreateSubIssues_ProceedsWhenNoChildren(t *testing.T) {
 	r := NewRunner()
+	r.SetIssueCreationEnabled(true)
 	r.dryRun = true
 	r.openSubIssueCheck = func(_ context.Context, _, _ string) (bool, error) {
 		return false, nil // no existing children

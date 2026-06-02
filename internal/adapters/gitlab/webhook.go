@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // WebhookHandler handles GitLab webhooks

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/qf-studio/pilot/internal/text"
+	"github.com/ylcn91/pilot/internal/text"
 )
 
 // sanitizePromptReturn is a deferred helper used by every prompt

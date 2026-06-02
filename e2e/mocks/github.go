@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/adapters/github"
 )
 
 // GitHubMock provides a mock GitHub API server for E2E testing.

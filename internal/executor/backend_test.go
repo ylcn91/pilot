@@ -72,6 +72,9 @@ func TestDefaultBackendConfig(t *testing.T) {
 	if config.Type != BackendTypeCodexExec {
 		t.Errorf("Type = %q, want %q", config.Type, BackendTypeCodexExec)
 	}
+	if config.CreateSubIssues {
+		t.Error("CreateSubIssues should default to false")
+	}
 	if config.ClaudeCode == nil {
 		t.Error("ClaudeCode config should not be nil")
 	}

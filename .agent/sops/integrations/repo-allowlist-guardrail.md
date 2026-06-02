@@ -19,7 +19,7 @@ The two layers use distinct interfaces (`executor.RepoAllowlist` and
 they have the same shape and the same concrete `configRepoAllowlist`
 implementation in `cmd/pilot/repo_allowlist.go` satisfies both.
 
-Filed after the 2026-05-20 incident on `qf-studio/pilot`, where
+Filed after the 2026-05-20 incident on `ylcn91/pilot`, where
 @tenlisboa's misconfigured Pilot fired 6 duplicate sub-issues
 (#3021–#3026) before the decomposer ran out of subtasks. `gh issue
 create` had been inferring the target from the directory's `origin`
@@ -30,7 +30,7 @@ remote with no allowlist cross-check.
 ```
 ERROR sub-issue guardrail rejected target repo
   owner=qf-studio repo=pilot execution_path=...
-  error="target repo is not in user's configured project list: qf-studio/pilot not in configured projects [alice/site]"
+  error="target repo is not in user's configured project list: ylcn91/pilot not in configured projects [alice/site]"
 ```
 
 ```
@@ -145,8 +145,8 @@ or to the adapter.
 
 ## Related
 
-- Incident: `qf-studio/pilot#3021`–`#3026` (all closed as dupes)
-- Diagnosis comment: `qf-studio/pilot#3021#issuecomment-4508477616`
+- Incident: `ylcn91/pilot#3021`–`#3026` (all closed as dupes)
+- Diagnosis comment: `ylcn91/pilot#3021#issuecomment-4508477616`
 - Task plan (archived): `.agent/tasks/archive/TASK-286-guardrail-external-repo-issue-create.md`
-- Primary PR (v2.147.0): `qf-studio/pilot#3033` — sub-issue path + executor-side guardrail
+- Primary PR (v2.147.0): `ylcn91/pilot#3033` — sub-issue path + executor-side guardrail
 - Phase B PR (this change): adapter-level guardrail + `IssueAllowlist`

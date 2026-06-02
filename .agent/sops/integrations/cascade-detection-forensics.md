@@ -32,15 +32,15 @@ Check what Pilot has already touched:
 
 ```bash
 # Issues currently held by Pilot
-gh issue list --repo qf-studio/pilot --label pilot-in-progress --state open
+gh issue list --repo ylcn91/pilot --label pilot-in-progress --state open
 
 # Issues created in the last 24h that share a suspicious scope
-gh issue list --repo qf-studio/pilot \
+gh issue list --repo ylcn91/pilot \
   --search "feat(auth) in:title is:open created:>$(date -u -v-1d +%Y-%m-%d)" \
   --limit 50
 
 # PRs that reference GH- numbers in their body (likely autopilot-spawned)
-gh pr list --repo qf-studio/pilot --state all --search "GH- in:body" --limit 20
+gh pr list --repo ylcn91/pilot --state all --search "GH- in:body" --limit 20
 ```
 
 Look for clusters: identical title prefixes, sub-issues pointing at the same parent, PRs with overlapping file diffs.
@@ -77,19 +77,19 @@ Work through the issue list from §3 and for each phantom issue:
 
 ```bash
 # Close as not-planned (replace NNN with issue number)
-gh issue close NNN --repo qf-studio/pilot --reason "not planned" \
+gh issue close NNN --repo ylcn91/pilot --reason "not planned" \
   --comment "Cascade artefact — closing as not planned."
 
 # Strip cascade labels
-gh issue edit NNN --repo qf-studio/pilot --remove-label pilot
-gh issue edit NNN --repo qf-studio/pilot --remove-label pilot-in-progress
+gh issue edit NNN --repo ylcn91/pilot --remove-label pilot
+gh issue edit NNN --repo ylcn91/pilot --remove-label pilot-in-progress
 ```
 
 After cleaning up:
 
 ```bash
 # Verify the pilot queue is empty
-gh issue list --repo qf-studio/pilot --label pilot --state open
+gh issue list --repo ylcn91/pilot --label pilot --state open
 ```
 
 Output must be empty (or contain only pre-cascade legitimate issues).

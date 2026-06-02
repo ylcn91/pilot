@@ -298,7 +298,7 @@ func DefaultConfig() *Config {
 			Enabled:       true,
 			MaxIterations: 3,
 		},
-		AutoCreateIssues:    true,
+		AutoCreateIssues:    false,
 		IssueLabels:         []string{"pilot", "autopilot-fix"},
 		NotifyOnFailure:     true,
 		MaxFailures:         3,

@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"path/filepath"
 
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // Condition type constants

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/comms"
+	"github.com/ylcn91/pilot/internal/comms"
 )
 
 func TestNewHandler(t *testing.T) {

@@ -2,7 +2,7 @@
 
 **Status:** drafted (fire to `qf-studio/studio-sdk` as a `pilot`-labeled issue once GH-1 lands a clean PR)
 **Repo (target of work / PR):** `qf-studio/studio-sdk`
-**Source repo (read-only):** `qf-studio/pilot`
+**Source repo (read-only):** `ylcn91/pilot`
 **Milestone:** SDK extraction M1 (first of the low-coupling adapters)
 
 ## Why Plane first
@@ -19,7 +19,7 @@ source locally. To get it, clone pilot read-only into a temp dir using the
 configured token, then port from there:
 
 ```bash
-gh repo clone qf-studio/pilot /tmp/pilot-src -- --depth 1
+gh repo clone ylcn91/pilot /tmp/pilot-src -- --depth 1
 # source files: /tmp/pilot-src/internal/adapters/plane/*.go
 ```
 
@@ -76,7 +76,7 @@ Target: **`sdk/integrations/plane/`** in studio-sdk (package `plane`).
      keep a plane-typed option **in addition** and note the gap in a code comment —
      do not silently drop data.
 
-4. **Zero pilot dependency.** After porting, `grep -r "qf-studio/pilot"
+4. **Zero pilot dependency.** After porting, `grep -r "ylcn91/pilot"
    sdk/integrations/plane` must return nothing. The SDK module must not import
    the pilot module at all.
 
@@ -85,7 +85,7 @@ Target: **`sdk/integrations/plane/`** in studio-sdk (package `plane`).
 - [ ] `sdk/integrations/plane/` compiles; `go build ./...` green in studio-sdk.
 - [ ] Ported tests pass: `go test ./sdk/integrations/plane/...` (with `-race`).
 - [ ] `go vet ./...` clean.
-- [ ] `grep -r "qf-studio/pilot" sdk/` returns nothing (zero pilot deps).
+- [ ] `grep -r "ylcn91/pilot" sdk/` returns nothing (zero pilot deps).
 - [ ] No new third-party module deps (plane is pure stdlib).
 - [ ] No package-level logging; logger is injected, defaults to `slog.Default()`.
 - [ ] `sdk/testutil/tokens.go` exists with `FakePlaneAPIKey` (obviously-fake value).
@@ -95,7 +95,7 @@ Target: **`sdk/integrations/plane/`** in studio-sdk (package `plane`).
 
 ```bash
 go build ./... && go vet ./... && go test -race ./sdk/integrations/plane/...
-grep -rn "qf-studio/pilot" sdk/ ; echo "exit=$?  (want: no matches)"
+grep -rn "ylcn91/pilot" sdk/ ; echo "exit=$?  (want: no matches)"
 ```
 
 ## Notes / scope guard

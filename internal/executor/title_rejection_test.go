@@ -86,12 +86,12 @@ func TestSuggestConventionalTitle(t *testing.T) {
 }
 
 func TestBuildTitleRejectionComment_ContainsKeyElements(t *testing.T) {
-	comment := buildTitleRejectionComment(2175, "Migrate all alekspetrov/pilot references to qf-studio/pilot", nil)
+	comment := buildTitleRejectionComment(2175, "Migrate all alekspetrov/pilot references to ylcn91/pilot", nil)
 
 	musts := []string{
 		"Pilot can't open a PR",
 		"Current title",
-		"Migrate all alekspetrov/pilot references to qf-studio/pilot",
+		"Migrate all alekspetrov/pilot references to ylcn91/pilot",
 		"Suggested rewrite",
 		"gh issue edit 2175",
 		"--remove-label pilot-failed",

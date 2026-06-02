@@ -23,7 +23,7 @@ For context see: git log, GitHub releases, or `.agent/tasks/archive/`.
 | **v2.100.3** | `fix(executor)`: send OpenCode `model` as `{providerID, modelID}` object — re-do of closed external PR #2408. Modern OpenCode (≥1.4.x) requires this; pre-fix Pilot couldn't send any message at all (GH-2407, GH-2413, PR #2414). |
 | **v2.100.2** | `fix(executor)`: OpenCode response parsing — decodes `{info, parts}` shape from `POST /session/:id/message`, surfaces text parts as `Output`, tool/step parts as BackendEvents (GH-2409). Without this, even after schema fix, runs reported success with empty Output → silent failure downstream. |
 | **Pipeline gotcha closed** | "GitHub Actions is not permitted to create or approve pull requests" — root caused to **org-level** setting (qf-studio org), not repo-level. Org-level toggle blocked all repo-level overrides. Memory updated. |
-| **Chained-trigger pattern** | `peter-evans/create-pull-request` + `gh pr merge --auto` using `GITHUB_TOKEN` does NOT trigger downstream `push`-event workflows (well-known limitation). Fix: pass a PAT (`PILOT_DOCS_PAT`) instead. PAT secret created with fine-grained scope: `Contents: r/w`, `Pull requests: r/w` for qf-studio/pilot only. Annual rotation reminder needed. |
+| **Chained-trigger pattern** | `peter-evans/create-pull-request` + `gh pr merge --auto` using `GITHUB_TOKEN` does NOT trigger downstream `push`-event workflows (well-known limitation). Fix: pass a PAT (`PILOT_DOCS_PAT`) instead. PAT secret created with fine-grained scope: `Contents: r/w`, `Pull requests: r/w` for ylcn91/pilot only. Annual rotation reminder needed. |
 | **Ghost-close pattern recurrence** | PR #2414 and #2424 both got `pilot-done` label set on parent issue while PR remained OPEN with green CI. Autopilot eventually merged both, but the desync makes status reporting unreliable. Logged for follow-up but no fix queued. |
 | **Bench / TASK-26** | No movement — feat/aws-bench branch parked; main branch active for production work. |
 
@@ -33,10 +33,10 @@ For context see: git log, GitHub releases, or `.agent/tasks/archive/`.
 |------|------|
 | **v2.99.1** | `fix(executor)`: self-review `--resume` fallback mirrors Qwen logic + `sanitizeFilename` strips path separators (GH-2377, PR #2378) |
 | **v2.99.0** | `refactor(autopilot)`: remove dead `prod-X.Y.Z` tag auto-push — `sync-docs.yml` already handles GitLab deploy (GH-2374, PR #2375 reverts #2370) |
-| **v2.98.1 / v2.98.0** | Executor env injection of `api_base_url`/`default_model`/`api_auth_token` into Claude Code subprocess (GH-2287/GH-2371); `default_branch` honored (GH-2286); conventional-commit rewrite suggestion after 2nd reject; docs version sync unblocked manually via [PR #2373](https://github.com/qf-studio/pilot/pull/2373) (GitHub Actions lacks PR-create permission at repo level) |
+| **v2.98.1 / v2.98.0** | Executor env injection of `api_base_url`/`default_model`/`api_auth_token` into Claude Code subprocess (GH-2287/GH-2371); `default_branch` honored (GH-2286); conventional-commit rewrite suggestion after 2nd reject; docs version sync unblocked manually via [PR #2373](https://github.com/ylcn91/pilot/pull/2373) (GitHub Actions lacks PR-create permission at repo level) |
 | **Jira search migration** | GH-2289 deprecated `/rest/api/2|3/search` → `/rest/api/3/search/jql` (PR #2376, ghost-abandoned on first retry then recovered via escape-hatch dispatch) |
 | **Known gotcha** | `docs-version-sync.yml` can't auto-PR after release — `GITHUB_TOKEN` lacks PR-create permission (repo Settings toggle required) |
-| **Reverted premise** | [PR #2370](https://github.com/qf-studio/pilot/pull/2370) shipped on a wrong assumption: `prod-X.Y.Z` GitHub tags trigger nothing — deploy lives in `sync-docs.yml`'s tag-push to GitLab. v2.99.0 reverts. |
+| **Reverted premise** | [PR #2370](https://github.com/ylcn91/pilot/pull/2370) shipped on a wrong assumption: `prod-X.Y.Z` GitHub tags trigger nothing — deploy lives in `sync-docs.yml`'s tag-push to GitLab. v2.99.0 reverts. |
 
 ### 2026-04 (between 2026-03-13 and 2026-04-17)
 

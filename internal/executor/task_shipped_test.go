@@ -3,7 +3,7 @@ package executor
 import (
 	"testing"
 
-	"github.com/qf-studio/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/memory"
 )
 
 func TestIsTaskShipped(t *testing.T) {

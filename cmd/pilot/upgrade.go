@@ -12,7 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/qf-studio/pilot/internal/upgrade"
+	"github.com/ylcn91/pilot/internal/upgrade"
 )
 
 func newUpgradeCmd() *cobra.Command {

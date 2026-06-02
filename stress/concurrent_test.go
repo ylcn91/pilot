@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/adapters/github"
-	"github.com/qf-studio/pilot/internal/testutil"
+	"github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/testutil"
 )
 
 // TestStress_20ConcurrentIssues verifies that Pilot can handle 20 concurrent issues

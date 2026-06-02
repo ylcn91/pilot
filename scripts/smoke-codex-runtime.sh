@@ -142,8 +142,8 @@ alerts:
   enabled: false
 YAML
 
-if grep -q "qf-studio/pilot" "${config_path}"; then
-	echo "smoke config must not reference upstream qf-studio/pilot" >&2
+if grep -q "ylcn91/pilot" "${config_path}"; then
+	echo "smoke config must not reference upstream ylcn91/pilot" >&2
 	exit 1
 fi
 

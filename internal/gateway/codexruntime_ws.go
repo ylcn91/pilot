@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qf-studio/pilot/internal/codexruntime"
-	"github.com/qf-studio/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/codexruntime"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 const (
