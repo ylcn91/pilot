@@ -83,6 +83,7 @@ type Server struct {
 	dashboardStore         DashboardStore
 	logStreamStore         LogStreamStore
 	runtimeApprovals       *runtimeApprovalRegistry
+	runtimeSessions        *runtimeSessionRegistry
 	gitGraphPath           string          // Project path for git graph API (defaults to ".")
 	gitGraphFetcher        GitGraphFetcher // Injected to avoid import cycle with internal/dashboard
 }
@@ -151,6 +152,7 @@ func NewServerWithAuth(config *Config, authConfig *AuthConfig) *Server {
 		githubWebhookSecret:    config.GithubWebhookSecret,
 		linearWebhookPublicKey: config.LinearWebhookPublicKey,
 		runtimeApprovals:       newRuntimeApprovalRegistry(),
+		runtimeSessions:        newRuntimeSessionRegistry(),
 		readinessCheckers:      make([]ReadinessChecker, 0),
 		liveness: &livenessState{
 			maxGoroutines:   1000,
@@ -352,6 +354,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	session := s.sessions.Create(conn)
 	defer s.sessions.Remove(session.ID)
+	defer s.runtimeSessions.close(session.ID)
 
 	logging.WithComponent("gateway").Info("New WebSocket session", slog.String("session_id", session.ID))
 

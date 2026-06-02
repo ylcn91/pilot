@@ -7,6 +7,8 @@ import type {
   RuntimeProgressPayload,
   RuntimeSandbox,
   RuntimeStartPayload,
+  RuntimeStopPayload,
+  RuntimeTurnPayload,
 } from '../types'
 
 type RuntimeStatus = 'disconnected' | 'connected' | 'running' | 'completed' | 'error'
@@ -21,6 +23,7 @@ interface SendPromptOptions {
 interface CodexRuntimeState {
   connected: boolean
   status: RuntimeStatus
+  hasSession: boolean
   messages: CodexChatMessage[]
   reasoning: string
   approvals: RuntimeApprovalRequest[]
@@ -70,6 +73,7 @@ export function useCodexRuntime(gatewayURL?: string) {
   const [state, setState] = useState<CodexRuntimeState>({
     connected: false,
     status: 'disconnected',
+    hasSession: false,
     messages: [],
     reasoning: '',
     approvals: [],
@@ -78,7 +82,7 @@ export function useCodexRuntime(gatewayURL?: string) {
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const unmounted = useRef(false)
 
-  const send = useCallback((payload: RuntimeStartPayload | RuntimeApprovalResponsePayload): boolean => {
+  const send = useCallback((payload: RuntimeStartPayload | RuntimeTurnPayload | RuntimeStopPayload | RuntimeApprovalResponsePayload): boolean => {
     const ws = wsRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       setState((prev) => ({ ...prev, status: 'error', error: 'gateway websocket is not connected' }))
@@ -93,24 +97,46 @@ export function useCodexRuntime(gatewayURL?: string) {
     const prompt = options.prompt.trim()
     if (!prompt) return false
 
-    const sent = send({
-      action: 'codexruntime.start',
-      prompt,
-      cwd: options.cwd?.trim() || '.',
-      model: options.model?.trim() || undefined,
-      sandbox: options.sandbox || 'read-only',
-    })
+    const payload: RuntimeStartPayload | RuntimeTurnPayload = state.hasSession
+      ? {
+          action: 'codexruntime.turn',
+          prompt,
+        }
+      : {
+          action: 'codexruntime.start',
+          prompt,
+          cwd: options.cwd?.trim() || '.',
+          model: options.model?.trim() || undefined,
+          sandbox: options.sandbox || 'read-only',
+        }
+
+    const sent = send(payload)
     if (!sent) return false
 
     setState((prev) => ({
       ...prev,
       status: 'running',
+      hasSession: true,
       error: undefined,
       reasoning: '',
       approvals: [],
       messages: [...prev.messages, { id: messageID('user'), role: 'user', text: prompt }],
     }))
     return true
+  }, [send, state.hasSession])
+
+  const resetSession = useCallback((): boolean => {
+    const sent = send({ action: 'codexruntime.stop' })
+    setState((prev) => ({
+      ...prev,
+      status: sent && prev.connected ? 'connected' : prev.status,
+      hasSession: false,
+      error: undefined,
+      reasoning: '',
+      approvals: [],
+      messages: [],
+    }))
+    return sent
   }, [send])
 
   const respondToApproval = useCallback((request: RuntimeApprovalRequest, choice: string): boolean => {
@@ -189,7 +215,7 @@ export function useCodexRuntime(gatewayURL?: string) {
               return { ...prev, reasoning: prev.reasoning + runtimeEvent.delta }
             }
             if (runtimeEvent.type === 'turn_started') {
-              return { ...prev, status: 'running', error: undefined }
+              return { ...prev, status: 'running', hasSession: true, error: undefined }
             }
             if (runtimeEvent.type === 'turn_completed') {
               return { ...prev, status: 'completed' }
@@ -234,6 +260,7 @@ export function useCodexRuntime(gatewayURL?: string) {
   return {
     ...state,
     sendPrompt,
+    resetSession,
     respondToApproval,
   }
 }

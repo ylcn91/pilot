@@ -81,6 +81,34 @@ func TestRuntimeApprovalRegistryResolve(t *testing.T) {
 	}
 }
 
+func TestRuntimeSessionRegistryRemoveIfKeepsReplacement(t *testing.T) {
+	registry := newRuntimeSessionRegistry()
+	first := newRuntimeSessionController(nil, "thread-1", ".", "")
+	second := newRuntimeSessionController(nil, "thread-2", ".", "")
+
+	registry.replace("session-1", first)
+	registry.replace("session-1", second)
+	registry.removeIf("session-1", first)
+
+	got, ok := registry.get("session-1")
+	if !ok {
+		t.Fatal("expected replacement session to remain")
+	}
+	if got != second {
+		t.Fatalf("session = %p, want %p", got, second)
+	}
+}
+
+func TestRuntimeSessionControllerRejectsClosedTurn(t *testing.T) {
+	controller := newRuntimeSessionController(nil, "thread-1", ".", "")
+	controller.close()
+	controller.finish()
+
+	if err := controller.enqueueTurn("hello"); err == nil {
+		t.Fatal("expected closed session error")
+	}
+}
+
 func TestDefaultRuntimeApprovalResponse(t *testing.T) {
 	response := defaultRuntimeApprovalResponse("item/fileChange/requestApproval", 99)
 	if response.RequestID != 99 || response.Decision != string(codexruntime.FileChangeDecline) {

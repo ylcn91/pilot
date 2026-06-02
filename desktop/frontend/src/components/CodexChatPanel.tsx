@@ -70,7 +70,16 @@ export function CodexChatPanel({ gatewayURL }: CodexChatPanelProps) {
         <div className="flex items-center gap-2 text-[10px] shrink-0">
           <span className={`w-2 h-2 rounded-full ${statusColor(runtime.status, runtime.connected)}`} />
           <span className="text-midgray uppercase">{runtime.status}</span>
+          {runtime.hasSession && <span className="text-gray">session</span>}
           {runtime.error && <span className="text-rose truncate">{runtime.error}</span>}
+          <button
+            className="ml-auto px-1.5 py-0.5 border border-border bg-card text-gray hover:border-steel hover:text-lightgray disabled:hover:border-border disabled:text-slate"
+            disabled={!runtime.hasSession || runtime.status === 'running'}
+            type="button"
+            onClick={runtime.resetSession}
+          >
+            New
+          </button>
         </div>
 
         <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto log-scroll border border-border bg-bg px-2 py-1.5">

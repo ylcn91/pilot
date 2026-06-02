@@ -98,6 +98,15 @@ export interface RuntimeStartPayload {
   sandbox?: RuntimeSandbox
 }
 
+export interface RuntimeTurnPayload {
+  action: 'codexruntime.turn'
+  prompt: string
+}
+
+export interface RuntimeStopPayload {
+  action: 'codexruntime.stop'
+}
+
 export interface RuntimeApprovalResponsePayload {
   action: 'codexruntime.approval.respond'
   requestId: number | string
