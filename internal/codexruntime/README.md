@@ -22,3 +22,7 @@ Run the spike:
 ```bash
 go run ./cmd/codexruntime-spike --cwd . --prompt "Reply with exactly PONG. Do not run commands."
 ```
+
+## A1 client boundary
+
+`Client` owns only the local process lifecycle, NDJSON framing, request id correlation, server notification delivery, and stderr draining. It deliberately does not map app-server notifications into Pilot gateway events yet; that belongs in the next slice once the typed methods are stable.

@@ -1,34 +1,18 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/qf-studio/pilot/internal/codexruntime"
 )
-
-type rpcError struct {
-	Code    int64           `json:"code"`
-	Message string          `json:"message"`
-	Data    json.RawMessage `json:"data,omitempty"`
-}
-
-type rpcMessage struct {
-	ID     json.RawMessage `json:"id,omitempty"`
-	Method string          `json:"method,omitempty"`
-	Params json.RawMessage `json:"params,omitempty"`
-	Result json.RawMessage `json:"result,omitempty"`
-	Error  *rpcError       `json:"error,omitempty"`
-}
 
 type logEntry struct {
 	Direction  string `json:"direction"`
@@ -45,7 +29,6 @@ type logEntry struct {
 }
 
 type app struct {
-	stdin       io.Writer
 	log         *json.Encoder
 	requests    map[int]string
 	nextID      int
@@ -86,52 +69,32 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
 	defer cancel()
 
-	if err := run(ctx, command, absCwd, prompt, os.Stdout); err != nil {
+	if err := run(ctx, command, absCwd, prompt); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, command, cwd, prompt string, out io.Writer) error {
-	cmd := exec.CommandContext(ctx, command, "app-server", "--stdio")
-	cmd.Dir = cwd
-
-	stdin, err := cmd.StdinPipe()
+func run(ctx context.Context, command, cwd, prompt string) error {
+	client, err := codexruntime.Start(ctx, codexruntime.Config{
+		Command: command,
+		Cwd:     cwd,
+		Stderr:  os.Stderr,
+	})
 	if err != nil {
 		return err
 	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return err
-	}
-
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-
-	errs := make(chan error, 2)
-	go func() {
-		scanner := bufio.NewScanner(stderr)
-		for scanner.Scan() {
-			fmt.Fprintln(os.Stderr, scanner.Text())
-		}
-		errs <- scanner.Err()
-	}()
+	defer client.Close()
 
 	a := &app{
-		stdin:    stdin,
-		log:      json.NewEncoder(out),
+		log:      json.NewEncoder(os.Stdout),
 		requests: make(map[int]string),
 		nextID:   1,
 		prompt:   prompt,
 		cwd:      cwd,
 	}
 
-	if err := a.send("initialize", map[string]any{
+	if err := a.request(ctx, client, "initialize", map[string]any{
 		"clientInfo": map[string]any{
 			"name":    "pilot-spike",
 			"title":   "Pilot Spike",
@@ -145,123 +108,109 @@ func run(ctx context.Context, command, cwd, prompt string, out io.Writer) error 
 	}); err != nil {
 		return err
 	}
-
-	done, err := a.read(stdout)
-	if closeErr := stdin.Close(); closeErr != nil && err == nil {
-		err = closeErr
-	}
-	if done && cmd.Process != nil {
-		if signalErr := cmd.Process.Signal(os.Interrupt); signalErr != nil {
-			_ = cmd.Process.Kill()
-		}
-	}
-	if waitErr := cmd.Wait(); waitErr != nil && !done && err == nil {
-		err = waitErr
-	}
-	if stderrErr := <-errs; stderrErr != nil && !done && err == nil {
-		err = stderrErr
-	}
-	if ctx.Err() != nil && err == nil {
-		err = ctx.Err()
-	}
-	return err
+	return a.read(ctx, client)
 }
 
-func (a *app) read(r io.Reader) (bool, error) {
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+func (a *app) request(ctx context.Context, client *codexruntime.Client, method string, params any) error {
+	id := a.nextID
+	a.nextID++
+	a.requests[id] = method
 
-	for scanner.Scan() {
-		var msg rpcMessage
-		if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
-			return false, err
-		}
-		done, err := a.handle(msg)
-		if err != nil || done {
-			return done, err
-		}
+	if err := a.log.Encode(logEntry{Direction: "client", ID: id, Method: method}); err != nil {
+		return err
 	}
-	return false, scanner.Err()
-}
-
-func (a *app) handle(msg rpcMessage) (bool, error) {
-	if len(msg.ID) > 0 {
-		return a.handleResponse(msg)
-	}
-	return a.handleNotification(msg)
-}
-
-func (a *app) handleResponse(msg rpcMessage) (bool, error) {
-	id, err := parseID(msg.ID)
+	msg, err := client.Request(ctx, method, params)
 	if err != nil {
-		return false, err
+		return err
 	}
-	method := a.requests[id]
+	return a.handleResponse(id, method, msg)
+}
 
+func (a *app) handleResponse(id int, method string, msg codexruntime.Message) error {
 	entry := logEntry{Direction: "server", ID: id, ResponseTo: method}
-	if msg.Error != nil {
-		entry.Error = msg.Error.Message
-		if logErr := a.log.Encode(entry); logErr != nil {
-			return false, logErr
-		}
-		return false, fmt.Errorf("%s failed: %s", method, msg.Error.Message)
-	}
-
 	switch method {
 	case "initialize":
 		a.initialized = true
 		if err := a.log.Encode(entry); err != nil {
-			return false, err
+			return err
 		}
-		if err := a.notify("initialized"); err != nil {
-			return false, err
-		}
-		return false, a.send("thread/start", map[string]any{
-			"cwd":                a.cwd,
-			"approvalPolicy":     "never",
-			"approvalsReviewer":  "user",
-			"sandbox":            "read-only",
-			"ephemeral":          true,
-			"threadSource":       "user",
-			"sessionStartSource": "startup",
-		})
+		return nil
 	case "thread/start":
-		threadID, err := extractString(msg.Result, "thread", "id")
+		threadID, err := codexruntime.ExtractString(msg.Result, "thread", "id")
 		if err != nil {
-			return false, err
+			return err
 		}
 		a.threadID = threadID
 		entry.ThreadID = threadID
-		if err := a.log.Encode(entry); err != nil {
-			return false, err
-		}
-		return false, a.send("turn/start", map[string]any{
-			"threadId":       threadID,
-			"cwd":            a.cwd,
-			"approvalPolicy": "never",
-			"input": []map[string]any{
-				{
-					"type":          "text",
-					"text":          a.prompt,
-					"text_elements": []any{},
-				},
-			},
-		})
+		return a.log.Encode(entry)
 	case "turn/start":
-		turnID, err := extractString(msg.Result, "turn", "id")
+		turnID, err := codexruntime.ExtractString(msg.Result, "turn", "id")
 		if err != nil {
-			return false, err
+			return err
 		}
 		a.startedTurn = true
 		a.turnID = turnID
 		entry.TurnID = turnID
-		return false, a.log.Encode(entry)
+		return a.log.Encode(entry)
 	default:
-		return false, a.log.Encode(entry)
+		return a.log.Encode(entry)
 	}
 }
 
-func (a *app) handleNotification(msg rpcMessage) (bool, error) {
+func (a *app) read(ctx context.Context, client *codexruntime.Client) error {
+	if err := client.Notify("initialized", nil); err != nil {
+		return err
+	}
+	if err := a.log.Encode(logEntry{Direction: "client", Method: "initialized"}); err != nil {
+		return err
+	}
+
+	if err := a.request(ctx, client, "thread/start", map[string]any{
+		"cwd":                a.cwd,
+		"approvalPolicy":     "never",
+		"approvalsReviewer":  "user",
+		"sandbox":            "read-only",
+		"ephemeral":          true,
+		"threadSource":       "user",
+		"sessionStartSource": "startup",
+	}); err != nil {
+		return err
+	}
+
+	if err := a.request(ctx, client, "turn/start", map[string]any{
+		"threadId":       a.threadID,
+		"cwd":            a.cwd,
+		"approvalPolicy": "never",
+		"input": []map[string]any{
+			{
+				"type":          "text",
+				"text":          a.prompt,
+				"text_elements": []any{},
+			},
+		},
+	}); err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case msg, ok := <-client.Notifications():
+			if !ok {
+				return errors.New("app-server notification stream closed")
+			}
+			done, err := a.handleNotification(msg)
+			if err != nil || done {
+				return err
+			}
+		case err := <-client.Errors():
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+func (a *app) handleNotification(msg codexruntime.Message) (bool, error) {
 	entry := logEntry{Direction: "server", Method: msg.Method}
 	fields, err := objectFields(msg.Params)
 	if err != nil {
@@ -296,77 +245,6 @@ func (a *app) handleNotification(msg rpcMessage) (bool, error) {
 		return false, errors.New(entry.Error)
 	}
 	return msg.Method == "turn/completed", nil
-}
-
-func (a *app) send(method string, params any) error {
-	id := a.nextID
-	a.nextID++
-	a.requests[id] = method
-
-	msg := map[string]any{
-		"id":     id,
-		"method": method,
-		"params": params,
-	}
-	if err := writeLine(a.stdin, msg); err != nil {
-		return err
-	}
-	return a.log.Encode(logEntry{Direction: "client", ID: id, Method: method})
-}
-
-func (a *app) notify(method string) error {
-	if err := writeLine(a.stdin, map[string]any{"method": method}); err != nil {
-		return err
-	}
-	return a.log.Encode(logEntry{Direction: "client", Method: method})
-}
-
-func writeLine(w io.Writer, value any) error {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	_, err = w.Write(data)
-	return err
-}
-
-func parseID(raw json.RawMessage) (int, error) {
-	var n int
-	if err := json.Unmarshal(raw, &n); err == nil {
-		return n, nil
-	}
-
-	var s string
-	if err := json.Unmarshal(raw, &s); err != nil {
-		return 0, err
-	}
-	return strconv.Atoi(s)
-}
-
-func extractString(raw json.RawMessage, path ...string) (string, error) {
-	var value any
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return "", err
-	}
-
-	current := value
-	for _, key := range path {
-		object, ok := current.(map[string]any)
-		if !ok {
-			return "", fmt.Errorf("missing object at %q", key)
-		}
-		current, ok = object[key]
-		if !ok {
-			return "", fmt.Errorf("missing field %q", key)
-		}
-	}
-
-	text, ok := current.(string)
-	if !ok {
-		return "", fmt.Errorf("field %q is not a string", strings.Join(path, "."))
-	}
-	return text, nil
 }
 
 func objectFields(raw json.RawMessage) (map[string]any, error) {
