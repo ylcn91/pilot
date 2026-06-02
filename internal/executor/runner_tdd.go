@@ -16,8 +16,9 @@ import (
 // (executeCopyResult + executeFinalize: QA/review/PR) runs unchanged.
 //
 // It returns a non-nil error to ABORT the run when a gate cannot be satisfied:
-//   - RED not red after a bounded TEST-AUTHOR retry -> reasonTDDRedGateNotRed
+//   - RED not red after a bounded TEST-AUTHOR retry  -> reasonTDDRedGateNotRed
 //   - GREEN still failing after green_max_retries     -> reasonTDDGreenGateFailed
+//   - GREEN passes but IMPLEMENTER never committed     -> reasonTDDImplementerNoCommit
 //
 // The caller (Execute) wires the returned (result, err) into the same path it
 // uses for r.execBackend.Execute, so failures flow through the normal failure
@@ -91,7 +92,13 @@ func (r *Runner) runTDDSequence(s *executeState) (*BackendResult, error) {
 		log.Warn("TDD test-freeze snapshot failed; freeze guard disabled for this run", slog.Any("error", err))
 	}
 
-	// 4) IMPLEMENTER — make the failing tests pass and commit.
+	// 4) IMPLEMENTER — make the failing tests pass and commit. Capture the
+	// test-author baseline commit count BEFORE the implementer runs so the
+	// post-GREEN commit guard can prove the implementer landed its own commit.
+	implBaseline, err := r.tddCommitCount(s)
+	if err != nil {
+		return nil, err
+	}
 	r.reportProgress(task.ID, "TDD Implementer", 50, "Implementing to pass tests...")
 	implRes, err := r.runTDDImplementer(s, base, "")
 	if err != nil {
@@ -107,6 +114,24 @@ func (r *Runner) runTDDSequence(s *executeState) (*BackendResult, error) {
 	// 5) GREEN gate — same tests MUST pass; loop IMPLEMENTER with gate feedback.
 	r.reportProgress(task.ID, "TDD Green Gate", 70, "Verifying tests pass (GREEN)...")
 	if err := r.enforceTDDGreenGate(ctx, task.ID, s.executionPath, s.tddTestNames, scopeToNew, greenMax,
+		func(ctx context.Context, feedback string) error {
+			res, rerunErr := r.runTDDImplementer(s, base, feedback)
+			if rerunErr != nil {
+				return rerunErr
+			}
+			implRes = res
+			return nil
+		}); err != nil {
+		return nil, err
+	}
+
+	// 5.5) IMPLEMENTER-COMMIT gate — the GREEN gate judges the WORKING TREE, so an
+	// implementer that made tests pass without committing would yield a PR carrying
+	// only the test-author commit. Require a fresh implementer commit beyond the
+	// baseline; re-prompt to COMMIT (bounded by greenMax) and FAIL the run with
+	// reasonTDDImplementerNoCommit rather than silently finalizing a tests-only PR.
+	if err := r.enforceTDDImplementerCommit(ctx, task.ID, s.executionPath, s.tddTestNames, scopeToNew, implBaseline, greenMax,
+		func(ctx context.Context) (int, error) { return r.tddCommitCount(s) },
 		func(ctx context.Context, feedback string) error {
 			res, rerunErr := r.runTDDImplementer(s, base, feedback)
 			if rerunErr != nil {
@@ -284,7 +309,10 @@ func (r *Runner) runTDDImplementer(s *executeState, base, feedback string) (*Bac
 		return res, err
 	}
 	if after <= before {
-		s.log.Warn("TDD implementer produced no new commit; GREEN gate will judge the working tree",
+		// Not fatal here: the GREEN gate still judges the working tree, and the
+		// post-GREEN enforceTDDImplementerCommit guard re-prompts for a commit and
+		// fails the run with reasonTDDImplementerNoCommit if none ever lands.
+		s.log.Warn("TDD implementer produced no new commit; commit guard will require one after GREEN",
 			slog.String("task_id", s.task.ID))
 	}
 	return res, nil

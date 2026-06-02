@@ -24,6 +24,12 @@ const (
 	// reasonTDDGreenGateFailed fails the run when IMPLEMENTER cannot make the
 	// authored tests pass within green_max_retries.
 	reasonTDDGreenGateFailed = "tdd_green_gate_failed"
+	// reasonTDDImplementerNoCommit fails the run when the GREEN gate passes but the
+	// IMPLEMENTER never committed its implementation (the working tree is green but
+	// no commit landed beyond the test-author baseline). Without this, the PR would
+	// carry ONLY the test-author commit and the implementation would be lost; we
+	// refuse to silently finalize a tests-only PR.
+	reasonTDDImplementerNoCommit = "tdd_implementer_no_commit"
 )
 
 const (
