@@ -3289,9 +3289,42 @@ Only use DECLINED if implementation is truly impossible or undefined. Do not dec
 					state.intentRetried = true
 					r.reportProgress(task.ID, "Intent Retry", 80, "Retrying with intent feedback...")
 
+					// Re-anchor the retry on the original acceptance criteria so the
+					// fix is judged against the same target as the first attempt
+					// instead of drifting toward the veto reason alone.
+					var acSection string
+					if len(task.AcceptanceCriteria) > 0 {
+						var acb strings.Builder
+						acb.WriteString("\n\n## Acceptance Criteria\n\n")
+						for _, ac := range task.AcceptanceCriteria {
+							acb.WriteString(fmt.Sprintf("- [ ] %s\n", ac))
+						}
+						acSection = acb.String()
+					}
+
+					// Re-inject persisted constraints/decisions from the run doc so
+					// the retry stays anchored to context captured earlier in the run.
+					var docSection string
+					if runDoc, docErr := loadRunDoc(agentPath, task.ID); docErr == nil && runDoc != nil {
+						var db strings.Builder
+						if len(runDoc.Constraints) > 0 {
+							db.WriteString("\n\n## Constraints\n\n")
+							for _, c := range runDoc.Constraints {
+								db.WriteString(fmt.Sprintf("- %s\n", c))
+							}
+						}
+						if len(runDoc.DecisionLog) > 0 {
+							db.WriteString("\n\n## Prior Decisions\n\n")
+							for _, d := range runDoc.DecisionLog {
+								db.WriteString(fmt.Sprintf("- %s — %s\n", d.Decision, d.Reasoning))
+							}
+						}
+						docSection = db.String()
+					}
+
 					retryPrompt := fmt.Sprintf(
-						"## Intent Alignment Retry\n\nThe intent judge flagged the previous implementation:\n\n**Reason:** %s\n\nPlease fix the issues above. Focus on implementing exactly what the issue asks for.\n\n## Original Task: %s\n\n%s",
-						intentVerdict.Reason, task.Title, task.Description,
+						"## Intent Alignment Retry\n\nThe intent judge flagged the previous implementation:\n\n**Reason:** %s\n\nPlease fix the issues above. Focus on implementing exactly what the issue asks for.\n\n## Original Task: %s\n\n%s%s%s",
+						intentVerdict.Reason, task.Title, task.Description, acSection, docSection,
 					)
 
 					intentAllowed, intentMCP := r.executionToolOptions()

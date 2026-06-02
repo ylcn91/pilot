@@ -7,6 +7,132 @@ import (
 	"testing"
 )
 
+func TestFormatTaskDocRendersTitleAndSections(t *testing.T) {
+	doc := &TaskDoc{
+		ID:                 "GH-42",
+		Title:              "feat(executor): persist run decision log",
+		Description:        "Persist decisions so retries stay anchored.",
+		AcceptanceCriteria: []string{"Title is rendered", "Sections render only when non-empty"},
+		Constraints:        []string{"Edit only docs.go and runner.go"},
+		DecisionLog: []DecisionEntry{
+			{Date: "2026-06-02", Decision: "Use a markdown table", Reasoning: "Human-readable | grep-able", Alternatives: "JSON sidecar"},
+		},
+		OpenQuestions: []string{"Should constraints flow from the Task struct?"},
+		KeyFiles:      []string{"internal/executor/docs.go"},
+		PlannedSteps:  []string{"Add fields", "Rewrite formatter"},
+	}
+
+	out := formatTaskDoc(doc)
+
+	if !strings.HasPrefix(out, "# feat(executor): persist run decision log\n") {
+		t.Errorf("expected H1 to use Title, got:\n%s", out)
+	}
+	for _, want := range []string{
+		"## Problem",
+		"## Acceptance Criteria",
+		"## Decisions Log",
+		"| Date | Decision | Reasoning | Alternatives |",
+		"Human-readable \\| grep-able", // pipe escaped inside a cell
+		"## Constraints",
+		"## Open Questions",
+		"## Key Files",
+		"## Planned Steps",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected output to contain %q, got:\n%s", want, out)
+		}
+	}
+}
+
+func TestFormatTaskDocOmitsEmptySections(t *testing.T) {
+	doc := &TaskDoc{
+		ID:                 "GH-7",
+		Description:        "Minimal task.",
+		AcceptanceCriteria: []string{"Builds"},
+	}
+
+	out := formatTaskDoc(doc)
+
+	// Falls back to ID heading when Title is empty.
+	if !strings.HasPrefix(out, "# GH-7\n") {
+		t.Errorf("expected H1 to fall back to ID, got:\n%s", out)
+	}
+	for _, absent := range []string{"## Decisions Log", "## Constraints", "## Open Questions", "## Key Files", "## Planned Steps"} {
+		if strings.Contains(out, absent) {
+			t.Errorf("expected %q to be omitted for empty slice, got:\n%s", absent, out)
+		}
+	}
+}
+
+func TestAppendDecisionCreatesAndAppends(t *testing.T) {
+	agentPath := filepath.Join(t.TempDir(), ".agent")
+	task := &Task{
+		ID:          "GH-99",
+		Title:       "feat(x): thing",
+		Description: "do the thing",
+	}
+	if err := CreateTaskDoc(agentPath, task); err != nil {
+		t.Fatalf("CreateTaskDoc failed: %v", err)
+	}
+
+	first := DecisionEntry{Date: "2026-06-02", Decision: "A", Reasoning: "because A", Alternatives: "B"}
+	if err := AppendDecision(agentPath, task.ID, first); err != nil {
+		t.Fatalf("AppendDecision (create) failed: %v", err)
+	}
+	second := DecisionEntry{Decision: "C", Reasoning: "because C"}
+	if err := AppendDecision(agentPath, task.ID, second); err != nil {
+		t.Fatalf("AppendDecision (append) failed: %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(agentPath, "tasks", "gh-99.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(content)
+
+	if strings.Count(got, "## Decisions Log") != 1 {
+		t.Errorf("expected exactly one Decisions Log header, got:\n%s", got)
+	}
+	if !strings.Contains(got, "| 2026-06-02 | A | because A | B |") {
+		t.Errorf("expected first decision row, got:\n%s", got)
+	}
+	if !strings.Contains(got, "| C | because C |") {
+		t.Errorf("expected second decision row, got:\n%s", got)
+	}
+}
+
+func TestLoadRunDocRoundTrip(t *testing.T) {
+	agentPath := filepath.Join(t.TempDir(), ".agent")
+	tasksDir := filepath.Join(agentPath, "tasks")
+	if err := os.MkdirAll(tasksDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	doc := &TaskDoc{
+		ID:          "GH-55",
+		Title:       "feat(x): persist",
+		Description: "desc",
+		Constraints: []string{"Edit only owned files", "No new deps"},
+		DecisionLog: []DecisionEntry{
+			{Date: "2026-06-02", Decision: "table over json", Reasoning: "readable", Alternatives: "json"},
+		},
+	}
+	if err := os.WriteFile(filepath.Join(tasksDir, "gh-55.md"), []byte(formatTaskDoc(doc)), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := loadRunDoc(agentPath, "GH-55")
+	if err != nil {
+		t.Fatalf("loadRunDoc failed: %v", err)
+	}
+	if len(loaded.Constraints) != 2 || loaded.Constraints[0] != "Edit only owned files" {
+		t.Errorf("constraints not parsed: %#v", loaded.Constraints)
+	}
+	if len(loaded.DecisionLog) != 1 || loaded.DecisionLog[0].Decision != "table over json" || loaded.DecisionLog[0].Reasoning != "readable" {
+		t.Errorf("decision log not parsed: %#v", loaded.DecisionLog)
+	}
+}
+
 func TestUpdateFeatureMatrix(t *testing.T) {
 	tmpDir := t.TempDir()
 	agentPath := filepath.Join(tmpDir, ".agent")
