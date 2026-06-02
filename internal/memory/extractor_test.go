@@ -1846,6 +1846,74 @@ func TestNewCodePatternCategories(t *testing.T) {
 	}
 }
 
+func TestSaveExtractedPatterns_TierInfluencesSavedPattern(t *testing.T) {
+	tests := []struct {
+		name           string
+		output         string
+		wantTier       string
+		wantConfidence float64
+	}{
+		{
+			name:           "blocker tier raises confidence and persists tier",
+			output:         "STANDARD_VIOLATION: blocker no-secrets — config.go:12",
+			wantTier:       "blocker",
+			wantConfidence: 0.9,
+		},
+		{
+			name:           "must tier raises confidence",
+			output:         "STANDARD_VIOLATION: must error-check — handler.go:88",
+			wantTier:       "must",
+			wantConfidence: 0.75,
+		},
+		{
+			name:           "nice tier keeps baseline confidence but persists tier",
+			output:         "STANDARD_VIOLATION: nice naming — store.go:5",
+			wantTier:       "nice",
+			wantConfidence: 0.5,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir, err := os.MkdirTemp("", "extractor-tier-*")
+			if err != nil {
+				t.Fatalf("failed to create temp dir: %v", err)
+			}
+			defer func() { _ = os.RemoveAll(tmpDir) }()
+
+			store, _ := NewStore(tmpDir)
+			defer func() { _ = store.Close() }()
+			patternStore, _ := NewGlobalPatternStore(tmpDir)
+			extractor := NewPatternExtractor(patternStore, store)
+			ctx := context.Background()
+
+			result, err := extractor.ExtractFromSelfReview(ctx, tt.output, "/test/project")
+			if err != nil {
+				t.Fatalf("ExtractFromSelfReview() error = %v", err)
+			}
+			if result.Tier != tt.wantTier {
+				t.Fatalf("Tier = %q, want %q", result.Tier, tt.wantTier)
+			}
+
+			if err := extractor.SaveExtractedPatterns(ctx, result); err != nil {
+				t.Fatalf("SaveExtractedPatterns() error = %v", err)
+			}
+
+			saved := patternStore.GetByType(PatternTypeWorkflow)
+			if len(saved) != 1 {
+				t.Fatalf("got %d saved patterns, want 1", len(saved))
+			}
+			got := saved[0]
+			if got.Confidence != tt.wantConfidence {
+				t.Errorf("saved confidence = %v, want %v", got.Confidence, tt.wantConfidence)
+			}
+			if got.Metadata["tier"] != tt.wantTier {
+				t.Errorf("metadata tier = %v, want %q", got.Metadata["tier"], tt.wantTier)
+			}
+		})
+	}
+}
+
 // patternTitles returns the titles of extracted patterns for test diagnostics.
 func patternTitles(patterns []*ExtractedPattern) []string {
 	titles := make([]string, len(patterns))

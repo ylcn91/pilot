@@ -775,6 +775,23 @@ func (e *PatternExtractor) ExtractFromSelfReview(ctx context.Context, selfReview
 	return result, nil
 }
 
+// tierToConfidence maps a STANDARD_VIOLATION severity tier to a baseline
+// confidence floor for the saved anti-pattern. Higher-severity tiers carry a
+// stronger signal so they survive decay and surface ahead of nice-to-haves.
+// Returns 0 for an absent or unknown tier (no influence on confidence).
+func tierToConfidence(tier string) float64 {
+	switch tier {
+	case "blocker":
+		return 0.9
+	case "must":
+		return 0.75
+	case "nice":
+		return 0.5
+	default:
+		return 0
+	}
+}
+
 // SaveExtractedPatterns saves extracted patterns to the store
 func (e *PatternExtractor) SaveExtractedPatterns(ctx context.Context, result *ExtractionResult) error {
 	for _, p := range result.Patterns {
@@ -807,26 +824,37 @@ func (e *PatternExtractor) SaveExtractedPatterns(ctx context.Context, result *Ex
 		}
 	}
 
-	// Save anti-patterns with special marker
+	// Save anti-patterns with special marker. When the extraction carried a
+	// STANDARD_VIOLATION severity tier, route it into the saved confidence
+	// (blocker/must outrank nice) and persist the tier so it stays queryable.
+	tierConfidence := tierToConfidence(result.Tier)
 	for _, p := range result.AntiPatterns {
+		confidence := p.Confidence
+		if tierConfidence > confidence {
+			confidence = tierConfidence
+		}
+		metadata := map[string]interface{}{
+			"context":         p.Context,
+			"execution_id":    result.ExecutionID,
+			"extracted_at":    result.ExtractedAt,
+			"is_anti_pattern": true,
+		}
+		if result.Tier != "" {
+			metadata["tier"] = result.Tier
+		}
 		globalPattern := &GlobalPattern{
 			Type:        p.Type,
 			Title:       "[ANTI] " + p.Title,
 			Description: "AVOID: " + p.Description,
 			Examples:    p.Examples,
-			Confidence:  p.Confidence,
+			Confidence:  confidence,
 			Projects:    []string{result.ProjectPath},
-			Metadata: map[string]interface{}{
-				"context":         p.Context,
-				"execution_id":    result.ExecutionID,
-				"extracted_at":    result.ExtractedAt,
-				"is_anti_pattern": true,
-			},
+			Metadata:    metadata,
 		}
 
 		// Recurrence detection: if a similar anti-pattern already exists,
 		// boost confidence instead of creating a duplicate.
-		effectiveConfidence := p.Confidence
+		effectiveConfidence := confidence
 		if existing := e.findSimilarPattern(globalPattern); existing != nil {
 			isCISourced := strings.HasPrefix(fmt.Sprintf("%v", existing.Metadata["context"]), "source:ci") ||
 				strings.HasPrefix(p.Context, "source:ci")
