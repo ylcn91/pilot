@@ -210,6 +210,11 @@ func (r *Runner) executePrepare(s *executeState) (*ExecutionResult, error) {
 		prompt += "\n\n## Project Workflow\n\n" + repoWorkflow.PromptAppendix
 	}
 
+	// Inject the opt-in pipeline plan spec, if the plan stage produced one. This
+	// appends AFTER BuildPrompt/.agent priming so the spec augments — not
+	// replaces — the executor's normal context.
+	prompt = injectPlanOutput(prompt, s.planOutput)
+
 	// Append research context if available (GH-217)
 	if researchResult != nil && len(researchResult.Findings) > 0 {
 		prompt = r.appendResearchContext(prompt, researchResult)

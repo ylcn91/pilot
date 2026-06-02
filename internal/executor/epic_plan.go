@@ -31,55 +31,11 @@ func (r *Runner) PlanEpic(ctx context.Context, task *Task, executionPath string)
 	agentDir := filepath.Join(executionPath, ".agent")
 	prompt := buildPlanningPrompt(task, agentDir)
 
-	// Get claude command from config or use default
-	claudeCmd := "claude"
-	if r.config != nil && r.config.ClaudeCode != nil && r.config.ClaudeCode.Command != "" {
-		claudeCmd = r.config.ClaudeCode.Command
-	}
-
 	// GH-2432: Planning gets Opus for stronger reasoning; execution stays on
-	// Sonnet (set via the regular runner path). The model is also exported via
-	// ANTHROPIC_MODEL because Pilot's global env may otherwise win on Node's
-	// last-write lookup inside Claude Code (see backend_claudecode.go).
-	planningModel := "claude-opus-4-7"
-	if r.config != nil && r.config.Planning != nil && r.config.Planning.Model != "" {
-		planningModel = r.config.Planning.Model
-	}
-
-	// Run Claude Code with --print flag for planning. Restrict tools to
-	// read-only — planning must not write code.
-	args := []string{
-		"--print", "-p", prompt,
-		"--model", planningModel,
-		"--allowedTools", strings.Join(DefaultAllowedToolsPlanning(), ","),
-	}
-
-	cmd := exec.CommandContext(ctx, claudeCmd, args...)
-	cmd.Env = append(os.Environ(), "ANTHROPIC_MODEL="+planningModel)
-
-	// Set working directory - use executionPath which respects worktree isolation
-	if executionPath != "" {
-		cmd.Dir = executionPath
-	}
-
-	// Capture output
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	r.log.Debug("Running Claude Code planning",
-		"task_id", task.ID,
-		"command", claudeCmd,
-		"args", args,
-	)
-
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("claude planning failed: %w (stderr: %s)", err, stderr.String())
-	}
-
-	output := stdout.String()
-	if output == "" {
-		return nil, fmt.Errorf("claude planning returned empty output")
+	// Sonnet (set via the regular runner path).
+	output, err := r.runPlanningSubprocess(ctx, task, prompt, executionPath, r.resolvePlanningModel(""))
+	if err != nil {
+		return nil, err
 	}
 
 	// Parse subtasks: tries Haiku structured extraction first, falls back to regex.
@@ -98,6 +54,67 @@ func (r *Runner) PlanEpic(ctx context.Context, task *Task, executionPath string)
 		Subtasks:   subtasks,
 		PlanOutput: output,
 	}, nil
+}
+
+// resolvePlanningModel returns the model the planning subprocess should use.
+// An explicit override (e.g. pipeline.plan.model) wins; otherwise it falls back
+// to planning.model from config, then to the built-in default. GH-2432.
+func (r *Runner) resolvePlanningModel(override string) string {
+	if override != "" {
+		return override
+	}
+	if r.config != nil && r.config.Planning != nil && r.config.Planning.Model != "" {
+		return r.config.Planning.Model
+	}
+	return "claude-opus-4-7"
+}
+
+// runPlanningSubprocess shells `claude --print -p <prompt> --model <model>` with
+// read-only tools and returns its stdout. The model is also exported via
+// ANTHROPIC_MODEL because Pilot's global env may otherwise win on Node's
+// last-write lookup inside Claude Code (see backend_claudecode.go). Shared by
+// PlanEpic and the opt-in pipeline plan stage.
+func (r *Runner) runPlanningSubprocess(ctx context.Context, task *Task, prompt, executionPath, model string) (string, error) {
+	claudeCmd := "claude"
+	if r.config != nil && r.config.ClaudeCode != nil && r.config.ClaudeCode.Command != "" {
+		claudeCmd = r.config.ClaudeCode.Command
+	}
+
+	// Run Claude Code with --print flag for planning. Restrict tools to
+	// read-only — planning must not write code.
+	args := []string{
+		"--print", "-p", prompt,
+		"--model", model,
+		"--allowedTools", strings.Join(DefaultAllowedToolsPlanning(), ","),
+	}
+
+	cmd := exec.CommandContext(ctx, claudeCmd, args...)
+	cmd.Env = append(os.Environ(), "ANTHROPIC_MODEL="+model)
+
+	// Set working directory - use executionPath which respects worktree isolation
+	if executionPath != "" {
+		cmd.Dir = executionPath
+	}
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	r.log.Debug("Running Claude Code planning",
+		"task_id", task.ID,
+		"command", claudeCmd,
+		"args", args,
+	)
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("claude planning failed: %w (stderr: %s)", err, stderr.String())
+	}
+
+	output := stdout.String()
+	if output == "" {
+		return "", fmt.Errorf("claude planning returned empty output")
+	}
+	return output, nil
 }
 
 // buildPlanningPrompt creates the prompt for epic planning. agentDir points at

@@ -20,6 +20,11 @@ func (r *Runner) executeEpic(s *executeState) (*ExecutionResult, error) {
 	start := s.start
 	complexity := s.complexity
 
+	// Opt-in pipeline PLAN stage (independent of complexity.IsEpic()). Captures a
+	// spec into s.planOutput, which executePrepare injects into the execute
+	// prompt. No-op unless config.Pipeline.Plan is configured.
+	r.executePipelinePlan(s)
+
 	// GH-664: Skip epic mode if task has no-decompose label
 	// GH-1687: Also skip if task title or description contains [no-plan] keyword
 	hasNoDecompose := false

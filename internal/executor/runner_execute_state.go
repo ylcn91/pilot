@@ -42,6 +42,9 @@ type executeState struct {
 	repoWorkflow     *workflow.Workflow
 	hookEnv          []string
 
+	// Pipeline plan stage (opt-in): raw spec injected into the execute prompt.
+	planOutput string
+
 	// Prompt + progress + recording
 	prompt          string
 	state           *progressState
