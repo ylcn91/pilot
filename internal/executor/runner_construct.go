@@ -19,7 +19,13 @@ import (
 // progress tracking, PR creation, and execution recording. Runner is safe for
 // concurrent use and tracks all running tasks for cancellation support.
 type Runner struct {
-	backend               Backend // AI execution backend
+	backend Backend // AI execution backend
+	// Per-stage backends for the optional handoff pipeline. When no pipeline is
+	// configured all three point at the single `backend` instance, so behavior
+	// is identical to the single-backend path.
+	planBackend           Backend
+	execBackend           Backend
+	reviewBackend         Backend
 	config                *BackendConfig
 	onProgress            ProgressCallback
 	progressCallbacks     map[string]ProgressCallback // Named callbacks for multi-listener support
@@ -132,6 +138,9 @@ func NewRunner() *Runner {
 	log := logging.WithComponent("executor")
 	return &Runner{
 		backend:           backend,
+		planBackend:       backend,
+		execBackend:       backend,
+		reviewBackend:     backend,
 		running:           make(map[string]*exec.Cmd),
 		progressCallbacks: make(map[string]ProgressCallback),
 		tokenCallbacks:    make(map[string]TokenCallback),
@@ -152,6 +161,9 @@ func NewRunnerWithBackend(backend Backend) *Runner {
 	log := logging.WithComponent("executor")
 	return &Runner{
 		backend:           backend,
+		planBackend:       backend,
+		execBackend:       backend,
+		reviewBackend:     backend,
 		running:           make(map[string]*exec.Cmd),
 		progressCallbacks: make(map[string]ProgressCallback),
 		tokenCallbacks:    make(map[string]TokenCallback),
@@ -183,6 +195,13 @@ func NewRunnerWithConfig(config *BackendConfig) (*Runner, error) {
 	runner := NewRunnerWithBackend(backend)
 	runner.config = config
 	runner.issueCreationEnabled = config.CreateSubIssues
+
+	// Resolve per-stage backends for the optional handoff pipeline. With no
+	// pipeline (or a nil stage) the field reuses the single `backend` instance,
+	// so plan/exec/review are the identical pointer and behavior is unchanged.
+	if err := runner.resolveStageBackends(config); err != nil {
+		return nil, err
+	}
 
 	// Configure model routing, timeouts, and effort from config
 	if config != nil {
@@ -288,4 +307,37 @@ func NewRunnerWithConfig(config *BackendConfig) (*Runner, error) {
 	runner.log.Debug("Profile manager and drift detector initialized")
 
 	return runner, nil
+}
+
+// resolveStageBackends wires planBackend/execBackend/reviewBackend from the
+// optional pipeline. Each stage that is configured gets its own Backend built
+// via NewStageBackend; every other stage falls back to the run's single
+// backend, so a nil pipeline leaves all three equal to r.backend (zero behavior
+// change vs. the single-backend path).
+func (r *Runner) resolveStageBackends(config *BackendConfig) error {
+	r.planBackend = r.backend
+	r.execBackend = r.backend
+	r.reviewBackend = r.backend
+	if config == nil || config.Pipeline == nil {
+		return nil
+	}
+	stages := []struct {
+		stage  *StageConfig
+		target *Backend
+	}{
+		{config.Pipeline.Plan, &r.planBackend},
+		{config.Pipeline.Execute, &r.execBackend},
+		{config.Pipeline.Review, &r.reviewBackend},
+	}
+	for _, s := range stages {
+		if s.stage == nil {
+			continue
+		}
+		b, err := NewStageBackend(s.stage, *config)
+		if err != nil {
+			return err
+		}
+		*s.target = b
+	}
+	return nil
 }

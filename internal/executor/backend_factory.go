@@ -49,6 +49,35 @@ func NewBackend(config *BackendConfig) (Backend, error) {
 	}
 }
 
+// NewStageBackend builds the Backend for one pipeline stage. It clones base,
+// overrides Type (and Model/Effort when the stage sets them), and reuses the
+// existing NewBackend switch — no new backend wiring. A nil stage yields a
+// backend equivalent to base.
+func NewStageBackend(stage *StageConfig, base BackendConfig) (Backend, error) {
+	cfg := base // shallow copy; only the fields we override below are touched
+	if stage != nil {
+		if stage.Type != "" {
+			cfg.Type = stage.Type
+		}
+		if stage.Model != "" {
+			// DefaultModel is the executor-wide model override threaded into
+			// every backend by NewBackend; setting it routes the stage's model
+			// regardless of which backend type it targets.
+			cfg.DefaultModel = stage.Model
+		}
+		if stage.Effort != "" && cfg.Type == BackendTypeCodexExec {
+			// codex-exec is the only backend with a config-level effort knob.
+			ce := CodexExecConfig{}
+			if cfg.CodexExec != nil {
+				ce = *cfg.CodexExec
+			}
+			ce.Effort = stage.Effort
+			cfg.CodexExec = &ce
+		}
+	}
+	return NewBackend(&cfg)
+}
+
 // NewBackendFromType creates a Backend instance using default config for the type.
 func NewBackendFromType(backendType string) (Backend, error) {
 	config := DefaultBackendConfig()
