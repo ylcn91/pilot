@@ -80,7 +80,7 @@ Only use DECLINED if implementation is truly impossible or undefined. Do not dec
 
 			// Execute retry
 			noopRetryAllowed, noopRetryMCP := r.executionToolOptions()
-			retryResult, retryErr := r.backend.Execute(ctx, ExecuteOptions{
+			retryResult, retryErr := r.execBackend.Execute(ctx, ExecuteOptions{
 				Prompt:          retryPrompt,
 				ProjectPath:     executionPath, // TASK-323: retry in the worktree so CountNewCommits can see its commits
 				Verbose:         task.Verbose,

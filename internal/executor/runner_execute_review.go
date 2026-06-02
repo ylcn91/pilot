@@ -174,7 +174,7 @@ func (r *Runner) executeSelfReviewIntent(s *executeState) (*ExecutionResult, err
 				)
 
 				intentAllowed, intentMCP := r.executionToolOptions()
-				_, retryErr := r.backend.Execute(ctx, ExecuteOptions{
+				_, retryErr := r.execBackend.Execute(ctx, ExecuteOptions{
 					Prompt:        retryPrompt,
 					ProjectPath:   task.ProjectPath,
 					Verbose:       task.Verbose,

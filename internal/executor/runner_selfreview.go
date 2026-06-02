@@ -38,9 +38,14 @@ func (r *Runner) runSelfReview(ctx context.Context, task *Task, state *progressS
 	selectedModel := r.resolveSelectedModel(task)
 	selectedEffort := r.modelRouter.SelectEffort(task)
 
-	// GH-1265: Determine if session resume is enabled and session ID is available
+	// GH-1265: Determine if session resume is enabled and session ID is available.
+	// Cross-backend resume is invalid: only claude-code honors --resume, and an
+	// execute-stage session id is meaningless to a different review backend. Only
+	// pass ResumeSessionID when review runs on the same backend instance that
+	// executed; otherwise review works purely from the git diff.
 	var resumeSessionID string
-	if r.config != nil && r.config.ClaudeCode != nil && r.config.ClaudeCode.UseSessionResume {
+	if r.reviewBackend == r.execBackend &&
+		r.config != nil && r.config.ClaudeCode != nil && r.config.ClaudeCode.UseSessionResume {
 		if state.sessionID != "" {
 			resumeSessionID = state.sessionID
 			r.log.Debug("Using session resume for self-review",
@@ -51,7 +56,7 @@ func (r *Runner) runSelfReview(ctx context.Context, task *Task, state *progressS
 	}
 
 	reviewAllowed, reviewMCP := r.executionToolOptions()
-	result, err := r.backend.Execute(reviewCtx, ExecuteOptions{
+	result, err := r.reviewBackend.Execute(reviewCtx, ExecuteOptions{
 		Prompt:          reviewPrompt,
 		ProjectPath:     task.ProjectPath,
 		Verbose:         task.Verbose,

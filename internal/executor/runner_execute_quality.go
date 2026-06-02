@@ -186,7 +186,7 @@ func (r *Runner) executeQualityGates(s *executeState) (*ExecutionResult, error) 
 
 				// Re-invoke backend with retry prompt
 				feedbackAllowed, feedbackMCP := r.executionToolOptions()
-				retryResult, retryErr := r.backend.Execute(ctx, ExecuteOptions{
+				retryResult, retryErr := r.execBackend.Execute(ctx, ExecuteOptions{
 					Prompt:        retryPrompt,
 					ProjectPath:   task.ProjectPath,
 					Verbose:       task.Verbose,

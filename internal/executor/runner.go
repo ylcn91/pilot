@@ -140,7 +140,7 @@ func (r *Runner) executeWithOptions(ctx context.Context, task *Task, allowWorktr
 
 	watchdogTimeout := 2 * timeout
 	allowedTools, mcpConfigPath := r.executionToolOptions()
-	backendResult, err := r.backend.Execute(stallExecutionCtx, ExecuteOptions{
+	backendResult, err := r.execBackend.Execute(stallExecutionCtx, ExecuteOptions{
 		Prompt:          prompt,
 		ProjectPath:     executionPath, // Use worktree path if active
 		Verbose:         task.Verbose,
@@ -271,7 +271,7 @@ func (r *Runner) executeWithOptions(ctx context.Context, task *Task, allowWorktr
 						r.reportProgress(task.ID, "Re-executing", 55, fmt.Sprintf("Retry attempt %d with %v timeout...", state.smartRetryAttempt, retryTimeout))
 
 						smartAllowed, smartMCP := r.executionToolOptions()
-						retryResult, retryErr := r.backend.Execute(retryCtx, ExecuteOptions{
+						retryResult, retryErr := r.execBackend.Execute(retryCtx, ExecuteOptions{
 							Prompt:          prompt,
 							ProjectPath:     executionPath, // TASK-323: retry in the worktree, not the user's real repo
 							Verbose:         task.Verbose,
