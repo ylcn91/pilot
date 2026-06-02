@@ -101,6 +101,7 @@ func main() {
 		newAutopilotCmd(),
 		newOnboardCmd(),
 		newBackendCmd(),
+		newChatCmd(),
 		newEvalCmd(),
 	)
 
