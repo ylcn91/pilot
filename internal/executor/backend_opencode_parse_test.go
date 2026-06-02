@@ -1,0 +1,347 @@
+package executor
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestOpenCodeBackendParseOpenCodeEvent(t *testing.T) {
+	backend := NewOpenCodeBackend(nil)
+
+	tests := []struct {
+		name        string
+		data        string
+		expectType  BackendEventType
+		expectTool  string
+		expectError bool
+	}{
+		{
+			name:       "session start",
+			data:       `{"type":"session.start"}`,
+			expectType: EventTypeInit,
+		},
+		{
+			name:       "message start",
+			data:       `{"type":"message.start"}`,
+			expectType: EventTypeInit,
+		},
+		{
+			name:       "content delta",
+			data:       `{"type":"content.delta","delta":{"text":"Hello world"}}`,
+			expectType: EventTypeText,
+		},
+		{
+			name:       "message delta",
+			data:       `{"type":"message.delta","delta":{"text":"More text"}}`,
+			expectType: EventTypeText,
+		},
+		{
+			name:       "tool start",
+			data:       `{"type":"tool.start","tool":"Read","input":{"file_path":"/test.go"}}`,
+			expectType: EventTypeToolUse,
+			expectTool: "Read",
+		},
+		{
+			name:       "tool use",
+			data:       `{"type":"tool_use","tool":"Write","input":{"file_path":"/output.go"}}`,
+			expectType: EventTypeToolUse,
+			expectTool: "Write",
+		},
+		{
+			name:       "tool end",
+			data:       `{"type":"tool.end","output":"file contents"}`,
+			expectType: EventTypeToolResult,
+		},
+		{
+			name:       "tool result",
+			data:       `{"type":"tool_result","output":"success"}`,
+			expectType: EventTypeToolResult,
+		},
+		{
+			name:       "message end",
+			data:       `{"type":"message.end","output":"Task complete"}`,
+			expectType: EventTypeResult,
+		},
+		{
+			name:       "done",
+			data:       `{"type":"done","output":"Finished"}`,
+			expectType: EventTypeResult,
+		},
+		{
+			name:        "error",
+			data:        `{"type":"error","error":"Something went wrong"}`,
+			expectType:  EventTypeError,
+			expectError: true,
+		},
+		{
+			name:       "usage",
+			data:       `{"type":"usage","usage":{"input_tokens":100,"output_tokens":50}}`,
+			expectType: EventTypeProgress,
+		},
+		{
+			name:       "unknown type",
+			data:       `{"type":"unknown_event"}`,
+			expectType: EventTypeProgress,
+		},
+		{
+			name:       "invalid json",
+			data:       `not valid json`,
+			expectType: EventTypeText,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			event := backend.parseOpenCodeEvent(tt.data)
+
+			if event.Type != tt.expectType {
+				t.Errorf("Type = %q, want %q", event.Type, tt.expectType)
+			}
+			if tt.expectTool != "" && event.ToolName != tt.expectTool {
+				t.Errorf("ToolName = %q, want %q", event.ToolName, tt.expectTool)
+			}
+			if tt.expectError && !event.IsError {
+				t.Error("IsError should be true")
+			}
+			if event.Raw != tt.data {
+				t.Errorf("Raw = %q, want %q", event.Raw, tt.data)
+			}
+		})
+	}
+}
+
+func TestOpenCodeBackendParseUsageInfo(t *testing.T) {
+	backend := NewOpenCodeBackend(nil)
+
+	data := `{"type":"usage","usage":{"input_tokens":200,"output_tokens":100},"model":"anthropic/claude-sonnet-4"}`
+	event := backend.parseOpenCodeEvent(data)
+
+	if event.TokensInput != 200 {
+		t.Errorf("TokensInput = %d, want 200", event.TokensInput)
+	}
+	if event.TokensOutput != 100 {
+		t.Errorf("TokensOutput = %d, want 100", event.TokensOutput)
+	}
+	if event.Model != "anthropic/claude-sonnet-4" {
+		t.Errorf("Model = %q, want anthropic/claude-sonnet-4", event.Model)
+	}
+}
+
+func TestOpenCodeBackendParseToolInput(t *testing.T) {
+	backend := NewOpenCodeBackend(nil)
+
+	data := `{"type":"tool.start","tool":"Bash","input":{"command":"npm test"}}`
+	event := backend.parseOpenCodeEvent(data)
+
+	if event.ToolName != "Bash" {
+		t.Errorf("ToolName = %q, want Bash", event.ToolName)
+	}
+	if event.ToolInput == nil {
+		t.Fatal("ToolInput should not be nil")
+	}
+	if cmd, ok := event.ToolInput["command"].(string); !ok || cmd != "npm test" {
+		t.Errorf("ToolInput[command] = %v, want 'npm test'", event.ToolInput["command"])
+	}
+}
+
+// TestOpenCodeBackendParseAssistantResponse verifies the JSON-shape parsing
+// for OpenCode v1.4.x's POST /session/:id/message response. Regression for
+// GH-2409 — the previous parser looked for {success,output,error}, none of
+// which exist on the actual response, so result.Output came back empty even
+// though the call succeeded.
+func TestOpenCodeBackendParseAssistantResponse(t *testing.T) {
+	backend := NewOpenCodeBackend(nil)
+
+	body := `{
+		"info": {
+			"id": "msg_1",
+			"role": "assistant",
+			"sessionID": "ses_1",
+			"providerID": "anthropic",
+			"modelID": "claude-sonnet-4",
+			"tokens": {
+				"input": 123,
+				"output": 45,
+				"reasoning": 0,
+				"cache": {"read": 7, "write": 8}
+			}
+		},
+		"parts": [
+			{"type": "text", "text": "Hello "},
+			{"type": "tool", "tool": "Read", "state": {"status": "completed", "input": {"file_path": "/x.go"}, "output": "ok"}},
+			{"type": "text", "text": "world"}
+		]
+	}`
+
+	var events []BackendEvent
+	opts := ExecuteOptions{
+		EventHandler: func(e BackendEvent) {
+			events = append(events, e)
+		},
+	}
+	result := &BackendResult{}
+
+	if err := backend.parseAssistantResponse(strings.NewReader(body), opts, result); err != nil {
+		t.Fatalf("parseAssistantResponse error = %v", err)
+	}
+
+	if result.Output != "Hello world" {
+		t.Errorf("Output = %q, want %q", result.Output, "Hello world")
+	}
+	if result.TokensInput != 123 {
+		t.Errorf("TokensInput = %d, want 123", result.TokensInput)
+	}
+	if result.TokensOutput != 45 {
+		t.Errorf("TokensOutput = %d, want 45", result.TokensOutput)
+	}
+	if result.CacheReadInputTokens != 7 {
+		t.Errorf("CacheReadInputTokens = %d, want 7", result.CacheReadInputTokens)
+	}
+	if result.CacheCreationInputTokens != 8 {
+		t.Errorf("CacheCreationInputTokens = %d, want 8", result.CacheCreationInputTokens)
+	}
+	if result.Model != "anthropic/claude-sonnet-4" {
+		t.Errorf("Model = %q, want anthropic/claude-sonnet-4", result.Model)
+	}
+	if result.SessionID != "ses_1" {
+		t.Errorf("SessionID = %q, want ses_1", result.SessionID)
+	}
+	if result.Error != "" {
+		t.Errorf("Error = %q, want empty", result.Error)
+	}
+
+	// Expect events: text, tool_use, tool_result, text, result.
+	wantTypes := []BackendEventType{
+		EventTypeText, EventTypeToolUse, EventTypeToolResult, EventTypeText, EventTypeResult,
+	}
+	if len(events) != len(wantTypes) {
+		t.Fatalf("event count = %d, want %d (events=%v)", len(events), len(wantTypes), events)
+	}
+	for i, et := range wantTypes {
+		if events[i].Type != et {
+			t.Errorf("event[%d].Type = %q, want %q", i, events[i].Type, et)
+		}
+	}
+
+	// Tool event should carry the tool name and input.
+	toolEv := events[1]
+	if toolEv.ToolName != "Read" {
+		t.Errorf("tool event ToolName = %q, want Read", toolEv.ToolName)
+	}
+	if toolEv.ToolInput["file_path"] != "/x.go" {
+		t.Errorf("tool event ToolInput[file_path] = %v, want /x.go", toolEv.ToolInput["file_path"])
+	}
+
+	// Final result event should carry the concatenated output.
+	finalEv := events[len(events)-1]
+	if finalEv.Message != "Hello world" {
+		t.Errorf("final event Message = %q, want %q", finalEv.Message, "Hello world")
+	}
+}
+
+func TestOpenCodeBackendParseAssistantResponseEmpty(t *testing.T) {
+	backend := NewOpenCodeBackend(nil)
+
+	// No parts at all — output should be empty but parse must succeed.
+	body := `{"info": {"id":"msg_2","tokens":{"input":1,"output":2,"cache":{"read":0,"write":0}}}, "parts": []}`
+	result := &BackendResult{}
+	if err := backend.parseAssistantResponse(strings.NewReader(body), ExecuteOptions{}, result); err != nil {
+		t.Fatalf("parseAssistantResponse error = %v", err)
+	}
+	if result.Output != "" {
+		t.Errorf("Output = %q, want empty", result.Output)
+	}
+	if result.TokensInput != 1 || result.TokensOutput != 2 {
+		t.Errorf("tokens = %d/%d, want 1/2", result.TokensInput, result.TokensOutput)
+	}
+}
+
+func TestOpenCodeBackendParseAssistantResponseError(t *testing.T) {
+	backend := NewOpenCodeBackend(nil)
+
+	body := `{"info": {"id":"msg_3","tokens":{"input":0,"output":0,"cache":{"read":0,"write":0}}, "error":{"name":"ProviderAuthError","message":"bad key"}}, "parts": []}`
+	result := &BackendResult{}
+	if err := backend.parseAssistantResponse(strings.NewReader(body), ExecuteOptions{}, result); err != nil {
+		t.Fatalf("parseAssistantResponse error = %v", err)
+	}
+	if result.Error != "bad key" {
+		t.Errorf("Error = %q, want %q", result.Error, "bad key")
+	}
+}
+
+// TestOpenCodeBackendResolveModelRef verifies model resolution into the
+// {providerID, modelID} shape required by OpenCode v1.4.x (GH-2413).
+func TestOpenCodeBackendResolveModelRef(t *testing.T) {
+	tests := []struct {
+		name        string
+		model       string
+		provider    string
+		wantNil     bool
+		wantProv    string
+		wantModelID string
+	}{
+		{
+			name:        "providerID/modelID combined",
+			model:       "openai/gpt-5.4-mini",
+			provider:    "",
+			wantProv:    "openai",
+			wantModelID: "gpt-5.4-mini",
+		},
+		{
+			name:        "bare modelID with explicit provider",
+			model:       "gpt-5.4-mini",
+			provider:    "openai",
+			wantProv:    "openai",
+			wantModelID: "gpt-5.4-mini",
+		},
+		{
+			name:    "empty model returns nil (server default)",
+			model:   "",
+			wantNil: true,
+		},
+		{
+			name:        "anthropic/claude-sonnet-4 default",
+			model:       "anthropic/claude-sonnet-4",
+			wantProv:    "anthropic",
+			wantModelID: "claude-sonnet-4",
+		},
+		{
+			name:        "modelID with multiple slashes splits on first only",
+			model:       "openrouter/anthropic/claude-sonnet-4",
+			wantProv:    "openrouter",
+			wantModelID: "anthropic/claude-sonnet-4",
+		},
+		{
+			name:        "trailing slash treated as bare modelID",
+			model:       "openai/",
+			provider:    "fallback",
+			wantProv:    "fallback",
+			wantModelID: "openai/",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := &OpenCodeBackend{config: &OpenCodeConfig{
+				Model:    tt.model,
+				Provider: tt.provider,
+			}}
+			ref := b.resolveModelRef()
+			if tt.wantNil {
+				if ref != nil {
+					t.Fatalf("resolveModelRef() = %+v, want nil", ref)
+				}
+				return
+			}
+			if ref == nil {
+				t.Fatal("resolveModelRef() = nil, want non-nil")
+			}
+			if ref.ProviderID != tt.wantProv {
+				t.Errorf("ProviderID = %q, want %q", ref.ProviderID, tt.wantProv)
+			}
+			if ref.ModelID != tt.wantModelID {
+				t.Errorf("ModelID = %q, want %q", ref.ModelID, tt.wantModelID)
+			}
+		})
+	}
+}
