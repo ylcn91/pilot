@@ -3,42 +3,10 @@ package executor
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"testing"
 )
-
-// subIssuePRCall records a single invocation of the SubIssuePRCallback.
-type subIssuePRCall struct {
-	PRNumber    int
-	PRURL       string
-	IssueNumber int
-	CommitSHA   string
-	BranchName  string
-}
-
-// newTestRunnerWithExecFunc creates a Runner that uses the given function
-// instead of r.Execute for sub-issue execution. This avoids the full
-// backend/git/webhook stack, making ExecuteSubIssues unit-testable.
-func newTestRunnerWithExecFunc(execFn func(ctx context.Context, task *Task) (*ExecutionResult, error)) *Runner {
-	return &Runner{
-		config: &BackendConfig{
-			ClaudeCode: &ClaudeCodeConfig{
-				Command: "echo", // unused, but prevents nil panics
-			},
-		},
-		running:           make(map[string]*exec.Cmd),
-		progressCallbacks: make(map[string]ProgressCallback),
-		tokenCallbacks:    make(map[string]TokenCallback),
-		log:               slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
-		modelRouter:       NewModelRouter(nil, nil),
-		executeFunc:       execFn,
-		dryRun:            true,
-	}
-}
 
 func TestExecuteSubIssues_CallbackFiresForEachPR(t *testing.T) {
 	// Table of sub-issues with expected PR results
@@ -345,63 +313,5 @@ func TestExecuteSubIssues_CallbackNotFiredOnExecError(t *testing.T) {
 
 	if callbackFired {
 		t.Error("callback should not fire when Execute returns error")
-	}
-}
-
-func TestParsePRNumberFromURL(t *testing.T) {
-	tests := []struct {
-		name     string
-		url      string
-		expected int
-	}{
-		{
-			name:     "standard github PR url",
-			url:      "https://github.com/owner/repo/pull/123",
-			expected: 123,
-		},
-		{
-			name:     "github enterprise PR url",
-			url:      "https://github.example.com/org/repo/pull/456",
-			expected: 456,
-		},
-		{
-			name:     "url with trailing newline",
-			url:      "https://github.com/owner/repo/pull/789\n",
-			expected: 789, // TrimSpace handles trailing whitespace
-		},
-		{
-			name:     "large PR number",
-			url:      "https://github.com/owner/repo/pull/99999",
-			expected: 99999,
-		},
-		{
-			name:     "empty string",
-			url:      "",
-			expected: 0,
-		},
-		{
-			name:     "issue url not PR",
-			url:      "https://github.com/owner/repo/issues/123",
-			expected: 0,
-		},
-		{
-			name:     "no number after pull",
-			url:      "https://github.com/owner/repo/pull/",
-			expected: 0,
-		},
-		{
-			name:     "PR url with trailing path",
-			url:      "https://github.com/owner/repo/pull/42/files",
-			expected: 42,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := parsePRNumberFromURL(tt.url)
-			if result != tt.expected {
-				t.Errorf("parsePRNumberFromURL(%q) = %d, want %d", tt.url, result, tt.expected)
-			}
-		})
 	}
 }
