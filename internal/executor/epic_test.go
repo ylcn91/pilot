@@ -272,9 +272,12 @@ func TestBuildPlanningPrompt(t *testing.T) {
 		ID:          "TASK-123",
 		Title:       "Implement user authentication",
 		Description: "Add login, logout, and session management",
+		Labels:      []string{"pilot", "area:auth"},
 	}
 
-	prompt := buildPlanningPrompt(task)
+	// Empty agentDir skips project-context/SOP priming so the test stays
+	// independent of any on-disk .agent/ directory.
+	prompt := buildPlanningPrompt(task, "")
 
 	// Check required elements are present
 	required := []string{
@@ -285,6 +288,8 @@ func TestBuildPlanningPrompt(t *testing.T) {
 		"Output Format",
 		"Single-Package Splits",         // GH-1265: anti-cascade instruction
 		"NEVER split work that belongs", // GH-1265: footer reminder
+		"Do NOT propose abstractions",   // anti-over-engineering instruction
+		"Labels: pilot, area:auth",      // labels hint line
 	}
 
 	for _, r := range required {
