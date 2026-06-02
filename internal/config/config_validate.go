@@ -46,6 +46,13 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Validate optional per-phase backend pipeline (fail fast on a bad stage).
+	if c.Executor != nil && c.Executor.Pipeline != nil {
+		if err := c.Executor.Pipeline.Validate(); err != nil {
+			return fmt.Errorf("executor.%w", err)
+		}
+	}
+
 	// Validate default project exists if specified
 	if c.DefaultProject != "" && len(c.Projects) > 0 {
 		found := false

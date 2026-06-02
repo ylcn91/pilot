@@ -9,6 +9,10 @@ type BackendConfig struct {
 	// Type specifies which backend to use ("claude-code", "opencode", "qwen-code", or "codex-exec")
 	Type string `yaml:"type"`
 
+	// Pipeline optionally splits a run across per-phase backends (plan/execute/
+	// review). When nil (default), every phase uses Type — today's behavior.
+	Pipeline *PipelineConfig `yaml:"pipeline,omitempty"`
+
 	// AutoCreatePR controls whether PRs are created by default after successful execution.
 	// Default: true. Use --no-pr flag to disable for individual tasks.
 	AutoCreatePR *bool `yaml:"auto_create_pr,omitempty"`

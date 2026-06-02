@@ -172,6 +172,22 @@ executor:
   auto_create_pr: true         # Create PR by default after task completion
                                # Use --no-pr flag to disable for individual tasks
   create_sub_issues: false     # Explicit opt-in: create tracker sub-issues from epic planning
+
+  # Optional per-phase backend handoff pipeline.
+  # When omitted (default), every phase uses `type` above — today's behavior.
+  # Each stage is optional; a missing stage falls back to `type`.
+  # Stage `type` must be a runnable backend (claude-code, codex-exec, qwen-code,
+  # anthropic-api, openai-api, opencode). "codex-app-server" is NOT runnable here
+  # — use codex-exec instead.
+  # pipeline:
+  #   plan:
+  #     type: "claude-code"
+  #   execute:
+  #     type: "codex-exec"
+  #     model: "gpt-5.1-codex"
+  #     effort: "medium"
+  #   review:
+  #     type: "claude-code"
   # direct_commit: false       # DANGER: Enable direct commit to main (requires --direct-commit flag)
                                # When enabled with flag, skips branches and PRs, pushes directly to main
                                # Intended for users who rely on manual QA instead of code review

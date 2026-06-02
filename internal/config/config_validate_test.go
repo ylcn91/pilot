@@ -3,6 +3,7 @@ package config
 import (
 	"testing"
 
+	"github.com/ylcn91/pilot/internal/executor"
 	"github.com/ylcn91/pilot/internal/gateway"
 )
 
@@ -120,6 +121,64 @@ func TestValidate(t *testing.T) {
 				return c
 			}(),
 			wantErr: false, // Nil auth is allowed
+		},
+		{
+			name: "NilPipelinePasses",
+			config: func() *Config {
+				c := DefaultConfig()
+				c.Executor.Pipeline = nil
+				return c
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "ValidThreeStagePipeline",
+			config: func() *Config {
+				c := DefaultConfig()
+				c.Executor.Pipeline = &executor.PipelineConfig{
+					Plan:    &executor.StageConfig{Type: executor.BackendTypeClaudeCode},
+					Execute: &executor.StageConfig{Type: executor.BackendTypeCodexExec},
+					Review:  &executor.StageConfig{Type: executor.BackendTypeClaudeCode},
+				}
+				return c
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "PipelineRejectsCodexAppServer",
+			config: func() *Config {
+				c := DefaultConfig()
+				c.Executor.Pipeline = &executor.PipelineConfig{
+					Execute: &executor.StageConfig{Type: "codex-app-server"},
+				}
+				return c
+			}(),
+			wantErr:     true,
+			errContains: "is not a runnable Backend",
+		},
+		{
+			name: "PipelineRejectsUnknownType",
+			config: func() *Config {
+				c := DefaultConfig()
+				c.Executor.Pipeline = &executor.PipelineConfig{
+					Plan: &executor.StageConfig{Type: "bogus-backend"},
+				}
+				return c
+			}(),
+			wantErr:     true,
+			errContains: "is not a known backend",
+		},
+		{
+			name: "PipelineRejectsEmptyStageType",
+			config: func() *Config {
+				c := DefaultConfig()
+				c.Executor.Pipeline = &executor.PipelineConfig{
+					Review: &executor.StageConfig{},
+				}
+				return c
+			}(),
+			wantErr:     true,
+			errContains: "type is required",
 		},
 	}
 
