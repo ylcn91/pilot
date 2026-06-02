@@ -258,9 +258,12 @@ func sendTask(conn *websocket.Conn, payload map[string]any) error {
 
 func waitForTurn(conn *websocket.Conn, want string) error {
 	deadline := time.Now().Add(90 * time.Second)
+	if err := conn.SetReadDeadline(deadline); err != nil {
+		return err
+	}
+
 	var text strings.Builder
 	for time.Now().Before(deadline) {
-		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 		_, data, err := conn.ReadMessage()
 		if err != nil {
 			return err
