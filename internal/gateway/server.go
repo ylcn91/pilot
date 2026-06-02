@@ -14,6 +14,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/ylcn91/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/pilotapi"
 )
 
 // ReadinessChecker is an interface for components that can report their readiness.
@@ -53,6 +54,15 @@ type AutopilotProvider interface {
 	IsAutoReleaseEnabled() bool
 }
 
+// ArchitectProvider exposes Architect findings to the gateway API.
+// Findings originate from the Architect family (e.g. Radar, Dependency-Doctor)
+// and are surfaced read-only via /api/v1/architect. The provider is injected
+// as an interface so the gateway never imports internal/architect; it depends
+// only on the leaf package internal/pilotapi for the Finding shape.
+type ArchitectProvider interface {
+	Findings() []pilotapi.Finding
+}
+
 // Server is the main gateway server handling WebSocket and HTTP connections.
 // It provides a control plane for managing Pilot via WebSocket, receives webhooks
 // from external services (Linear, GitHub, Jira, Asana), and exposes REST APIs for status
@@ -75,6 +85,7 @@ type Server struct {
 	prometheusExporter     *PrometheusExporter
 	alertsSource           AlertMetricsSource
 	autopilotProvider      AutopilotProvider
+	architectProvider      ArchitectProvider
 	dashboardStore         DashboardStore
 	logStreamStore         LogStreamStore
 	runtimeApprovals       *runtimeApprovalRegistry
@@ -212,6 +223,7 @@ func (s *Server) Start(ctx context.Context) error {
 	apiMux.HandleFunc("/api/v1/status", s.handleStatus)
 	apiMux.HandleFunc("/api/v1/tasks", s.handleTasks)
 	apiMux.HandleFunc("/api/v1/autopilot", s.handleAutopilot)
+	apiMux.HandleFunc("/api/v1/architect", s.handleArchitectFindings)
 	apiMux.HandleFunc("/api/v1/metrics", s.handleDashboardMetrics)
 	apiMux.HandleFunc("/api/v1/queue", s.handleDashboardQueue)
 	apiMux.HandleFunc("/api/v1/history", s.handleDashboardHistory)
@@ -306,6 +318,14 @@ func (s *Server) SetAutopilotProvider(p AutopilotProvider) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.autopilotProvider = p
+}
+
+// SetArchitectProvider sets the architect provider for the /api/v1/architect endpoint.
+// Must be called before Start().
+func (s *Server) SetArchitectProvider(p ArchitectProvider) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.architectProvider = p
 }
 
 // SetGitGraphPath sets the project path used by the /api/v1/gitgraph endpoint.
