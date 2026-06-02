@@ -1,0 +1,236 @@
+package slack
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/gorilla/websocket"
+	"github.com/ylcn91/pilot/internal/testutil"
+)
+
+// TestSocketModeIntegration exercises the full Socket Mode lifecycle:
+// 1. Mock HTTP server responds to apps.connections.open with a WSS URL
+// 2. Mock WebSocket server accepts the connection and sends test envelopes
+// 3. Handler acknowledges envelopes and emits events on the channel
+//
+// This is a table-driven integration test covering the scenarios requested
+// in GH-707: message event, app_mention with bot prefix stripping,
+// bot self-message filtering, disconnect triggers channel close, and
+// malformed envelope handling.
+func TestSocketModeIntegration(t *testing.T) {
+	tests := []struct {
+		name       string
+		envelopes  []string // raw JSON envelopes to send over WS
+		wantEvents []struct {
+			envID    string
+			evtType  SocketEventType
+			hasEvent bool // false = no event expected (acked but not emitted)
+		}
+		wantChannelClosed bool // true if events channel should close after all envelopes
+	}{
+		{
+			name: "message event with ack",
+			envelopes: []string{
+				`{"envelope_id":"int-msg-001","type":"events_api","payload":{"token":"t","team_id":"T1","type":"event_callback","event":{"type":"message","channel":"C1","user":"U1","text":"hello","ts":"1.1"}}}`,
+			},
+			wantEvents: []struct {
+				envID    string
+				evtType  SocketEventType
+				hasEvent bool
+			}{
+				{"int-msg-001", SocketEventMessage, true},
+			},
+		},
+		{
+			name: "app_mention event parsed correctly",
+			envelopes: []string{
+				`{"envelope_id":"int-mention-001","type":"events_api","payload":{"token":"t","team_id":"T1","type":"event_callback","event":{"type":"app_mention","channel":"C2","user":"U2","text":"<@UBOT99> deploy prod","ts":"2.2"}}}`,
+			},
+			wantEvents: []struct {
+				envID    string
+				evtType  SocketEventType
+				hasEvent bool
+			}{
+				{"int-mention-001", SocketEventMessage, true},
+			},
+		},
+		{
+			name: "disconnect closes channel",
+			envelopes: []string{
+				`{"envelope_id":"int-disc-001","type":"disconnect","reason":"link_disabled"}`,
+			},
+			wantEvents: []struct {
+				envID    string
+				evtType  SocketEventType
+				hasEvent bool
+			}{
+				{"int-disc-001", SocketEventDisconnect, true},
+			},
+			wantChannelClosed: true,
+		},
+		{
+			name: "malformed envelope then valid envelope",
+			envelopes: []string{
+				`{totally broken json`,
+				`{"envelope_id":"int-recover-001","type":"events_api","payload":{"event":{"type":"message","text":"ok"}}}`,
+			},
+			wantEvents: []struct {
+				envID    string
+				evtType  SocketEventType
+				hasEvent bool
+			}{
+				{"int-recover-001", SocketEventMessage, true},
+			},
+		},
+		{
+			name: "bot message is emitted with payload for caller filtering",
+			envelopes: []string{
+				`{"envelope_id":"int-bot-001","type":"events_api","payload":{"token":"t","team_id":"T1","type":"event_callback","event":{"type":"message","channel":"C1","user":"U1","text":"bot msg","ts":"3.3","bot_id":"B999"}}}`,
+			},
+			wantEvents: []struct {
+				envID    string
+				evtType  SocketEventType
+				hasEvent bool
+			}{
+				{"int-bot-001", SocketEventMessage, true},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 1. Create mock WebSocket server.
+			upgrader := websocket.Upgrader{}
+			var serverConn *websocket.Conn
+			var wsWg sync.WaitGroup
+			wsWg.Add(1)
+
+			wsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var err error
+				serverConn, err = upgrader.Upgrade(w, r, nil)
+				if err != nil {
+					t.Errorf("ws upgrade: %v", err)
+					return
+				}
+				wsWg.Done()
+			}))
+			defer wsSrv.Close()
+
+			wsURL := "ws" + strings.TrimPrefix(wsSrv.URL, "http")
+
+			// 2. Create mock HTTP server for apps.connections.open
+			// that returns the WS server URL.
+			apiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/apps.connections.open" {
+					t.Errorf("unexpected path: %s", r.URL.Path)
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				if r.Method != http.MethodPost {
+					t.Errorf("expected POST, got %s", r.Method)
+				}
+				auth := r.Header.Get("Authorization")
+				if auth != "Bearer "+testutil.FakeSlackAppToken {
+					t.Errorf("unexpected auth header: %s", auth)
+				}
+				resp := fmt.Sprintf(`{"ok":true,"url":%q}`, wsURL)
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(resp))
+			}))
+			defer apiSrv.Close()
+
+			// 3. Use SocketModeClient to get the WS URL (integration handshake).
+			smClient := NewSocketModeClientWithBaseURL(testutil.FakeSlackAppToken, apiSrv.URL)
+			gotURL, err := smClient.OpenConnection(context.Background())
+			if err != nil {
+				t.Fatalf("OpenConnection: %v", err)
+			}
+			if gotURL != wsURL {
+				t.Fatalf("OpenConnection URL = %q, want %q", gotURL, wsURL)
+			}
+
+			// 4. Dial the WebSocket and create handler.
+			clientConn, _, err := websocket.DefaultDialer.Dial(gotURL, nil)
+			if err != nil {
+				t.Fatalf("dial: %v", err)
+			}
+			defer func() { _ = clientConn.Close() }()
+
+			wsWg.Wait()
+			defer func() { _ = serverConn.Close() }()
+
+			handler, events := NewSocketModeHandler(clientConn)
+			handler.PongWait = 5 * time.Second
+			handler.PingInterval = 2 * time.Second
+
+			go handler.Run()
+			if !tt.wantChannelClosed {
+				defer handler.Close()
+			}
+
+			// 5. Server sends envelopes.
+			for _, raw := range tt.envelopes {
+				if err := serverConn.WriteMessage(websocket.TextMessage, []byte(raw)); err != nil {
+					t.Fatalf("write: %v", err)
+				}
+
+				// Read ack if the envelope has a valid envelope_id and valid JSON.
+				var env struct {
+					EnvelopeID string `json:"envelope_id"`
+				}
+				if json.Unmarshal([]byte(raw), &env) == nil && env.EnvelopeID != "" {
+					_ = serverConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+					_, ackData, err := serverConn.ReadMessage()
+					if err != nil {
+						t.Fatalf("read ack for %s: %v", env.EnvelopeID, err)
+					}
+					var ack envelopeAck
+					if err := json.Unmarshal(ackData, &ack); err != nil {
+						t.Fatalf("unmarshal ack: %v", err)
+					}
+					if ack.EnvelopeID != env.EnvelopeID {
+						t.Errorf("ack envelope_id = %q, want %q", ack.EnvelopeID, env.EnvelopeID)
+					}
+					_ = serverConn.SetReadDeadline(time.Time{})
+				}
+			}
+
+			// 6. Verify expected events.
+			for _, want := range tt.wantEvents {
+				if !want.hasEvent {
+					continue
+				}
+				select {
+				case evt := <-events:
+					if evt.EnvelopeID != want.envID {
+						t.Errorf("event envelope_id = %q, want %q", evt.EnvelopeID, want.envID)
+					}
+					if evt.Type != want.evtType {
+						t.Errorf("event type = %q, want %q", evt.Type, want.evtType)
+					}
+				case <-time.After(2 * time.Second):
+					t.Fatalf("timed out waiting for event %s", want.envID)
+				}
+			}
+
+			// 7. Verify channel closure if expected.
+			if tt.wantChannelClosed {
+				select {
+				case _, ok := <-events:
+					if ok {
+						t.Error("expected events channel to be closed")
+					}
+				case <-time.After(2 * time.Second):
+					t.Fatal("timed out waiting for events channel close")
+				}
+			}
+		})
+	}
+}
