@@ -226,7 +226,7 @@ type BackendResult struct {
 
 // BackendConfig contains configuration for executor backends.
 type BackendConfig struct {
-	// Type specifies which backend to use ("claude-code", "opencode", or "qwen-code")
+	// Type specifies which backend to use ("claude-code", "opencode", "qwen-code", or "codex-exec")
 	Type string `yaml:"type"`
 
 	// AutoCreatePR controls whether PRs are created by default after successful execution.
@@ -256,6 +256,9 @@ type BackendConfig struct {
 
 	// QwenCode contains Qwen Code specific settings
 	QwenCode *QwenCodeConfig `yaml:"qwen_code,omitempty"`
+
+	// CodexExec contains Codex CLI non-interactive backend settings
+	CodexExec *CodexExecConfig `yaml:"codex_exec,omitempty"`
 
 	// OpenAI contains OpenAI-compatible direct HTTP backend settings
 	OpenAI *OpenAIConfig `yaml:"openai,omitempty"`
@@ -691,6 +694,37 @@ type QwenCodeConfig struct {
 	UseSessionResume bool `yaml:"use_session_resume,omitempty"`
 }
 
+// CodexExecConfig contains Codex CLI non-interactive backend configuration.
+type CodexExecConfig struct {
+	// Command is the path to the codex CLI (default: "codex")
+	Command string `yaml:"command,omitempty"`
+
+	// Model is the default model passed with --model when ExecuteOptions.Model is empty.
+	Model string `yaml:"model,omitempty"`
+
+	// Effort is passed as -c model_reasoning_effort="<effort>" when ExecuteOptions.Effort is empty.
+	Effort string `yaml:"effort,omitempty"`
+
+	// Sandbox maps to codex exec --sandbox. Default: "workspace-write".
+	Sandbox string `yaml:"sandbox,omitempty"`
+
+	// ExtraArgs are additional arguments to pass before the prompt.
+	ExtraArgs []string `yaml:"extra_args,omitempty"`
+
+	// UseSessionResume enables codex exec resume for continued context.
+	// Default: false.
+	UseSessionResume bool `yaml:"use_session_resume,omitempty"`
+
+	// Ephemeral runs without persisting Codex session files.
+	Ephemeral bool `yaml:"ephemeral,omitempty"`
+
+	// BypassApprovalsAndSandbox maps to --dangerously-bypass-approvals-and-sandbox.
+	BypassApprovalsAndSandbox bool `yaml:"bypass_approvals_and_sandbox,omitempty"`
+
+	// OutputSchemaPath passes --output-schema to codex exec.
+	OutputSchemaPath string `yaml:"output_schema_path,omitempty"`
+}
+
 // OpenCodeConfig contains OpenCode backend configuration.
 type OpenCodeConfig struct {
 	// ServerURL is the OpenCode server URL (default: "http://127.0.0.1:4096")
@@ -733,7 +767,7 @@ func DefaultBackendConfig() *BackendConfig {
 	detectEphemeral := true
 	prePushLint := true
 	return &BackendConfig{
-		Type:            "claude-code",
+		Type:            BackendTypeCodexExec,
 		AutoCreatePR:    &autoCreatePR,
 		DetectEphemeral: &detectEphemeral,
 		PrePushLint:     &prePushLint,
@@ -744,6 +778,10 @@ func DefaultBackendConfig() *BackendConfig {
 		},
 		QwenCode: &QwenCodeConfig{
 			Command: "qwen",
+		},
+		CodexExec: &CodexExecConfig{
+			Command: "codex",
+			Sandbox: "workspace-write",
 		},
 		OpenCode: &OpenCodeConfig{
 			ServerURL:       "http://127.0.0.1:4096",
@@ -926,4 +964,5 @@ const (
 	BackendTypeClaudeCode = "claude-code"
 	BackendTypeOpenCode   = "opencode"
 	BackendTypeQwenCode   = "qwen-code"
+	BackendTypeCodexExec  = "codex-exec"
 )

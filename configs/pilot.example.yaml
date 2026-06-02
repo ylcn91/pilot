@@ -161,7 +161,7 @@ orchestrator:
 
 # Executor settings
 executor:
-  type: "claude-code"          # "claude-code", "opencode", "anthropic-api", or "openai-api"
+  type: "codex-exec"           # "codex-exec", "claude-code", "qwen-code", "opencode", "anthropic-api", or "openai-api"
   auto_create_pr: true         # Create PR by default after task completion
                                # Use --no-pr flag to disable for individual tasks
   # direct_commit: false       # DANGER: Enable direct commit to main (requires --direct-commit flag)
@@ -175,6 +175,16 @@ executor:
   # api_base_url: "https://api.z.ai/api/anthropic"   # e.g. Z.AI GLM, OpenRouter Anthropic-compat
   # api_auth_token: "${ZAI_API_KEY}"                  # ${ENV_VAR} is expanded on load
   # default_model: "glm-4.6"                          # model name for the configured provider
+
+  # Codex CLI non-interactive backend
+  # Use type: "codex-exec" for task-driven execution through `codex exec --json`.
+  codex_exec:
+    command: "codex"
+    sandbox: "workspace-write"
+    # model: "gpt-5.1-codex"
+    # effort: "medium"
+    # use_session_resume: false
+    # extra_args: []
 
   # OpenAI-compatible direct HTTP backend (GH-2382)
   # Use type: "openai-api" to drive Pilot with any OpenAI /v1/chat/completions provider

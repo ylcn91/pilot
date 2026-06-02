@@ -558,12 +558,17 @@ func (r *Runner) SetRepoAllowlist(allow RepoAllowlist) {
 	r.repoAllowlist = allow
 }
 
-// NewRunner creates a new Runner instance with Claude Code backend by default.
+// NewRunner creates a new Runner instance with the default backend.
 // The Runner is ready to execute tasks immediately after creation.
 func NewRunner() *Runner {
+	config := DefaultBackendConfig()
+	backend, err := NewBackend(config)
+	if err != nil {
+		backend = NewCodexExecBackend(nil)
+	}
 	log := logging.WithComponent("executor")
 	return &Runner{
-		backend:           NewClaudeCodeBackend(nil),
+		backend:           backend,
 		running:           make(map[string]*exec.Cmd),
 		progressCallbacks: make(map[string]ProgressCallback),
 		tokenCallbacks:    make(map[string]TokenCallback),
@@ -579,7 +584,7 @@ func NewRunner() *Runner {
 // NewRunnerWithBackend creates a Runner with a specific backend.
 func NewRunnerWithBackend(backend Backend) *Runner {
 	if backend == nil {
-		backend = NewClaudeCodeBackend(nil)
+		backend = NewCodexExecBackend(nil)
 	}
 	log := logging.WithComponent("executor")
 	return &Runner{
@@ -726,12 +731,12 @@ func (r *Runner) Config() *BackendConfig {
 	return r.config
 }
 
-// backendType returns the configured backend type, defaulting to "claude-code".
+// backendType returns the configured backend type, defaulting to "codex-exec".
 func (r *Runner) backendType() string {
 	if r.config != nil && r.config.Type != "" {
 		return r.config.Type
 	}
-	return "claude-code"
+	return BackendTypeCodexExec
 }
 
 // selfReviewTimeout returns the per-backend timeout for the self-review phase.

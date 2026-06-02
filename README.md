@@ -94,7 +94,7 @@ Download the desktop app from the [latest release](https://github.com/qf-studio/
 ### Requirements
 
 - Go 1.22+ (build only)
-- [Claude Code CLI](https://github.com/anthropics/claude-code) 2.1.17+
+- Codex CLI, available from the Codex desktop app or standalone `codex` install
 - OpenAI API key (optional, for voice transcription)
 
 ## Quick Start
@@ -345,7 +345,7 @@ alerts:
       severities: [critical, error, warning]
 
 executor:
-  backend: claude-code          # "claude-code" or "opencode"
+  type: codex-exec              # "codex-exec", "claude-code", "qwen-code", or "opencode"
 ```
 
 ## CLI Reference
@@ -383,7 +383,7 @@ pilot task "Add user authentication"                    # Run in cwd
 pilot task "Fix login bug" -p ~/Projects/myapp          # Specify project
 pilot task "Refactor API" --verbose                     # Stream output
 pilot task "Update docs" --dry-run                      # Preview only
-pilot task "Implement feature" --backend opencode       # Use OpenCode
+pilot task "Implement feature" --backend codex-exec     # Use Codex Exec
 ```
 
 ### `pilot upgrade`

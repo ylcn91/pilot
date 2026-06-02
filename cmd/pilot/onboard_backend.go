@@ -12,7 +12,7 @@ import (
 // BackendOption represents an available execution backend
 type BackendOption struct {
 	Name        string
-	Type        string // config value: "claude-code", "qwen-code", "opencode"
+	Type        string // config value: "codex-exec", "claude-code", "qwen-code", "opencode"
 	Description string
 	CLICommand  string // command to check with exec.LookPath
 	Installed   bool
@@ -22,20 +22,26 @@ type BackendOption struct {
 func detectBackends() []BackendOption {
 	backends := []BackendOption{
 		{
+			Name:        "Codex Exec",
+			Type:        executor.BackendTypeCodexExec,
+			Description: "OpenAI Codex CLI",
+			CLICommand:  "codex",
+		},
+		{
 			Name:        "Claude Code",
-			Type:        "claude-code",
+			Type:        executor.BackendTypeClaudeCode,
 			Description: "Anthropic's CLI",
 			CLICommand:  "claude",
 		},
 		{
 			Name:        "Qwen Code",
-			Type:        "qwen-code",
+			Type:        executor.BackendTypeQwenCode,
 			Description: "Alibaba's open-source CLI",
 			CLICommand:  "qwen",
 		},
 		{
 			Name:        "OpenCode",
-			Type:        "opencode",
+			Type:        executor.BackendTypeOpenCode,
 			Description: "Server/client architecture",
 			CLICommand:  "opencode",
 		},
@@ -137,7 +143,7 @@ func onboardBackendSetup(state *OnboardState) error {
 	state.Config.Executor.Type = selected.Type
 
 	// If OpenCode is selected, prompt for server URL
-	if selected.Type == "opencode" {
+	if selected.Type == executor.BackendTypeOpenCode {
 		fmt.Println()
 		fmt.Print("  OpenCode server URL [http://localhost:8080]: ")
 		serverURL := readLine(state.Reader)

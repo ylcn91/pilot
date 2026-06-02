@@ -14,11 +14,12 @@ pilot doctor
 
 ## Authentication
 
-Pilot delegates AI execution to **Claude Code**, which manages its own authentication. Pilot itself does **not** require an Anthropic API key to function.
+Pilot delegates default task execution to **Codex Exec**, which uses the local Codex CLI authentication. Pilot itself does not require an Anthropic API key unless you enable Claude-specific internal features or the Claude Code backend.
 
 | Component | Auth Method | Required |
 |-----------|------------|----------|
-| **Claude Code** (execution engine) | Claude subscription login **or** `ANTHROPIC_API_KEY` | Yes — one or the other |
+| **Codex Exec** (default execution engine) | Local Codex CLI login | Yes, for `codex-exec` |
+| **Claude Code** (legacy execution backend) | Claude subscription login **or** `ANTHROPIC_API_KEY` | Yes, if using `claude-code` |
 | **GitHub** | `GITHUB_TOKEN` env var or `adapters.github.token` in config | Yes, if using GitHub |
 | **GitLab** | `GITLAB_TOKEN` env var or `adapters.gitlab.token` in config | Yes, if using GitLab |
 | **Telegram** | `TELEGRAM_BOT_TOKEN` env var or config | No |
@@ -28,7 +29,7 @@ Pilot delegates AI execution to **Claude Code**, which manages its own authentic
 | **Plane** | `PLANE_API_KEY` env var or `adapters.plane.api_key` in config | Yes, if using Plane |
 
 <Callout type="info">
-**Most users don't need `ANTHROPIC_API_KEY` at all.** If you're logged into Claude Code with a Claude subscription, Pilot works out of the box. The API key is only needed for optional internal features (LLM classifier, structured subtask parsing) that have simpler fallbacks.
+**Most users don't need `ANTHROPIC_API_KEY` at all.** If you're logged into the Codex CLI, Pilot works with `codex-exec`. The Anthropic API key is only needed for optional internal features or Claude-specific backends.
 </Callout>
 
 ## Environment Variables
@@ -188,11 +189,11 @@ Always set `allowed_ids` to restrict who can trigger Pilot via Telegram. Without
 
 ## Executor
 
-Controls how Pilot runs execution backends (Claude Code, Qwen Code, or OpenCode) to execute tasks.
+Controls how Pilot runs execution backends (Codex Exec, Claude Code, Qwen Code, or OpenCode) to execute tasks.
 
 ```yaml
 executor:
-  type: "claude-code"                     # "claude-code", "qwen-code", or "opencode"
+  type: "codex-exec"                      # "codex-exec", "claude-code", "qwen-code", or "opencode"
   auto_create_pr: true
   direct_commit: false                    # commit directly to branch without PR
   detect_ephemeral: true                  # detect and skip ephemeral changes
@@ -203,6 +204,13 @@ executor:
   # api_base_url: "https://api.z.ai/api/anthropic"
   # api_auth_token: "${ZAI_API_KEY}"
   # default_model: "glm-4.6"
+
+  codex_exec:
+    command: "codex"                      # path to Codex CLI
+    sandbox: "workspace-write"            # read-only, workspace-write, or danger-full-access
+    model: ""                             # optional --model override
+    effort: ""                            # optional model_reasoning_effort
+    extra_args: []                        # additional CLI arguments
 
   claude_code:
     command: "claude"                     # path to claude CLI
@@ -239,7 +247,7 @@ executor:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `type` | string | `"claude-code"` | Backend type: `claude-code`, `qwen-code`, or `opencode` |
+| `type` | string | `"codex-exec"` | Backend type: `codex-exec`, `claude-code`, `qwen-code`, or `opencode` |
 | `auto_create_pr` | bool | `true` | Automatically create PRs after execution |
 | `direct_commit` | bool | `false` | Commit directly without PR |
 | `detect_ephemeral` | bool | `true` | Detect and skip ephemeral file changes |
@@ -248,6 +256,12 @@ executor:
 | `api_base_url` | string | `""` | Anthropic-compatible endpoint (e.g. Z.AI, OpenRouter). See [Custom Providers](/guides/custom-providers). |
 | `api_auth_token` | string | `""` | Auth token for the custom provider. Supports `${ENV_VAR}` expansion. |
 | `default_model` | string | `""` | Model name for the custom provider (e.g. `glm-4.6`). |
+| `codex_exec.command` | string | `"codex"` | Path to the Codex CLI binary |
+| `codex_exec.model` | string | `""` | Optional model passed to `codex exec --model` |
+| `codex_exec.effort` | string | `""` | Optional `model_reasoning_effort` config override |
+| `codex_exec.sandbox` | string | `"workspace-write"` | Sandbox passed to `codex exec --sandbox` |
+| `codex_exec.use_session_resume` | bool | `false` | Use `codex exec resume` when a session id is available |
+| `codex_exec.extra_args` | []string | `[]` | Additional CLI arguments |
 | `claude_code.command` | string | `"claude"` | Path to the Claude CLI binary |
 | `claude_code.extra_args` | []string | `[]` | Additional CLI arguments |
 | `claude_code.planning_timeout` | duration | `2m` | Maximum time for epic planning before fallback to direct execution. Affects Slack `/plan` and Telegram planning commands. |
@@ -273,7 +287,15 @@ executor:
 | `decompose.max_subtasks` | int | `5` | Maximum subtasks created (2-10) |
 | `decompose.min_description_words` | int | `50` | Minimum description words to decompose |
 
-<Tabs items={['Claude Code', 'OpenCode']}>
+<Tabs items={['Codex Exec', 'Claude Code', 'OpenCode']}>
+
+```yaml
+executor:
+  type: "codex-exec"
+  codex_exec:
+    command: "codex"
+    sandbox: "workspace-write"
+```
 
 ```yaml
 executor:

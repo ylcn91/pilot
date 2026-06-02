@@ -27,8 +27,8 @@ func TestNewRunner(t *testing.T) {
 	if runner.backend == nil {
 		t.Error("backend not initialized")
 	}
-	if runner.backend.Name() != BackendTypeClaudeCode {
-		t.Errorf("default backend = %q, want %q", runner.backend.Name(), BackendTypeClaudeCode)
+	if runner.backend.Name() != BackendTypeCodexExec {
+		t.Errorf("default backend = %q, want %q", runner.backend.Name(), BackendTypeCodexExec)
 	}
 }
 
@@ -50,9 +50,9 @@ func TestNewRunnerWithBackendNil(t *testing.T) {
 	if runner == nil {
 		t.Fatal("NewRunnerWithBackend returned nil")
 	}
-	// Should default to Claude Code
-	if runner.backend.Name() != BackendTypeClaudeCode {
-		t.Errorf("backend = %q, want %q", runner.backend.Name(), BackendTypeClaudeCode)
+	// Should default to Codex Exec
+	if runner.backend.Name() != BackendTypeCodexExec {
+		t.Errorf("backend = %q, want %q", runner.backend.Name(), BackendTypeCodexExec)
 	}
 }
 
@@ -123,8 +123,8 @@ func TestNewRunnerWithConfigInvalid(t *testing.T) {
 
 func TestRunnerSetBackend(t *testing.T) {
 	runner := NewRunner()
-	if runner.backend.Name() != BackendTypeClaudeCode {
-		t.Errorf("initial backend = %q, want %q", runner.backend.Name(), BackendTypeClaudeCode)
+	if runner.backend.Name() != BackendTypeCodexExec {
+		t.Errorf("initial backend = %q, want %q", runner.backend.Name(), BackendTypeCodexExec)
 	}
 
 	opencode := NewOpenCodeBackend(nil)
@@ -142,8 +142,8 @@ func TestRunnerGetBackend(t *testing.T) {
 	if backend == nil {
 		t.Fatal("GetBackend returned nil")
 	}
-	if backend.Name() != BackendTypeClaudeCode {
-		t.Errorf("backend = %q, want %q", backend.Name(), BackendTypeClaudeCode)
+	if backend.Name() != BackendTypeCodexExec {
+		t.Errorf("backend = %q, want %q", backend.Name(), BackendTypeCodexExec)
 	}
 }
 
@@ -3428,9 +3428,9 @@ func TestRunnerFallbackModelName(t *testing.T) {
 			want: BackendTypeClaudeCode,
 		},
 		{
-			name: "nil config returns claude-code default",
+			name: "nil config returns codex-exec default",
 			cfg:  nil,
-			want: "claude-code",
+			want: BackendTypeCodexExec,
 		},
 	}
 	for _, tt := range tests {

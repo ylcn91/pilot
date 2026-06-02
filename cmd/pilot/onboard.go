@@ -10,6 +10,7 @@ import (
 
 	"github.com/qf-studio/pilot/internal/banner"
 	"github.com/qf-studio/pilot/internal/config"
+	"github.com/qf-studio/pilot/internal/executor"
 )
 
 // Persona represents the user's workflow persona
@@ -352,6 +353,8 @@ func buildBackendCardFromConfig(cfg *config.Config) SummaryCard {
 		backendType := cfg.Executor.Type
 		// Map type to display name
 		switch backendType {
+		case executor.BackendTypeCodexExec:
+			card.Value = "Codex Exec"
 		case "claude-code":
 			card.Value = "Claude Code"
 		case "qwen-code":
@@ -363,7 +366,7 @@ func buildBackendCardFromConfig(cfg *config.Config) SummaryCard {
 		}
 		card.Configured = true
 	} else {
-		card.Value = "Claude Code"
+		card.Value = "Codex Exec"
 		card.Line1 = "(default)"
 		card.Configured = true
 	}

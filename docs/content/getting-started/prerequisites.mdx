@@ -2,55 +2,34 @@ import { Callout, Tabs } from 'nextra/components'
 
 # Prerequisites
 
-Before installing Pilot, you need two things: **Claude Code** for AI execution and a **Git hosting account** for issue tracking and PRs.
+Before installing Pilot, you need two things: **Codex CLI** for AI execution and a **Git hosting account** for issue tracking and PRs.
 
-{/* ILLUSTRATION: Prerequisites overview — Claude Code + Git host logos */}
+{/* ILLUSTRATION: Prerequisites overview — Codex + Git host logos */}
 
 ---
 
-## Claude Code (Default)
+## Codex CLI (Default)
 
-Pilot uses [Claude Code](https://docs.anthropic.com/en/docs/claude-code) as its default execution engine. Claude Code is Anthropic's CLI tool for AI-powered development — Pilot orchestrates it as a subprocess.
-
-```bash
-npm install -g @anthropic-ai/claude-code
-```
-
-After installing, authenticate Claude Code using one of two methods:
-
-<Tabs items={['Claude Subscription (recommended)', 'Anthropic API Key']}>
-
-### Claude Subscription
-
-If you have a **Claude Pro** ($20/mo) or **Claude Max** ($100–200/mo) subscription, Claude Code authenticates through your subscription. No API key needed.
+Pilot uses Codex Exec as its default execution engine. Pilot orchestrates the local `codex exec --json` command as a subprocess.
 
 ```bash
-# Log in with your Claude account
-claude login
+codex --version
+codex login
 ```
 
-This is the simplest setup — your subscription covers all Claude Code usage. Pilot invokes Claude Code as a subprocess and inherits your authentication automatically.
+After authentication, configure Pilot to use Codex Exec:
+
+```yaml
+executor:
+  type: codex-exec
+  codex_exec:
+    command: "codex"
+    sandbox: "workspace-write"
+```
 
 <Callout type="info">
-Claude Max plans include higher rate limits and longer context windows, which benefit complex tasks. Pro works fine for most use cases.
+Pilot may still use `ANTHROPIC_API_KEY` for optional legacy internal features if you enable them. Codex Exec itself uses Codex CLI authentication.
 </Callout>
-
-
-### Anthropic API Key
-
-For pay-per-use pricing or enterprise deployments, set the `ANTHROPIC_API_KEY` environment variable. Claude Code picks it up automatically.
-
-```bash
-export ANTHROPIC_API_KEY="your-anthropic-api-key"
-```
-
-Get an API key from [console.anthropic.com](https://console.anthropic.com). Pricing is per-token (input + output) with no monthly commitment.
-
-<Callout type="info">
-Pilot also uses `ANTHROPIC_API_KEY` directly for two optional internal features: the LLM intent classifier (Haiku) for smarter Telegram message routing, and structured subtask parsing for epic decomposition. These features gracefully degrade to simpler alternatives when no API key is set.
-</Callout>
-
-</Tabs>
 
 ---
 
@@ -102,9 +81,28 @@ adapters:
 
 ## Optional Execution Backends
 
-Pilot supports multiple AI coding backends. Claude Code is recommended and enabled by default. The following backends are optional alternatives:
+Pilot supports multiple AI coding backends. Codex Exec is enabled by default. The following backends are optional alternatives:
 
-<Tabs items={['Qwen Code', 'OpenCode']}>
+<Tabs items={['Claude Code', 'Qwen Code', 'OpenCode']}>
+
+### Claude Code
+
+If you want to use Anthropic's Claude Code backend, install and authenticate Claude Code:
+
+```bash
+npm install -g @anthropic-ai/claude-code
+claude login  # or set ANTHROPIC_API_KEY
+```
+
+```yaml
+executor:
+  type: claude-code
+  claude_code:
+    command: "claude"
+```
+
+See [Execution Backends](/concepts/execution-backends#claude-code) for detailed configuration and feature comparison.
+
 
 ### Qwen Code
 
@@ -156,7 +154,7 @@ See [Execution Backends](/concepts/execution-backends#opencode) for detailed con
 </Tabs>
 
 <Callout type="info">
-**Recommended**: Start with Claude Code (default). Other backends are optional and suitable for specific use cases (Qwen model preference, self-hosted server requirements, etc.).
+**Recommended**: Start with Codex Exec (default). Other backends are optional and suitable for specific use cases.
 </Callout>
 
 ---
@@ -180,11 +178,11 @@ See [Integrations](/integrations/linear) for detailed setup guides.
 
 Before proceeding to [Installation](/getting-started/installation):
 
-- [ ] Claude Code installed (`claude --version` outputs a version)
-- [ ] Claude Code authenticated (subscription login or API key set)
+- [ ] Codex CLI installed (`codex --version` outputs a version)
+- [ ] Codex CLI authenticated (`codex login`)
 - [ ] Git host token created and exported (`GITHUB_TOKEN` or `GITLAB_TOKEN`)
 - [ ] Repository exists with at least one commit
 
 <Callout type="info">
-Run `pilot doctor` after installation to verify all prerequisites are met. It checks for Claude Code, Git, token configuration, and optional dependencies.
+Run `pilot doctor` after installation to verify all prerequisites are met. It checks the active backend, Git, token configuration, and optional dependencies.
 </Callout>

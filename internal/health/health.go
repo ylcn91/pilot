@@ -221,7 +221,7 @@ func checkBrewTapHealth(get httpGetter) ConfigCheck {
 // RunChecks performs all health checks based on config
 func RunChecks(cfg *config.Config) *HealthReport {
 	// Determine active backend type from config
-	backendType := "claude-code" // default
+	backendType := "codex-exec" // default
 	if cfg.Executor != nil && cfg.Executor.Type != "" {
 		backendType = cfg.Executor.Type
 	}

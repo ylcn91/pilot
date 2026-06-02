@@ -8,33 +8,70 @@ Pilot supports multiple AI coding backends via a unified execution interface. Al
 
 Pilot abstracts away backend-specific differences so you can swap between AI providers without changing your workflow:
 
-- **Claude Code** (default): Anthropic's native CLI tool with full feature support
+- **Codex Exec** (default): OpenAI Codex CLI non-interactive execution
+- **Claude Code**: Anthropic's native CLI tool with full feature support
 - **Qwen Code**: Alibaba's Qwen models with structured JSON output and session resume
 - **OpenCode**: Community-driven backend with client/server architecture
 
-All three execute the same logic, handle tool calls identically, and produce pull requests. The differences lie in model capabilities, configuration complexity, and feature parity.
+All backends execute through the same Pilot interface and produce pull requests. The differences lie in model capabilities, configuration complexity, streaming protocol, and feature parity.
 
 ---
 
 ## Feature Comparison
 
-| Feature | Claude Code | Qwen Code | OpenCode |
-|---------|------------|-----------|----------|
-| **Stream JSON output** | Yes | Yes (v0.1.0+) | SSE (streaming) |
-| **Session resume (`--resume`)** | Yes | Yes | No |
-| **PR context (`--from-pr`)** | Yes | No | No |
-| **Effort routing** | Yes | No (silently skipped) | No |
-| **Model routing** | Yes | Yes | Via config |
-| **Permissions skip** | `--dangerously-skip-permissions` | `--yolo` | N/A |
-| **Verbose mode** | `--verbose` | Not supported | N/A |
-| **Error retry (rate limit, API)** | Yes | Yes | No (raw HTTP) |
-| **Session-not-found fallback** | Yes (`--from-pr` retry) | Yes (`--resume` retry) | No |
+| Feature | Codex Exec | Claude Code | Qwen Code | OpenCode |
+|---------|------------|-------------|-----------|----------|
+| **Stream output** | JSONL (`--json`) | JSON (`stream-json`) | JSON (`stream-json`) | SSE |
+| **Session resume** | Yes (`codex exec resume`) | Yes (`--resume`) | Yes | No |
+| **PR context (`--from-pr`)** | No | Yes | No | No |
+| **Effort routing** | Yes (`model_reasoning_effort`) | Yes | No (silently skipped) | No |
+| **Model routing** | Yes | Yes | Yes | Via config |
+| **Permissions skip** | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` | `--yolo` | N/A |
+| **Error retry (rate limit, API)** | Yes | Yes | Yes | No (raw HTTP) |
+| **Session-not-found fallback** | Yes (`exec resume` retry) | Yes (`--from-pr` retry) | Yes (`--resume` retry) | No |
+
+---
+
+## Codex Exec
+
+OpenAI Codex CLI non-interactive execution. This is the default backend in this fork and maps `codex exec --json` events into Pilot's backend event stream.
+
+### Prerequisites
+
+```bash
+codex --version
+codex login
+```
+
+### Configuration
+
+```yaml
+executor:
+  type: codex-exec
+  codex_exec:
+    command: "codex"
+    sandbox: "workspace-write"
+    # model: "gpt-5.1-codex"
+    # effort: "medium"
+```
+
+### Configuration Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `command` | string | `"codex"` | Path to the Codex CLI binary |
+| `model` | string | `""` | Optional model passed to `codex exec --model` |
+| `effort` | string | `""` | Optional `model_reasoning_effort` override |
+| `sandbox` | string | `"workspace-write"` | Sandbox passed to `codex exec --sandbox` |
+| `use_session_resume` | bool | `false` | Use `codex exec resume` when a session id is available |
+| `ephemeral` | bool | `false` | Run without persisting Codex session files |
+| `extra_args` | []string | `[]` | Additional CLI arguments |
 
 ---
 
 ## Claude Code
 
-Anthropic's official CLI for Claude AI development. Provides the most complete feature set and is the default backend.
+Anthropic's official CLI for Claude AI development. This remains available as a legacy backend.
 
 ### Prerequisites
 
@@ -261,15 +298,18 @@ opencode serve
 ### Decision Tree
 
 ```
-Do you want the most features?
-├─ Yes → Claude Code (default, recommended)
+Do you want the default local CLI backend?
+├─ Yes → Codex Exec
 └─ No
-  ├─ Do you use Qwen models?
-  │  ├─ Yes → Qwen Code
+  ├─ Do you need Claude Code-specific PR context?
+  │  ├─ Yes → Claude Code
   │  └─ No
-  │    └─ Do you need a server-based backend?
-  │       ├─ Yes → OpenCode
-  │       └─ No → Claude Code (default)
+  │    └─ Do you use Qwen models?
+  │       ├─ Yes → Qwen Code
+  │       └─ No
+  │         └─ Do you need a server-based backend?
+  │            ├─ Yes → OpenCode
+  │            └─ No → Codex Exec
 ```
 
 ### Comparison Summary

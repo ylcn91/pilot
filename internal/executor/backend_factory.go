@@ -13,7 +13,12 @@ func NewBackend(config *BackendConfig) (Backend, error) {
 	heartbeatTimeout := config.EffectiveHeartbeatTimeout()
 
 	switch config.Type {
-	case BackendTypeClaudeCode, "":
+	case BackendTypeCodexExec, "":
+		b := NewCodexExecBackend(config.CodexExec)
+		b.SetHeartbeatTimeout(heartbeatTimeout)
+		return b, nil
+
+	case BackendTypeClaudeCode:
 		b := NewClaudeCodeBackend(config.ClaudeCode)
 		b.SetHeartbeatTimeout(heartbeatTimeout)
 		// GH-2371: single-source provider routing — inject configured

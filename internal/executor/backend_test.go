@@ -69,8 +69,8 @@ func TestDefaultBackendConfig(t *testing.T) {
 	if config == nil {
 		t.Fatal("DefaultBackendConfig returned nil")
 	}
-	if config.Type != BackendTypeClaudeCode {
-		t.Errorf("Type = %q, want %q", config.Type, BackendTypeClaudeCode)
+	if config.Type != BackendTypeCodexExec {
+		t.Errorf("Type = %q, want %q", config.Type, BackendTypeCodexExec)
 	}
 	if config.ClaudeCode == nil {
 		t.Error("ClaudeCode config should not be nil")
@@ -84,6 +84,15 @@ func TestDefaultBackendConfig(t *testing.T) {
 	if config.OpenCode.ServerURL != "http://127.0.0.1:4096" {
 		t.Errorf("OpenCode.ServerURL = %q, want http://127.0.0.1:4096", config.OpenCode.ServerURL)
 	}
+	if config.CodexExec == nil {
+		t.Error("CodexExec config should not be nil")
+	}
+	if config.CodexExec.Command != "codex" {
+		t.Errorf("CodexExec.Command = %q, want codex", config.CodexExec.Command)
+	}
+	if config.CodexExec.Sandbox != "workspace-write" {
+		t.Errorf("CodexExec.Sandbox = %q, want workspace-write", config.CodexExec.Sandbox)
+	}
 }
 
 func TestBackendConfigTypes(t *testing.T) {
@@ -92,6 +101,12 @@ func TestBackendConfigTypes(t *testing.T) {
 	}
 	if BackendTypeOpenCode != "opencode" {
 		t.Errorf("BackendTypeOpenCode = %q, want opencode", BackendTypeOpenCode)
+	}
+	if BackendTypeQwenCode != "qwen-code" {
+		t.Errorf("BackendTypeQwenCode = %q, want qwen-code", BackendTypeQwenCode)
+	}
+	if BackendTypeCodexExec != "codex-exec" {
+		t.Errorf("BackendTypeCodexExec = %q, want codex-exec", BackendTypeCodexExec)
 	}
 }
 

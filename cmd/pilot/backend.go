@@ -23,6 +23,18 @@ type backendInfo struct {
 
 var supportedBackends = []backendInfo{
 	{
+		Name:      executor.BackendTypeCodexExec,
+		Command:   "codex",
+		ConfigKey: "codex_exec",
+		getVersion: func(cmd string) string {
+			out, err := exec.Command(cmd, "--version").Output()
+			if err != nil {
+				return ""
+			}
+			return strings.TrimSpace(string(out))
+		},
+	},
+	{
 		Name:      executor.BackendTypeClaudeCode,
 		Command:   "claude",
 		ConfigKey: "claude_code",
@@ -64,7 +76,7 @@ func newBackendCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "backend",
 		Short: "Manage execution backends",
-		Long: `Manage AI execution backends (Claude Code, Qwen Code, OpenCode).
+		Long: `Manage AI execution backends (Codex Exec, Claude Code, Qwen Code, OpenCode).
 
 List supported backends, check their status, and switch the active backend.`,
 	}
@@ -86,7 +98,8 @@ func newBackendListCmd() *cobra.Command {
 
 Example output:
   Backend        Status      Command    Config
-  claude-code    ✓ installed claude     (default)
+  codex-exec     ✓ installed codex      (default)
+  claude-code    ✓ installed claude
   qwen-code      ✗ missing   qwen
   opencode       ✓ installed opencode  `,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -102,7 +115,7 @@ Example output:
 				cfg = config.DefaultConfig()
 			}
 
-			activeBackend := executor.BackendTypeClaudeCode
+			activeBackend := executor.BackendTypeCodexExec
 			if cfg.Executor != nil && cfg.Executor.Type != "" {
 				activeBackend = cfg.Executor.Type
 			}
@@ -118,6 +131,10 @@ Example output:
 					case executor.BackendTypeClaudeCode:
 						if cfg.Executor.ClaudeCode != nil && cfg.Executor.ClaudeCode.Command != "" {
 							command = cfg.Executor.ClaudeCode.Command
+						}
+					case executor.BackendTypeCodexExec:
+						if cfg.Executor.CodexExec != nil && cfg.Executor.CodexExec.Command != "" {
+							command = cfg.Executor.CodexExec.Command
 						}
 					case executor.BackendTypeQwenCode:
 						if cfg.Executor.QwenCode != nil && cfg.Executor.QwenCode.Command != "" {
@@ -163,9 +180,9 @@ func newBackendStatusCmd() *cobra.Command {
 		Long: `Show current backend configuration and health.
 
 Example output:
-  Active backend: claude-code
-  Command: claude
-  Version: 1.0.26
+  Active backend: codex-exec
+  Command: codex
+  Version: codex-cli 0.0.0
   Status: ✓ ready`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configPath := cfgFile
@@ -178,7 +195,7 @@ Example output:
 				cfg = config.DefaultConfig()
 			}
 
-			activeBackend := executor.BackendTypeClaudeCode
+			activeBackend := executor.BackendTypeCodexExec
 			if cfg.Executor != nil && cfg.Executor.Type != "" {
 				activeBackend = cfg.Executor.Type
 			}
@@ -203,6 +220,10 @@ Example output:
 				case executor.BackendTypeClaudeCode:
 					if cfg.Executor.ClaudeCode != nil && cfg.Executor.ClaudeCode.Command != "" {
 						command = cfg.Executor.ClaudeCode.Command
+					}
+				case executor.BackendTypeCodexExec:
+					if cfg.Executor.CodexExec != nil && cfg.Executor.CodexExec.Command != "" {
+						command = cfg.Executor.CodexExec.Command
 					}
 				case executor.BackendTypeQwenCode:
 					if cfg.Executor.QwenCode != nil && cfg.Executor.QwenCode.Command != "" {
@@ -249,6 +270,13 @@ Example output:
 					if cfg.Executor.ClaudeCode != nil {
 						fmt.Printf("  executor.claude_code.command: %s\n", command)
 					}
+				case executor.BackendTypeCodexExec:
+					if cfg.Executor.CodexExec != nil {
+						fmt.Printf("  executor.codex_exec.command: %s\n", command)
+						if cfg.Executor.CodexExec.Sandbox != "" {
+							fmt.Printf("  executor.codex_exec.sandbox: %s\n", cfg.Executor.CodexExec.Sandbox)
+						}
+					}
 				case executor.BackendTypeQwenCode:
 					if cfg.Executor.QwenCode != nil {
 						fmt.Printf("  executor.qwen_code.command: %s\n", command)
@@ -273,18 +301,19 @@ func newBackendSetCmd() *cobra.Command {
 		Short: "Set active backend",
 		Long: `Switch the active backend in the config file.
 
-Valid types: claude-code, qwen-code, opencode
+Valid types: codex-exec, claude-code, qwen-code, opencode
 
 Example:
-  pilot backend set qwen-code
-  → Updated executor.type to "qwen-code" in ~/.pilot/config.yaml
-  → Verified: qwen CLI found at /usr/local/bin/qwen`,
+  pilot backend set codex-exec
+  → Updated executor.type to "codex-exec" in ~/.pilot/config.yaml
+  → Verified: codex CLI found at /usr/local/bin/codex`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			backendType := args[0]
 
 			// Validate backend type
 			validTypes := []string{
+				executor.BackendTypeCodexExec,
 				executor.BackendTypeClaudeCode,
 				executor.BackendTypeQwenCode,
 				executor.BackendTypeOpenCode,
@@ -346,6 +375,10 @@ Example:
 				case executor.BackendTypeClaudeCode:
 					if cfg.Executor.ClaudeCode != nil && cfg.Executor.ClaudeCode.Command != "" {
 						command = cfg.Executor.ClaudeCode.Command
+					}
+				case executor.BackendTypeCodexExec:
+					if cfg.Executor.CodexExec != nil && cfg.Executor.CodexExec.Command != "" {
+						command = cfg.Executor.CodexExec.Command
 					}
 				case executor.BackendTypeQwenCode:
 					if cfg.Executor.QwenCode != nil && cfg.Executor.QwenCode.Command != "" {

@@ -12,14 +12,14 @@ func TestNewBackend(t *testing.T) {
 		expectError bool
 	}{
 		{
-			name:       "nil config defaults to claude-code",
+			name:       "nil config defaults to codex-exec",
 			config:     nil,
-			expectType: BackendTypeClaudeCode,
+			expectType: BackendTypeCodexExec,
 		},
 		{
-			name:       "empty type defaults to claude-code",
+			name:       "empty type defaults to codex-exec",
 			config:     &BackendConfig{Type: ""},
-			expectType: BackendTypeClaudeCode,
+			expectType: BackendTypeCodexExec,
 		},
 		{
 			name:       "claude-code type",
@@ -30,6 +30,16 @@ func TestNewBackend(t *testing.T) {
 			name:       "opencode type",
 			config:     &BackendConfig{Type: BackendTypeOpenCode},
 			expectType: BackendTypeOpenCode,
+		},
+		{
+			name:       "qwen-code type",
+			config:     &BackendConfig{Type: BackendTypeQwenCode},
+			expectType: BackendTypeQwenCode,
+		},
+		{
+			name:       "codex-exec type",
+			config:     &BackendConfig{Type: BackendTypeCodexExec},
+			expectType: BackendTypeCodexExec,
 		},
 		{
 			name:        "unknown type",
@@ -78,6 +88,16 @@ func TestNewBackendFromType(t *testing.T) {
 			name:        "opencode",
 			backendType: BackendTypeOpenCode,
 			expectType:  BackendTypeOpenCode,
+		},
+		{
+			name:        "qwen-code",
+			backendType: BackendTypeQwenCode,
+			expectType:  BackendTypeQwenCode,
+		},
+		{
+			name:        "codex-exec",
+			backendType: BackendTypeCodexExec,
+			expectType:  BackendTypeCodexExec,
 		},
 		{
 			name:        "unknown",
