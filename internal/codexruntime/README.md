@@ -38,3 +38,7 @@ The typed method layer covers the first interactive flow only: `initialize`, `th
 ## A4 approval boundary
 
 Server-to-client requests are delivered through `Client.ServerRequests()` and must be answered with `Respond*` helpers. This layer does not auto-approve anything; the gateway or UI must own the policy decision.
+
+## A5 lifecycle boundary
+
+The lifecycle surface now includes `thread/resume`, `turn/interrupt`, and idempotent process close. Thread persistence policy and gateway session storage are intentionally not decided here.

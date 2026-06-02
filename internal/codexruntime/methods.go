@@ -76,6 +76,35 @@ type ThreadStartResponse struct {
 	Sandbox           json.RawMessage `json:"sandbox"`
 }
 
+type ThreadResumeParams struct {
+	ThreadID              string            `json:"threadId"`
+	Path                  string            `json:"path,omitempty"`
+	Cwd                   string            `json:"cwd,omitempty"`
+	ApprovalPolicy        ApprovalPolicy    `json:"approvalPolicy,omitempty"`
+	ApprovalsReviewer     ApprovalsReviewer `json:"approvalsReviewer,omitempty"`
+	Sandbox               SandboxMode       `json:"sandbox,omitempty"`
+	Permissions           string            `json:"permissions,omitempty"`
+	Model                 string            `json:"model,omitempty"`
+	ModelProvider         string            `json:"modelProvider,omitempty"`
+	ServiceTier           string            `json:"serviceTier,omitempty"`
+	BaseInstructions      string            `json:"baseInstructions,omitempty"`
+	DeveloperInstructions string            `json:"developerInstructions,omitempty"`
+	Config                map[string]any    `json:"config,omitempty"`
+	ExcludeTurns          bool              `json:"excludeTurns,omitempty"`
+}
+
+type ThreadResumeResponse struct {
+	Thread            Thread          `json:"thread"`
+	Model             string          `json:"model"`
+	ModelProvider     string          `json:"modelProvider"`
+	ServiceTier       *string         `json:"serviceTier"`
+	Cwd               string          `json:"cwd"`
+	ApprovalPolicy    json.RawMessage `json:"approvalPolicy"`
+	ApprovalsReviewer string          `json:"approvalsReviewer"`
+	Sandbox           json.RawMessage `json:"sandbox"`
+	InitialTurnsPage  json.RawMessage `json:"initialTurnsPage"`
+}
+
 type Thread struct {
 	ID        string `json:"id"`
 	SessionID string `json:"sessionId"`
@@ -168,6 +197,10 @@ func (c *Client) Initialize(ctx context.Context, params InitializeParams) (Initi
 
 func (c *Client) ThreadStart(ctx context.Context, params ThreadStartParams) (ThreadStartResponse, error) {
 	return requestAs[ThreadStartResponse](ctx, c, "thread/start", params)
+}
+
+func (c *Client) ThreadResume(ctx context.Context, params ThreadResumeParams) (ThreadResumeResponse, error) {
+	return requestAs[ThreadResumeResponse](ctx, c, "thread/resume", params)
 }
 
 func (c *Client) TurnStart(ctx context.Context, params TurnStartParams) (TurnStartResponse, error) {

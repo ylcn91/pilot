@@ -57,6 +57,45 @@ done
 	}
 }
 
+func TestTypedThreadResume(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture is unix-only")
+	}
+
+	script := filepath.Join(t.TempDir(), "fake-app-server.sh")
+	if err := os.WriteFile(script, []byte(`#!/bin/sh
+while IFS= read -r line; do
+  id=$(printf '%s\n' "$line" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')
+  if [ -n "$id" ]; then
+    printf '{"id":%s,"result":{"thread":{"id":"thread-2","sessionId":"session-2","preview":"","ephemeral":false,"status":{"type":"idle"},"cwd":"/repo"},"model":"gpt-test","modelProvider":"openai","serviceTier":null,"cwd":"/repo","approvalPolicy":"never","approvalsReviewer":"user","sandbox":{"type":"readOnly","networkAccess":false},"initialTurnsPage":null}}\n' "$id"
+  fi
+done
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	client, err := Start(ctx, Config{Command: script})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	resp, err := client.ThreadResume(ctx, ThreadResumeParams{
+		ThreadID:     "thread-2",
+		Cwd:          "/repo",
+		ExcludeTurns: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Thread.ID != "thread-2" {
+		t.Fatalf("thread id = %q, want thread-2", resp.Thread.ID)
+	}
+}
+
 func TestTextUserInput(t *testing.T) {
 	input := TextUserInput("hello")
 

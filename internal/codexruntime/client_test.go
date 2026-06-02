@@ -60,6 +60,35 @@ done
 	}
 }
 
+func TestCloseIsIdempotent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture is unix-only")
+	}
+
+	script := filepath.Join(t.TempDir(), "fake-app-server.sh")
+	if err := os.WriteFile(script, []byte(`#!/bin/sh
+while IFS= read -r line; do
+  sleep 1
+done
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	client, err := Start(ctx, Config{Command: script})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Close(); err != nil {
+		t.Fatalf("first Close() error = %v", err)
+	}
+	if err := client.Close(); err != nil {
+		t.Fatalf("second Close() error = %v", err)
+	}
+}
+
 func TestParseID(t *testing.T) {
 	tests := []struct {
 		name string

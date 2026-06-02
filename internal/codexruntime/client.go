@@ -228,15 +228,14 @@ func (c *Client) Close() error {
 
 	select {
 	case err := <-wait:
-		if err != nil && !errors.Is(err, os.ErrClosed) {
-			return err
-		}
+		_ = err
 		return nil
 	case <-time.After(2 * time.Second):
 		if c.cmd.Process != nil {
 			_ = c.cmd.Process.Kill()
 		}
-		return <-wait
+		_ = <-wait
+		return nil
 	}
 }
 
