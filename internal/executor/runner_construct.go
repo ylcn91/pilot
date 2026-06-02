@@ -47,6 +47,7 @@ type Runner struct {
 	alertProcessor        AlertEventProcessor                                             // Optional alert processor for event emission
 	webhooks              *webhooks.Manager                                               // Optional webhook manager for event delivery
 	qualityCheckerFactory QualityCheckerFactory                                           // Optional factory for creating quality checkers
+	tddGateCheckerFactory TDDGateCheckerFactory                                           // Optional factory for TDD RED/GREEN single-test gates
 	modelRouter           *ModelRouter                                                    // Model and timeout routing based on complexity
 	parallelRunner        *ParallelRunner                                                 // Optional parallel research runner (GH-217)
 	decomposer            *TaskDecomposer                                                 // Optional task decomposer for complex tasks (GH-218)

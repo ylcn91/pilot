@@ -76,6 +76,18 @@ func (r *Runner) SetQualityCheckerFactory(factory QualityCheckerFactory) {
 	r.qualityCheckerFactory = factory
 }
 
+// SetTDDGateCheckerFactory sets the factory for the TDD RED/GREEN gates.
+// Unlike SetQualityCheckerFactory, the factory receives the single test-gate
+// command so the gate can be scoped to the newly authored test names. When
+// unset, the executor falls back to defaultTDDGateCheckerFactory (a single-test
+// simpleQualityChecker), so wiring this in cmd/pilot is optional.
+func (r *Runner) SetTDDGateCheckerFactory(factory TDDGateCheckerFactory) {
+	r.tddGateCheckerFactory = factory
+}
+
+// HasTDDGateCheckerFactory reports whether a TDD gate checker factory is wired.
+func (r *Runner) HasTDDGateCheckerFactory() bool { return r.tddGateCheckerFactory != nil }
+
 // SetModelRouter sets the model router for complexity-based model and timeout selection.
 func (r *Runner) SetModelRouter(router *ModelRouter) {
 	r.modelRouter = router
