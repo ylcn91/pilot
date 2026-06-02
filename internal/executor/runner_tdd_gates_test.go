@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // scriptedGateChecker returns a pre-programmed QualityOutcome on each Check call,
@@ -35,6 +36,39 @@ func scriptedFactory(outcomes []*QualityOutcome, checkCalls *int, cmds *[]string
 
 func pass() *QualityOutcome  { return &QualityOutcome{Passed: true} }
 func fail2() *QualityOutcome { return &QualityOutcome{Passed: false, RetryFeedback: "boom"} }
+
+// scriptedGoTestRunner adapts a QualityOutcome script to the per-test go-test
+// runner seam so Go-project gates (which bypass the exit-code QualityChecker) can
+// be driven deterministically. For each NAMED-test call it consumes one scripted
+// outcome and maps it to per-test results: a passed outcome => every named test
+// "pass"; a failed outcome => every named test "fail" (with RetryFeedback as the
+// raw). The baseline call (nil testNames) always returns an empty green run and
+// does NOT advance the script. It shares calls/cmds with the scripted factory so
+// existing assertions on invocation count and scoped commands still hold.
+func scriptedGoTestRunner(outcomes []*QualityOutcome, calls *int, cmds *[]string) goTestRunnerFunc {
+	return func(_ context.Context, _ string, testNames []string, _ time.Duration) (*goTestRun, error) {
+		if len(testNames) == 0 {
+			// Baseline / whole-suite probe: empty green suite.
+			return &goTestRun{Results: map[string]goTestResult{}}, nil
+		}
+		*cmds = append(*cmds, "go test -json -count=1 -run '^("+strings.Join(testNames, "|")+")$' ./...")
+		i := *calls
+		*calls++
+		if i >= len(outcomes) {
+			i = len(outcomes) - 1
+		}
+		oc := outcomes[i]
+		action := "fail"
+		if oc.Passed {
+			action = "pass"
+		}
+		results := make(map[string]goTestResult, len(testNames))
+		for _, n := range testNames {
+			results[n] = goTestResult{Action: action}
+		}
+		return &goTestRun{Results: results, Raw: oc.RetryFeedback}, nil
+	}
+}
 
 func TestEnforceTDDRedGate(t *testing.T) {
 	tests := []struct {
@@ -71,6 +105,7 @@ func TestEnforceTDDRedGate(t *testing.T) {
 			var checkCalls int
 			var cmds []string
 			r.SetTDDGateCheckerFactory(scriptedFactory(tt.outcomes, &checkCalls, &cmds))
+			r.tddGoTestRunner = scriptedGoTestRunner(tt.outcomes, &checkCalls, &cmds)
 
 			reran := 0
 			rerun := func(ctx context.Context, feedback string) error { reran++; return nil }
@@ -119,6 +154,7 @@ func TestEnforceTDDGreenGate(t *testing.T) {
 			var checkCalls int
 			var cmds []string
 			r.SetTDDGateCheckerFactory(scriptedFactory(tt.outcomes, &checkCalls, &cmds))
+			r.tddGoTestRunner = scriptedGoTestRunner(tt.outcomes, &checkCalls, &cmds)
 
 			reran := 0
 			var lastFeedback string
@@ -133,8 +169,9 @@ func TestEnforceTDDGreenGate(t *testing.T) {
 			if reran != tt.wantReran {
 				t.Errorf("implementer reruns = %d, want %d", reran, tt.wantReran)
 			}
-			if tt.wantReran > 0 && lastFeedback != "boom" {
-				t.Errorf("implementer feedback = %q, want gate failure text fed back", lastFeedback)
+			// The GREEN gate's per-test verdict feedback names the unsatisfied test.
+			if tt.wantReran > 0 && !strings.Contains(lastFeedback, "TestX") {
+				t.Errorf("implementer feedback = %q, want failing test fed back", lastFeedback)
 			}
 		})
 	}

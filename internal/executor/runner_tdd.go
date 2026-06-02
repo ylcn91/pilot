@@ -56,6 +56,14 @@ func (r *Runner) runTDDSequence(s *executeState) (*BackendResult, error) {
 	// anchors the lineage so test-author and implementer chain off a stable hash.
 	r.recordTDDArtifact(s, pilotapi.RoleArchitect, s.tddArchitectDesign)
 
+	// 1.5) BASELINE-GREEN precondition — the suite MUST be green BEFORE the
+	// TEST-AUTHOR writes anything, so a later RED is attributable to the new tests
+	// and not to a pre-existing failing suite. A RED baseline ABORTS the run.
+	r.reportProgress(task.ID, "TDD Baseline", 18, "Verifying suite is green before tests...")
+	if err := r.enforceTDDBaselineGreen(ctx, task.ID, s.executionPath); err != nil {
+		return nil, err
+	}
+
 	// 2) TEST-AUTHOR — write FAILING tests and commit. Re-prompt once if no commit
 	// landed (an empty working tree cannot drive the RED gate).
 	if err := r.runTDDTestAuthor(s, base, roleMax); err != nil {
@@ -75,11 +83,25 @@ func (r *Runner) runTDDSequence(s *executeState) (*BackendResult, error) {
 	// Content captures the authored test names so the lineage is meaningful.
 	r.recordTDDArtifact(s, pilotapi.RoleTestAuthor, tddTestAuthorArtifactContent(s.tddTestNames))
 
+	// 3.5) TEST-FREEZE snapshot — capture the content hashes of the test files the
+	// TEST-AUTHOR committed. After the IMPLEMENTER runs we verify these are
+	// UNCHANGED so the implementer cannot weaken or delete the red tests to "pass".
+	freeze, err := r.snapshotTDDTestFreeze(s)
+	if err != nil {
+		log.Warn("TDD test-freeze snapshot failed; freeze guard disabled for this run", slog.Any("error", err))
+	}
+
 	// 4) IMPLEMENTER — make the failing tests pass and commit.
 	r.reportProgress(task.ID, "TDD Implementer", 50, "Implementing to pass tests...")
 	implRes, err := r.runTDDImplementer(s, base, "")
 	if err != nil {
 		return nil, err
+	}
+
+	// 4.5) TEST-FREEZE verify — the IMPLEMENTER must not have touched the frozen
+	// red tests. A modification/deletion ABORTS with reasonTDDTestsModified.
+	if ferr := verifyTestFreeze(freeze, s.executionPath); ferr != nil {
+		return nil, ferr
 	}
 
 	// 5) GREEN gate — same tests MUST pass; loop IMPLEMENTER with gate feedback.
@@ -275,13 +297,31 @@ func (r *Runner) tddCommitCount(s *executeState) (int, error) {
 	if s.git == nil {
 		return 0, fmt.Errorf("tdd commit count: git operations not initialized")
 	}
-	baseBranch := s.task.BaseBranch
-	if baseBranch == "" {
+	return s.git.CountNewCommits(s.ctx, r.tddBaseBranch(s))
+}
+
+// tddBaseBranch resolves the base branch the TDD gates diff against:
+// task.BaseBranch -> git default branch -> "main".
+func (r *Runner) tddBaseBranch(s *executeState) string {
+	if s.task.BaseBranch != "" {
+		return s.task.BaseBranch
+	}
+	if s.git != nil {
 		if def, derr := s.git.GetDefaultBranch(s.ctx); derr == nil && def != "" {
-			baseBranch = def
-		} else {
-			baseBranch = "main"
+			return def
 		}
 	}
-	return s.git.CountNewCommits(s.ctx, baseBranch)
+	return "main"
+}
+
+// snapshotTDDTestFreeze captures the content hashes of the test files committed
+// by the TEST-AUTHOR (the `_test.go` files changed on this branch vs the base)
+// so the post-IMPLEMENTER verify can detect any weakening/deletion. It is
+// best-effort: a nil snapshot (e.g. no test-file diff, or git error already
+// returned) simply disables the freeze guard for the run.
+func (r *Runner) snapshotTDDTestFreeze(s *executeState) (*testFreezeSnapshot, error) {
+	if s.git == nil {
+		return nil, fmt.Errorf("tdd test-freeze: git operations not initialized")
+	}
+	return snapshotTestFiles(s.ctx, s.executionPath, r.tddBaseBranch(s))
 }

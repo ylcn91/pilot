@@ -98,6 +98,10 @@ func newTDDRunner(t *testing.T, dir, defaultBranch string, order *[]string, gate
 	var gateCalls int
 	gateCmds := &[]string{}
 	r.SetTDDGateCheckerFactory(scriptedFactory(gateOutcomes, &gateCalls, gateCmds))
+	// The Go per-test path bypasses the exit-code QualityChecker, so drive the
+	// same scripted RED/GREEN outcomes through the injectable go-test runner. The
+	// baseline call (nil testNames) always reports an empty green suite.
+	r.tddGoTestRunner = scriptedGoTestRunner(gateOutcomes, &gateCalls, gateCmds)
 
 	task := &Task{
 		ID:          "GH-tdd",

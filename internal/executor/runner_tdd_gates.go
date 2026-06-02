@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -205,37 +206,140 @@ func plural(n int) string {
 }
 
 // runTDDRedGate runs the scoped test gate once and asserts the authored tests
-// FAIL (RED). It returns redOK=true when the gate did NOT pass (the desired RED
-// state). A nil error with redOK=false means the tests already pass; a non-nil
-// error means the gate could not be evaluated.
+// FAIL (RED). It returns redOK=true when the named tests are PROVEN failing.
+//
+// For Go projects with known test names, the proof is per-test: `go test -json
+// -count=1 -run '^(Name1|Name2)$'` is parsed so RED requires every named test to
+// be present and FAILING (a compile error also counts — the new test references
+// unimplemented symbols). An exit code alone is not accepted as proof. For non-Go
+// projects, or when no test names are known, it falls back to the exit-code
+// QualityChecker (suite-scope) and the gate is best-effort, not per-test proof.
 func (r *Runner) runTDDRedGate(ctx context.Context, taskID, projectPath string, testNames []string, scopeToNew bool) (redOK bool, feedback string, err error) {
-	cmd := r.tddGateCommand(projectPath, testNames, scopeToNew)
-	if cmd == "" {
-		return false, "", fmt.Errorf("tdd red gate: no test command detected for %s", projectPath)
+	if r.tddUsePerTestProof(projectPath, testNames, scopeToNew) {
+		run, runErr := r.goTestRunner()(ctx, projectPath, testNames, tddGateTimeout)
+		if runErr != nil {
+			return false, "", fmt.Errorf("tdd red gate (go -json): %w", runErr)
+		}
+		v := evalGoTestVerdict(run, testNames, phaseRed)
+		return v.OK, v.Feedback, nil
 	}
-	checker := r.tddGateChecker()(taskID, projectPath, cmd)
-	outcome, cErr := checker.Check(ctx)
-	if cErr != nil {
-		return false, "", fmt.Errorf("tdd red gate check: %w", cErr)
-	}
-	// RED is satisfied when the gate did NOT pass.
-	return !outcome.Passed, outcome.RetryFeedback, nil
+	return r.runExitCodeGate(ctx, taskID, projectPath, testNames, scopeToNew, false)
 }
 
 // runTDDGreenGate runs the same scoped test gate once and asserts the authored
-// tests PASS (GREEN). greenOK is true when the gate passed; feedback carries the
-// gate's failure text for the IMPLEMENTER retry loop when it did not.
+// tests PASS (GREEN). greenOK is true when the named tests are PROVEN passing.
+//
+// As with the RED gate, Go projects with known names get per-test proof via
+// `go test -json -count=1`; every other case falls back to the exit-code
+// QualityChecker (best-effort).
 func (r *Runner) runTDDGreenGate(ctx context.Context, taskID, projectPath string, testNames []string, scopeToNew bool) (greenOK bool, feedback string, err error) {
+	if r.tddUsePerTestProof(projectPath, testNames, scopeToNew) {
+		run, runErr := r.goTestRunner()(ctx, projectPath, testNames, tddGateTimeout)
+		if runErr != nil {
+			return false, "", fmt.Errorf("tdd green gate (go -json): %w", runErr)
+		}
+		v := evalGoTestVerdict(run, testNames, phaseGreen)
+		return v.OK, v.Feedback, nil
+	}
+	return r.runExitCodeGate(ctx, taskID, projectPath, testNames, scopeToNew, true)
+}
+
+// tddGateTimeout bounds each scoped go-test invocation for the RED/GREEN gates.
+const tddGateTimeout = 5 * time.Minute
+
+// tddUsePerTestProof reports whether the gate can produce per-test proof: a Go
+// module, with scoping enabled and at least one parsed test name. Otherwise the
+// gate falls back to the exit-code QualityChecker (best-effort, suite-scope).
+func (r *Runner) tddUsePerTestProof(projectPath string, testNames []string, scopeToNew bool) bool {
+	return scopeToNew && len(testNames) > 0 && goProjectAt(projectPath)
+}
+
+// runExitCodeGate is the non-Go / no-names fallback: it runs the whole-suite (or
+// scoped) test command through the QualityChecker and uses ONLY the exit code.
+// For the RED gate (wantPass=false) this is the legacy "did NOT pass" semantics;
+// for GREEN (wantPass=true) it is "passed". It logs that the result is exit-code
+// only, not per-test proof.
+func (r *Runner) runExitCodeGate(ctx context.Context, taskID, projectPath string, testNames []string, scopeToNew, wantPass bool) (ok bool, feedback string, err error) {
 	cmd := r.tddGateCommand(projectPath, testNames, scopeToNew)
 	if cmd == "" {
-		return false, "", fmt.Errorf("tdd green gate: no test command detected for %s", projectPath)
+		return false, "", fmt.Errorf("tdd gate: no test command detected for %s", projectPath)
 	}
+	r.log.Warn("TDD gate using exit-code suite-scope (no per-test proof; non-Go or no TESTS_ADDED names)",
+		"command", cmd, "want_pass", wantPass)
 	checker := r.tddGateChecker()(taskID, projectPath, cmd)
 	outcome, cErr := checker.Check(ctx)
 	if cErr != nil {
-		return false, "", fmt.Errorf("tdd green gate check: %w", cErr)
+		return false, "", fmt.Errorf("tdd gate check: %w", cErr)
 	}
-	return outcome.Passed, outcome.RetryFeedback, nil
+	if wantPass {
+		return outcome.Passed, outcome.RetryFeedback, nil
+	}
+	// RED fallback: satisfied when the gate did NOT pass.
+	return !outcome.Passed, outcome.RetryFeedback, nil
+}
+
+// enforceTDDBaselineGreen is the BASELINE-GREEN precondition: BEFORE the
+// TEST-AUTHOR runs, the scoped/whole suite must be GREEN so that a later RED is
+// attributable to the newly authored tests (not a pre-existing failing suite).
+//
+// At baseline no TESTS_ADDED names exist yet, so the check is necessarily
+// suite-scope. For Go it runs `go test -json -count=1 ./...` and requires zero
+// failing tests; for non-Go it uses the exit-code QualityChecker. A RED baseline
+// aborts the run with reasonTDDBaselineNotGreen (surfaced, never silent).
+func (r *Runner) enforceTDDBaselineGreen(ctx context.Context, taskID, projectPath string) error {
+	if goProjectAt(projectPath) {
+		run, err := r.goTestRunner()(ctx, projectPath, nil, tddGateTimeout)
+		if err != nil {
+			return fmt.Errorf("tdd baseline (go -json): %w", err)
+		}
+		if failing := goTestFailures(run); len(failing) > 0 || run.CompileFailed {
+			return fmt.Errorf("%s: suite is not green before TEST-AUTHOR (failing: %s) — a later RED could not be attributed to the new tests",
+				reasonTDDBaselineNotGreen, baselineFailureDetail(run, failing))
+		}
+		return nil
+	}
+	cmd := quality.DetectTestCommand(projectPath)
+	if cmd == "" {
+		r.log.Warn("TDD baseline-green skipped: no test command detected (non-Go)", "project", projectPath)
+		return nil
+	}
+	r.log.Warn("TDD baseline-green using exit-code suite-scope (non-Go; best-effort)", "command", cmd)
+	checker := r.tddGateChecker()(taskID, projectPath, cmd)
+	outcome, cErr := checker.Check(ctx)
+	if cErr != nil {
+		return fmt.Errorf("tdd baseline check: %w", cErr)
+	}
+	if !outcome.Passed {
+		return fmt.Errorf("%s: suite is not green before TEST-AUTHOR — a later RED could not be attributed to the new tests", reasonTDDBaselineNotGreen)
+	}
+	return nil
+}
+
+// goTestFailures returns the sorted names of tests with a "fail" terminal action.
+func goTestFailures(run *goTestRun) []string {
+	if run == nil {
+		return nil
+	}
+	var failing []string
+	for name, res := range run.Results {
+		if res.Action == "fail" {
+			failing = append(failing, name)
+		}
+	}
+	sort.Strings(failing)
+	return failing
+}
+
+// baselineFailureDetail renders a compact failure summary for the baseline abort
+// message — the failing test names, or a compile-error note when nothing built.
+func baselineFailureDetail(run *goTestRun, failing []string) string {
+	if len(failing) > 0 {
+		return strings.Join(failing, ", ")
+	}
+	if run != nil && run.CompileFailed {
+		return "suite did not compile"
+	}
+	return "unknown"
 }
 
 // tddFileExists reports whether a path exists. Named distinctly to avoid
