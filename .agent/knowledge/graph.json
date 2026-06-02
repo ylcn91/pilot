@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "updated": "2026-06-01",
+  "updated": "2026-06-02",
   "nodes": {
     "concepts": {
       "pilot-architecture": {
@@ -120,6 +120,31 @@
         "description": "Per-execution git worktree isolation",
         "related": [
           "executor"
+        ]
+      },
+      "executor-guidance": {
+        "label": "Executor Guidance (file-driven)",
+        "description": ".agent/executor-guidance/*.md overlay/override the hardcoded prompt consts via loadGuidance(agentDir,key,fallback). Lattice 'skills over prompts' — iterate standards without recompiling Go. header/evidence-spec are overlay-only.",
+        "related": [
+          "executor",
+          "multi-backend-priming"
+        ],
+        "files": [
+          "internal/executor/guidance_resolve.go",
+          ".agent/executor-guidance/README.md"
+        ]
+      },
+      "multi-backend-priming": {
+        "label": "Multi-Backend Priming",
+        "description": "All executor backends (claude -p, codex-exec, codex-app-server, api backends) receive the same .agent priming. codex-app-server bypassed BuildPrompt; closed via executor.BuildGuidancePreamble.",
+        "related": [
+          "executor",
+          "executor-guidance"
+        ],
+        "files": [
+          "internal/executor/guidance.go",
+          "internal/gateway/codexruntime_ws.go",
+          "cmd/pilot/chat.go"
         ]
       }
     },
@@ -433,6 +458,41 @@
         "created": "2026-06-01",
         "incident": "2026-06-01: studio-sdk #16 epic spawned child #17 which committed ~7 files over 26 min; child closed unmerged, branch never pushed, parent recorded completed+foreign-SHA no-op. 26 min of work lost.",
         "file": ".agent/knowledge/memories/pitfalls/pitfall_epic_decompose_discards_child_work.md"
+      },
+      "mem-024": {
+        "type": "decision",
+        "summary": "lattice + Fowler 5 friction patterns integrated into the executor (ylcn91 fork, dev a8d8a52). Multi-backend priming parity (BuildGuidancePreamble for codex-app-server), file-driven .agent/executor-guidance overlay layer (loadGuidance), planner priming, run decision log, post-merge reinforcement, flag-gated SyncToFiles. Rejected: 2nd .lattice/ root, mandatory 5-level design gate.",
+        "concepts": [
+          "executor",
+          "executor-guidance",
+          "multi-backend-priming"
+        ],
+        "confidence": 0.95,
+        "created": "2026-06-02",
+        "memory_file": ".agent/knowledge/memories/decisions/decision_lattice_fowler_integration.md"
+      },
+      "mem-025": {
+        "type": "pitfall",
+        "summary": "codex-app-server (gateway codexruntime_ws.go + pilot chat) bypassed BuildPrompt — raw prompt into TurnStart, so no .agent priming/[PILOT-EXEC]/SOPs reached it. claude -p and codex-exec were fine. Fix: executor.BuildGuidancePreamble prepended first-turn-only. When adding a backend, check it routes through BuildPrompt or BuildGuidancePreamble.",
+        "concepts": [
+          "executor",
+          "multi-backend-priming"
+        ],
+        "confidence": 0.95,
+        "severity": "high",
+        "created": "2026-06-02",
+        "memory_file": ".agent/knowledge/memories/pitfalls/pitfall_codex_appserver_bypassed_buildprompt.md"
+      },
+      "mem-026": {
+        "type": "learning",
+        "summary": "loadGuidance(agentDir,key,fallback) resolves .agent/executor-guidance/<key>.md: absent=const verbatim, mode:overlay=const+file, mode:override=file. header/evidence-spec are overlay-only (protect [PILOT-EXEC] handshake). Wired keys: header, evidence-spec, workflow, pre-commit, generation; self-review reserved (needs agentDir in buildSelfReviewPrompt). Atoms must NOT reference .lattice/config.yaml (doesn't exist here).",
+        "concepts": [
+          "executor",
+          "executor-guidance"
+        ],
+        "confidence": 0.95,
+        "created": "2026-06-02",
+        "memory_file": ".agent/knowledge/memories/learnings/learning_executor_guidance_overlay_layer.md"
       }
     }
   },
@@ -556,6 +616,36 @@
       "from": "mem-023",
       "to": "worktree",
       "type": "describes"
+    },
+    {
+      "from": "executor-guidance",
+      "to": "multi-backend-priming",
+      "type": "enables"
+    },
+    {
+      "from": "mem-024",
+      "to": "executor-guidance",
+      "type": "decided-by"
+    },
+    {
+      "from": "mem-025",
+      "to": "multi-backend-priming",
+      "type": "describes"
+    },
+    {
+      "from": "mem-026",
+      "to": "executor-guidance",
+      "type": "describes"
+    },
+    {
+      "from": "mem-024",
+      "to": "mem-025",
+      "type": "related"
+    },
+    {
+      "from": "mem-024",
+      "to": "mem-026",
+      "type": "related"
     }
   ]
 }

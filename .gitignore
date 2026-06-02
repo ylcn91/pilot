@@ -90,6 +90,9 @@ Library/
 # Research output (local to user)
 .agent/research/
 
+# One-off project audit scratch (local to user)
+.agent/analysis/
+
 # Nested git repo (docs has its own GitLab repo)
 docs/.git
 
