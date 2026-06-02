@@ -35,9 +35,10 @@ type Client struct {
 	closed   bool
 	failOnce sync.Once
 
-	notifications chan Message
-	errors        chan error
-	done          chan struct{}
+	notifications  chan Message
+	serverRequests chan Message
+	errors         chan error
+	done           chan struct{}
 }
 
 // Message is the app-server JSON-RPC wire envelope.
@@ -103,14 +104,15 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 	}
 
 	c := &Client{
-		cmd:           cmd,
-		stdin:         stdin,
-		stderr:        stderr,
-		nextID:        1,
-		pending:       make(map[int]chan response),
-		notifications: make(chan Message, 256),
-		errors:        make(chan error, 8),
-		done:          make(chan struct{}),
+		cmd:            cmd,
+		stdin:          stdin,
+		stderr:         stderr,
+		nextID:         1,
+		pending:        make(map[int]chan response),
+		notifications:  make(chan Message, 256),
+		serverRequests: make(chan Message, 64),
+		errors:         make(chan error, 8),
+		done:           make(chan struct{}),
 	}
 
 	go c.read(stdout)
@@ -158,9 +160,43 @@ func (c *Client) Notify(method string, params any) error {
 	return c.write(msg)
 }
 
-// Notifications returns server notifications and server-to-client requests.
+// Respond sends a successful response to a server-to-client request.
+func (c *Client) Respond(request Message, result any) error {
+	if len(request.ID) == 0 {
+		return errors.New("server request id is required")
+	}
+	return c.write(map[string]any{
+		"id":     request.ID,
+		"result": result,
+	})
+}
+
+// RespondError sends an error response to a server-to-client request.
+func (c *Client) RespondError(request Message, code int64, message string, data any) error {
+	if len(request.ID) == 0 {
+		return errors.New("server request id is required")
+	}
+	errPayload := map[string]any{
+		"code":    code,
+		"message": message,
+	}
+	if data != nil {
+		errPayload["data"] = data
+	}
+	return c.write(map[string]any{
+		"id":    request.ID,
+		"error": errPayload,
+	})
+}
+
+// Notifications returns server notifications that do not require a response.
 func (c *Client) Notifications() <-chan Message {
 	return c.notifications
+}
+
+// ServerRequests returns requests initiated by app-server that require a client response.
+func (c *Client) ServerRequests() <-chan Message {
+	return c.serverRequests
 }
 
 // Errors returns asynchronous reader and process errors.
@@ -245,6 +281,7 @@ func (c *Client) write(value any) error {
 func (c *Client) read(r io.Reader) {
 	defer close(c.done)
 	defer close(c.notifications)
+	defer close(c.serverRequests)
 
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
@@ -256,6 +293,10 @@ func (c *Client) read(r io.Reader) {
 			return
 		}
 		if len(msg.ID) > 0 {
+			if msg.Method != "" {
+				c.serverRequests <- msg
+				continue
+			}
 			c.dispatchResponse(msg)
 			continue
 		}

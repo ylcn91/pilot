@@ -34,3 +34,7 @@ The typed method layer covers the first interactive flow only: `initialize`, `th
 ## A3 event boundary
 
 `MapNotification` converts app-server notifications into stable runtime events while preserving raw params for fields not modeled yet. It is still transport-local; gateway fan-out, desktop state, and approval callbacks remain separate slices.
+
+## A4 approval boundary
+
+Server-to-client requests are delivered through `Client.ServerRequests()` and must be answered with `Respond*` helpers. This layer does not auto-approve anything; the gateway or UI must own the policy decision.
