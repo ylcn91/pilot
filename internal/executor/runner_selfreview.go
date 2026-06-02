@@ -28,6 +28,15 @@ func (r *Runner) runSelfReview(ctx context.Context, task *Task, state *progressS
 
 	reviewPrompt := r.buildSelfReviewPrompt(task)
 
+	// Choose the self-review backend. In TDD mode the QA role owns review, so
+	// route through r.qaBackend (wired from tdd.qa). Outside TDD the dedicated
+	// review-stage backend is used. When tdd.qa is unset qaBackend falls back to
+	// the primary backend (== reviewBackend default), so behavior is unchanged.
+	selfReviewBackend := r.reviewBackend
+	if r.config != nil && r.config.TDD != nil && r.config.TDD.Enabled {
+		selfReviewBackend = r.qaBackend
+	}
+
 	// Execute self-review with backend-aware timeout. OpenCode runs are
 	// genuinely slower than Claude Code; the 2-minute default cancels review
 	// mid-flight and surfaces as a regression. GH-2416.
@@ -44,7 +53,7 @@ func (r *Runner) runSelfReview(ctx context.Context, task *Task, state *progressS
 	// pass ResumeSessionID when review runs on the same backend instance that
 	// executed; otherwise review works purely from the git diff.
 	var resumeSessionID string
-	if r.reviewBackend == r.execBackend &&
+	if selfReviewBackend == r.execBackend &&
 		r.config != nil && r.config.ClaudeCode != nil && r.config.ClaudeCode.UseSessionResume {
 		if state.sessionID != "" {
 			resumeSessionID = state.sessionID
@@ -56,7 +65,7 @@ func (r *Runner) runSelfReview(ctx context.Context, task *Task, state *progressS
 	}
 
 	reviewAllowed, reviewMCP := r.executionToolOptions()
-	result, err := r.reviewBackend.Execute(reviewCtx, ExecuteOptions{
+	result, err := selfReviewBackend.Execute(reviewCtx, ExecuteOptions{
 		Prompt:          reviewPrompt,
 		ProjectPath:     task.ProjectPath,
 		Verbose:         task.Verbose,
