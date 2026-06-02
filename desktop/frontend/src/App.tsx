@@ -11,13 +11,19 @@ import { useDashboard } from './hooks/useDashboard'
 import { useGitGraph } from './hooks/useGitGraph'
 
 function App() {
-  const { metrics, queueTasks, history, autopilot, server, logs } = useDashboard()
+  const { metrics, queueTasks, history, autopilot, server, serverStarting, logs, ensureGatewayRunning } = useDashboard()
   const gitGraph = useGitGraph()
   const isWails = !!(window as any).go?.main?.App
 
   return (
     <div className={`flex flex-col h-full bg-bg overflow-hidden ${isWails ? 'wails-mode' : 'browser-mode'}`}>
-      <Header serverRunning={server.running} version={server.version} />
+      <Header
+        serverRunning={server.running}
+        version={server.version}
+        starting={serverStarting}
+        error={server.error}
+        onStartGateway={isWails ? ensureGatewayRunning : undefined}
+      />
 
       {/* Two-column layout */}
       <div className="flex flex-1 min-h-0 gap-1.5 px-2 pb-2">

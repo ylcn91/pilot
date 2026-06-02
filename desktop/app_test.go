@@ -2,13 +2,18 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/qf-studio/pilot/internal/dashboard"
 )
+
+var errTestGatewayStart = errors.New("gateway start failed")
 
 // TestGetGitGraph_DefaultLimit verifies that passing limit=0 falls back to 100
 // and that the returned GitGraphData mirrors dashboard.GitGraphState fields.
@@ -111,6 +116,90 @@ func TestGetServerStatus_EmptyGatewayURL(t *testing.T) {
 	status := app.GetServerStatus()
 	if status.Running {
 		t.Fatal("expected Running=false when gatewayURL is empty")
+	}
+}
+
+func TestEnsureGatewayRunning_DaemonAlreadyRunning(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	spawned := false
+	app := &App{
+		httpClient: &http.Client{Timeout: 2 * time.Second},
+		gatewayURL: srv.URL,
+		startGatewayProcess: func(string, string) (*exec.Cmd, error) {
+			spawned = true
+			return nil, nil
+		},
+		getwd: func() (string, error) { return ".", nil },
+		sleep: func(time.Duration) {},
+	}
+
+	status := app.EnsureGatewayRunning()
+	if !status.Running {
+		t.Fatal("expected running gateway")
+	}
+	if spawned {
+		t.Fatal("expected no process spawn when gateway is already running")
+	}
+}
+
+func TestEnsureGatewayRunning_StartsDaemon(t *testing.T) {
+	var healthy atomic.Bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		if !healthy.Load() {
+			http.Error(w, "not ready", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	spawns := 0
+	app := &App{
+		httpClient: &http.Client{Timeout: 2 * time.Second},
+		gatewayURL: srv.URL,
+		startGatewayProcess: func(string, string) (*exec.Cmd, error) {
+			spawns++
+			healthy.Store(true)
+			return &exec.Cmd{}, nil
+		},
+		getwd: func() (string, error) { return ".", nil },
+		sleep: func(time.Duration) {},
+	}
+
+	status := app.EnsureGatewayRunning()
+	if !status.Running {
+		t.Fatalf("expected running gateway, got error %q", status.Error)
+	}
+	if spawns != 1 {
+		t.Fatalf("spawns = %d, want 1", spawns)
+	}
+}
+
+func TestEnsureGatewayRunning_StartFailure(t *testing.T) {
+	app := &App{
+		httpClient: &http.Client{Timeout: 1 * time.Second},
+		gatewayURL: "http://127.0.0.1:1",
+		startGatewayProcess: func(string, string) (*exec.Cmd, error) {
+			return nil, errTestGatewayStart
+		},
+		getwd: func() (string, error) { return ".", nil },
+		sleep: func(time.Duration) {},
+	}
+
+	status := app.EnsureGatewayRunning()
+	if status.Running {
+		t.Fatal("expected offline status")
+	}
+	if status.Error == "" {
+		t.Fatal("expected start error")
 	}
 }
 

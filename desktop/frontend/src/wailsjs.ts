@@ -35,6 +35,10 @@ export function GetServerStatus(): Promise<ServerStatus> {
   return goCall<ServerStatus>('GetServerStatus')
 }
 
+export function EnsureGatewayRunning(): Promise<ServerStatus> {
+  return goCall<ServerStatus>('EnsureGatewayRunning')
+}
+
 export function GetLogs(limit: number): Promise<LogEntry[]> {
   return goCall<LogEntry[]>('GetLogs', limit)
 }

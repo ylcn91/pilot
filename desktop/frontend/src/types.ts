@@ -64,6 +64,8 @@ export interface ServerStatus {
   running: boolean
   version?: string
   gatewayURL?: string
+  startedByApp?: boolean
+  error?: string
 }
 
 export interface GitGraphLine {

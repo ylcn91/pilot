@@ -78,9 +78,11 @@ type LogEntry struct {
 
 // ServerStatus holds the connection status of the running pilot daemon.
 type ServerStatus struct {
-	Running    bool   `json:"running"`
-	Version    string `json:"version,omitempty"`
-	GatewayURL string `json:"gatewayURL,omitempty"`
+	Running      bool   `json:"running"`
+	Version      string `json:"version,omitempty"`
+	GatewayURL   string `json:"gatewayURL,omitempty"`
+	StartedByApp bool   `json:"startedByApp,omitempty"`
+	Error        string `json:"error,omitempty"`
 }
 
 // GitGraphLine represents one parsed line of git log --graph output.

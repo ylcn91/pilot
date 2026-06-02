@@ -40,6 +40,10 @@ export function GetServerStatus(): Promise<ServerStatus> {
     .catch(() => ({ running: false }) as ServerStatus)
 }
 
+export function EnsureGatewayRunning(): Promise<ServerStatus> {
+  return GetServerStatus()
+}
+
 export function GetGitGraph(limit: number): Promise<GitGraphData> {
   return fetchJSON<GitGraphData>(`/api/v1/gitgraph?limit=${limit}`)
 }

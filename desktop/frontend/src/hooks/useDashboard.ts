@@ -11,7 +11,9 @@ export interface DashboardState {
   history: HistoryEntry[]
   autopilot: AutopilotStatus
   server: ServerStatus
+  serverStarting: boolean
   logs: LogEntry[]
+  ensureGatewayRunning: () => Promise<void>
 }
 
 const defaultMetrics: DashboardMetrics = {
@@ -46,6 +48,7 @@ export function useDashboard(): DashboardState {
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [autopilot, setAutopilot] = useState<AutopilotStatus>(defaultAutopilot)
   const [server, setServer] = useState<ServerStatus>(defaultServer)
+  const [serverStarting, setServerStarting] = useState(false)
 
   // Logs are streamed via WebSocket (falls back to polling in Wails mode).
   const logs = useDashboardLogs()
@@ -91,5 +94,17 @@ export function useDashboard(): DashboardState {
     return () => clearInterval(id)
   }, [])
 
-  return { metrics, queueTasks, history, autopilot, server, logs }
+  async function ensureGatewayRunning() {
+    setServerStarting(true)
+    try {
+      const s = await api.EnsureGatewayRunning()
+      if (s) setServer(s)
+    } catch {
+      setServer((prev) => ({ ...prev, running: false, error: 'gateway start failed' }))
+    } finally {
+      setServerStarting(false)
+    }
+  }
+
+  return { metrics, queueTasks, history, autopilot, server, serverStarting, logs, ensureGatewayRunning }
 }

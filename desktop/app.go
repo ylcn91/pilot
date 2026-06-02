@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/qf-studio/pilot/internal/config"
@@ -20,16 +22,27 @@ import (
 // App is the Wails application struct. Its exported methods are bound to the
 // frontend and callable from JavaScript/TypeScript via the generated bindings.
 type App struct {
-	ctx        context.Context
-	store      *memory.Store
-	httpClient *http.Client
-	gatewayURL string // e.g. "http://127.0.0.1:9090"
+	ctx                 context.Context
+	store               *memory.Store
+	httpClient          *http.Client
+	gatewayURL          string // e.g. "http://127.0.0.1:9090"
+	mu                  sync.Mutex
+	gatewayCmd          *exec.Cmd
+	gatewayDone         chan error
+	gatewayStarting     bool
+	gatewayStartedByApp bool
+	startGatewayProcess func(configPath, projectPath string) (*exec.Cmd, error)
+	getwd               func() (string, error)
+	sleep               func(time.Duration)
 }
 
 // NewApp creates a new App instance.
 func NewApp() *App {
 	return &App{
-		httpClient: &http.Client{Timeout: 2 * time.Second},
+		httpClient:          &http.Client{Timeout: 2 * time.Second},
+		startGatewayProcess: startGatewayProcess,
+		getwd:               os.Getwd,
+		sleep:               time.Sleep,
 	}
 }
 
@@ -60,8 +73,128 @@ func (a *App) startup(ctx context.Context) {
 
 // shutdown is called when the app is about to quit.
 func (a *App) shutdown(_ context.Context) {
+	a.stopManagedGateway()
 	if a.store != nil {
 		_ = a.store.Close()
+	}
+}
+
+func startGatewayProcess(configPath, projectPath string) (*exec.Cmd, error) {
+	args := []string{"start", "--config", configPath}
+	if projectPath != "" {
+		args = append(args, "--project", projectPath)
+	}
+	cmd := exec.Command("pilot", args...)
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	return cmd, nil
+}
+
+func (a *App) EnsureGatewayRunning() ServerStatus {
+	status := a.GetServerStatus()
+	if status.Running {
+		return status
+	}
+
+	a.mu.Lock()
+	if a.gatewayStarting {
+		a.mu.Unlock()
+		return a.waitForGateway(10 * time.Second)
+	}
+	if a.gatewayCmd != nil && a.gatewayStartedByApp {
+		a.mu.Unlock()
+		return a.waitForGateway(10 * time.Second)
+	}
+	a.gatewayStarting = true
+	a.mu.Unlock()
+
+	projectPath, err := a.getwd()
+	if err != nil {
+		projectPath = "."
+	}
+	cmd, err := a.startGatewayProcess(config.DefaultConfigPath(), projectPath)
+
+	a.mu.Lock()
+	a.gatewayStarting = false
+	if err != nil {
+		a.mu.Unlock()
+		return ServerStatus{GatewayURL: a.gatewayURL, Error: err.Error()}
+	}
+	done := make(chan error, 1)
+	a.gatewayCmd = cmd
+	a.gatewayDone = done
+	a.gatewayStartedByApp = true
+	a.mu.Unlock()
+
+	go a.waitManagedGateway(cmd, done)
+
+	status = a.waitForGateway(10 * time.Second)
+	if !status.Running && status.Error == "" {
+		status.Error = "gateway did not become healthy"
+	}
+	return status
+}
+
+func (a *App) waitForGateway(timeout time.Duration) ServerStatus {
+	deadline := time.Now().Add(timeout)
+	for {
+		status := a.GetServerStatus()
+		if status.Running {
+			a.mu.Lock()
+			status.StartedByApp = a.gatewayStartedByApp
+			a.mu.Unlock()
+			return status
+		}
+		if time.Now().After(deadline) {
+			status.Error = "gateway is not reachable"
+			return status
+		}
+		a.sleep(250 * time.Millisecond)
+	}
+}
+
+func (a *App) waitManagedGateway(cmd *exec.Cmd, done chan error) {
+	err := cmd.Wait()
+	done <- err
+	close(done)
+
+	a.mu.Lock()
+	if a.gatewayCmd == cmd {
+		a.gatewayCmd = nil
+		a.gatewayDone = nil
+		a.gatewayStartedByApp = false
+	}
+	a.mu.Unlock()
+}
+
+func (a *App) stopManagedGateway() {
+	a.mu.Lock()
+	cmd := a.gatewayCmd
+	done := a.gatewayDone
+	startedByApp := a.gatewayStartedByApp
+	a.gatewayCmd = nil
+	a.gatewayDone = nil
+	a.gatewayStartedByApp = false
+	a.mu.Unlock()
+
+	if !startedByApp || cmd == nil || cmd.Process == nil {
+		return
+	}
+
+	if err := cmd.Process.Signal(os.Interrupt); err != nil {
+		_ = cmd.Process.Kill()
+	}
+
+	if done == nil {
+		return
+	}
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		_ = cmd.Process.Kill()
+		<-done
 	}
 }
 
@@ -358,6 +491,9 @@ func (a *App) GetServerStatus() ServerStatus {
 		Running:    true,
 		GatewayURL: a.gatewayURL,
 	}
+	a.mu.Lock()
+	status.StartedByApp = a.gatewayStartedByApp
+	a.mu.Unlock()
 
 	// Try to get version from /api/v1/status (best-effort, may require auth)
 	if vResp, err := a.httpClient.Get(a.gatewayURL + "/api/v1/status"); err == nil {

@@ -10,9 +10,12 @@ const PILOT_LOGO = `██████╗ ██╗██╗      ████�
 interface HeaderProps {
   serverRunning: boolean
   version?: string
+  starting?: boolean
+  error?: string
+  onStartGateway?: () => void
 }
 
-export function Header({ serverRunning, version }: HeaderProps) {
+export function Header({ serverRunning, version, starting = false, error, onStartGateway }: HeaderProps) {
   return (
     <div className="px-3 py-2 border-b border-border">
       <pre
@@ -29,8 +32,19 @@ export function Header({ serverRunning, version }: HeaderProps) {
         )}
         <span className={`flex items-center gap-1 text-[10px] ${serverRunning ? 'text-sage' : 'text-gray'}`}>
           <span className={`inline-block w-1.5 h-1.5 rounded-full ${serverRunning ? 'bg-sage pulse' : 'bg-gray'}`} />
-          {serverRunning ? 'daemon running' : 'daemon offline'}
+          {starting ? 'daemon starting' : serverRunning ? 'daemon running' : 'daemon offline'}
         </span>
+        {!serverRunning && onStartGateway && (
+          <button
+            className="px-1.5 py-0.5 border border-border bg-card text-gray text-[10px] hover:border-steel hover:text-lightgray disabled:text-slate disabled:hover:border-border"
+            disabled={starting}
+            type="button"
+            onClick={onStartGateway}
+          >
+            Start
+          </button>
+        )}
+        {error && <span className="text-rose text-[10px] truncate">{error}</span>}
       </div>
     </div>
   )
