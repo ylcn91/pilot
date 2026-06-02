@@ -30,7 +30,6 @@ type logEntry struct {
 
 type app struct {
 	log         *json.Encoder
-	requests    map[int]string
 	nextID      int
 	threadID    string
 	turnID      string
@@ -87,74 +86,102 @@ func run(ctx context.Context, command, cwd, prompt string) error {
 	defer client.Close()
 
 	a := &app{
-		log:      json.NewEncoder(os.Stdout),
-		requests: make(map[int]string),
-		nextID:   1,
-		prompt:   prompt,
-		cwd:      cwd,
+		log:    json.NewEncoder(os.Stdout),
+		nextID: 1,
+		prompt: prompt,
+		cwd:    cwd,
 	}
 
-	if err := a.request(ctx, client, "initialize", map[string]any{
-		"clientInfo": map[string]any{
-			"name":    "pilot-spike",
-			"title":   "Pilot Spike",
-			"version": "0.1.0",
-		},
-		"capabilities": map[string]any{
-			"experimentalApi":           true,
-			"requestAttestation":        false,
-			"optOutNotificationMethods": []string{},
-		},
-	}); err != nil {
+	if err := a.initialize(ctx, client); err != nil {
 		return err
 	}
 	return a.read(ctx, client)
 }
 
-func (a *app) request(ctx context.Context, client *codexruntime.Client, method string, params any) error {
+func (a *app) logRequest(method string) (int, error) {
 	id := a.nextID
 	a.nextID++
-	a.requests[id] = method
 
 	if err := a.log.Encode(logEntry{Direction: "client", ID: id, Method: method}); err != nil {
-		return err
+		return 0, err
 	}
-	msg, err := client.Request(ctx, method, params)
+	return id, nil
+}
+
+func (a *app) initialize(ctx context.Context, client *codexruntime.Client) error {
+	id, err := a.logRequest("initialize")
 	if err != nil {
 		return err
 	}
-	return a.handleResponse(id, method, msg)
+	title := "Pilot Spike"
+	if _, err := client.Initialize(ctx, codexruntime.InitializeParams{
+		ClientInfo: codexruntime.ClientInfo{
+			Name:    "pilot-spike",
+			Title:   &title,
+			Version: "0.1.0",
+		},
+		Capabilities: &codexruntime.InitializeCapabilities{
+			ExperimentalAPI:           true,
+			RequestAttestation:        false,
+			OptOutNotificationMethods: []string{},
+		},
+	}); err != nil {
+		return err
+	}
+	a.initialized = true
+	return a.logResponse(id, "initialize", "", "")
 }
 
-func (a *app) handleResponse(id int, method string, msg codexruntime.Message) error {
-	entry := logEntry{Direction: "server", ID: id, ResponseTo: method}
-	switch method {
-	case "initialize":
-		a.initialized = true
-		if err := a.log.Encode(entry); err != nil {
-			return err
-		}
-		return nil
-	case "thread/start":
-		threadID, err := codexruntime.ExtractString(msg.Result, "thread", "id")
-		if err != nil {
-			return err
-		}
-		a.threadID = threadID
-		entry.ThreadID = threadID
-		return a.log.Encode(entry)
-	case "turn/start":
-		turnID, err := codexruntime.ExtractString(msg.Result, "turn", "id")
-		if err != nil {
-			return err
-		}
-		a.startedTurn = true
-		a.turnID = turnID
-		entry.TurnID = turnID
-		return a.log.Encode(entry)
-	default:
-		return a.log.Encode(entry)
+func (a *app) startThread(ctx context.Context, client *codexruntime.Client) error {
+	id, err := a.logRequest("thread/start")
+	if err != nil {
+		return err
 	}
+	ephemeral := true
+	resp, err := client.ThreadStart(ctx, codexruntime.ThreadStartParams{
+		Cwd:                a.cwd,
+		ApprovalPolicy:     codexruntime.ApprovalNever,
+		ApprovalsReviewer:  codexruntime.ApprovalsReviewerUser,
+		Sandbox:            codexruntime.SandboxReadOnly,
+		Ephemeral:          &ephemeral,
+		ThreadSource:       codexruntime.ThreadSourceUser,
+		SessionStartSource: codexruntime.ThreadStartSourceStartup,
+	})
+	if err != nil {
+		return err
+	}
+	a.threadID = resp.Thread.ID
+	return a.logResponse(id, "thread/start", a.threadID, "")
+}
+
+func (a *app) startTurn(ctx context.Context, client *codexruntime.Client) error {
+	id, err := a.logRequest("turn/start")
+	if err != nil {
+		return err
+	}
+	resp, err := client.TurnStart(ctx, codexruntime.TurnStartParams{
+		ThreadID:       a.threadID,
+		Cwd:            a.cwd,
+		ApprovalPolicy: codexruntime.ApprovalNever,
+		Input:          []codexruntime.UserInput{codexruntime.TextUserInput(a.prompt)},
+	})
+	if err != nil {
+		return err
+	}
+	a.startedTurn = true
+	a.turnID = resp.Turn.ID
+	return a.logResponse(id, "turn/start", "", a.turnID)
+}
+
+func (a *app) logResponse(id int, method, threadID, turnID string) error {
+	entry := logEntry{Direction: "server", ID: id, ResponseTo: method}
+	if threadID != "" {
+		entry.ThreadID = threadID
+	}
+	if turnID != "" {
+		entry.TurnID = turnID
+	}
+	return a.log.Encode(entry)
 }
 
 func (a *app) read(ctx context.Context, client *codexruntime.Client) error {
@@ -165,30 +192,11 @@ func (a *app) read(ctx context.Context, client *codexruntime.Client) error {
 		return err
 	}
 
-	if err := a.request(ctx, client, "thread/start", map[string]any{
-		"cwd":                a.cwd,
-		"approvalPolicy":     "never",
-		"approvalsReviewer":  "user",
-		"sandbox":            "read-only",
-		"ephemeral":          true,
-		"threadSource":       "user",
-		"sessionStartSource": "startup",
-	}); err != nil {
+	if err := a.startThread(ctx, client); err != nil {
 		return err
 	}
 
-	if err := a.request(ctx, client, "turn/start", map[string]any{
-		"threadId":       a.threadID,
-		"cwd":            a.cwd,
-		"approvalPolicy": "never",
-		"input": []map[string]any{
-			{
-				"type":          "text",
-				"text":          a.prompt,
-				"text_elements": []any{},
-			},
-		},
-	}); err != nil {
+	if err := a.startTurn(ctx, client); err != nil {
 		return err
 	}
 

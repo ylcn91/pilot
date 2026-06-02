@@ -26,3 +26,7 @@ go run ./cmd/codexruntime-spike --cwd . --prompt "Reply with exactly PONG. Do no
 ## A1 client boundary
 
 `Client` owns only the local process lifecycle, NDJSON framing, request id correlation, server notification delivery, and stderr draining. It deliberately does not map app-server notifications into Pilot gateway events yet; that belongs in the next slice once the typed methods are stable.
+
+## A2 method boundary
+
+The typed method layer covers the first interactive flow only: `initialize`, `thread/start`, `turn/start`, `turn/steer`, and `turn/interrupt`. The structs are intentionally smaller than the generated schema and include only fields Pilot needs before gateway event mapping.
