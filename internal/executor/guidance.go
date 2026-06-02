@@ -16,10 +16,14 @@ import (
 func BuildGuidancePreamble(agentDir, taskDescription string) string {
 	var parts []string
 
-	if h := strings.TrimSpace(ExecutorPromptHeader); h != "" {
+	// Route the structural fragments through loadGuidance so the codex-app-server
+	// backend gets the same file-driven overlays/overrides as BuildPrompt (move
+	// B5). With no executor-guidance/<key>.md present these return the consts
+	// verbatim, keeping the preamble byte-identical for projects without atoms.
+	if h := strings.TrimSpace(loadGuidance(agentDir, "header", ExecutorPromptHeader)); h != "" {
 		parts = append(parts, h)
 	}
-	if d := strings.TrimSpace(EvidenceBackedSpecDirective); d != "" {
+	if d := strings.TrimSpace(loadGuidance(agentDir, "evidence-spec", EvidenceBackedSpecDirective)); d != "" {
 		parts = append(parts, d)
 	}
 	if ctx := strings.TrimSpace(loadProjectContext(agentDir)); ctx != "" {
@@ -34,7 +38,7 @@ func BuildGuidancePreamble(agentDir, taskDescription string) string {
 		}
 		parts = append(parts, strings.TrimSpace(sb.String()))
 	}
-	if wf := strings.TrimSpace(GetAutonomousWorkflowInstructions()); wf != "" {
+	if wf := strings.TrimSpace(loadGuidance(agentDir, "workflow", GetAutonomousWorkflowInstructions())); wf != "" {
 		parts = append(parts, wf)
 	}
 
