@@ -65,11 +65,11 @@ gh pr merge <number>
 
 ## CRITICAL: Core Architecture Constraints
 
-### 1. Navigator Integration (runner.go)
+### 1. Navigator Integration (prompt_builder.go)
 
-**NEVER remove Navigator integration from `internal/executor/runner.go`**
+**NEVER remove Navigator integration from `internal/executor/prompt_builder.go`**
 
-The `BuildPrompt()` function MUST invoke `/nav-loop` mode when `.agent/` exists. This is Pilot's core value proposition:
+The `BuildPrompt()` function (in `prompt_builder.go`, not `runner.go`) MUST keep the prompt Navigator-aware when `.agent/` exists. This is Pilot's core value proposition. The mechanism is now an **embedded autonomous workflow** rather than a `/nav-loop` skill invocation:
 
 ```go
 // LocalMode takes priority — checked FIRST (GH-2103, bench val10)
@@ -79,14 +79,17 @@ if task.LocalMode {
 
 // Navigator-aware prompt structure for medium/complex tasks
 if useNavigator {
-    sb.WriteString("Use /nav-loop mode for this task.\n\n")  // <- NEVER REMOVE
+    // Embedded autonomous workflow replaces the /nav-loop skill (GH-987)
+    sb.WriteString(GetAutonomousWorkflowInstructions())  // from workflow.go
     // ... PILOT EXECUTION MODE override for CLAUDE.md rules
 }
 ```
 
-**LocalMode priority (GH-2103)**: `task.LocalMode` MUST be checked before Navigator detection. Sandbox environments (bench, CI) may have `.agent/` directories that hijack the prompt to Navigator path. LocalMode = problem-solving prompt without PR workflow constraints.
+**`/nav-loop` is no longer required (GH-987)**: prompt building calls `GetAutonomousWorkflowInstructions()` (defined in `internal/executor/workflow.go`) to embed the autonomous workflow directly into the prompt. The old `sb.WriteString("Use /nav-loop mode...")` line is gone — the drift is in the *how*, not the *what*. Navigator awareness when `.agent/` exists is still critical; only the delivery mechanism changed.
 
-**Incident 2026-01-26**: Navigator prefix was accidentally removed during "simplification" refactor. Pilot without Navigator = just another Claude Code wrapper with zero value.
+**LocalMode priority (GH-2103)**: `task.LocalMode` MUST be checked before Navigator detection. Sandbox environments (bench, CI) may have `.agent/` directories that hijack the prompt to the Navigator path. LocalMode = problem-solving prompt without PR workflow constraints.
+
+**Incident 2026-01-26**: The Navigator prompt structure was accidentally removed during a "simplification" refactor. Pilot without Navigator awareness = just another Claude Code wrapper with zero value.
 
 ### 2. Navigator Auto-Init (v0.33.16+)
 
@@ -220,6 +223,8 @@ pilot/
 
 ### Executor
 - `internal/executor/runner.go` - Claude Code process spawner with stream-json parsing + slog logging
+- `internal/executor/prompt_builder.go` - `BuildPrompt()` (Navigator-aware prompt assembly)
+- `internal/executor/workflow.go` - `GetAutonomousWorkflowInstructions()` (embedded autonomous workflow, replaces `/nav-loop` per GH-987)
 - `internal/executor/alerts.go` - AlertEventProcessor interface (avoids import cycles)
 - `internal/executor/progress.go` - Visual progress bar display (lipgloss)
 - `internal/executor/monitor.go` - Task state tracking
