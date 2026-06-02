@@ -38,8 +38,16 @@ func (r *Runner) runTDDSequence(s *executeState) (*BackendResult, error) {
 	// 1) ARCHITECT — read-only design. Advisory: failure is non-fatal, the design
 	// just augments the later prompts when present.
 	r.reportProgress(task.ID, "TDD Architect", 12, "Designing change (read-only)...")
-	if archRes, err := r.runTDDRole(s, r.architectBackend, buildTDDRolePrompt(base, buildArchitectAppendix())); err != nil {
-		log.Warn("TDD architect role failed; continuing without design", slog.Any("error", err))
+	// Capture HEAD before the architect runs: it is design-only and must not
+	// commit. A misbehaving non-claude architect that commits is reverted before
+	// TEST-AUTHOR runs so its stray commits never enter the RED/GREEN diff.
+	archHeadBefore := r.readOnlyHeadBefore(s)
+	archRes, archErr := r.runTDDRole(s, r.architectBackend, buildTDDRolePrompt(base, buildArchitectAppendix()))
+	if guard := enforceReadOnly(ctx, s.git, archHeadBefore, pilotapi.RoleArchitect, log); guard.Violated {
+		s.tddArchitectReadOnlyViolation = true
+	}
+	if archErr != nil {
+		log.Warn("TDD architect role failed; continuing without design", slog.Any("error", archErr))
 	} else if archRes != nil {
 		s.tddArchitectDesign = archRes.Output
 	}

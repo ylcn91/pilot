@@ -51,7 +51,19 @@ func (r *Runner) executePipelinePlan(s *executeState) {
 		}
 	}
 
+	// Capture HEAD before the plan role runs so a misbehaving non-claude planner
+	// that commits can be reverted: the PLAN role is read-only / design-only and
+	// must not pollute the execute diff.
+	headBefore := r.readOnlyHeadBefore(s)
+
 	output, err := planFn()
+
+	// Enforce the read-only contract regardless of plan success: even a failed
+	// planner could have committed before erroring.
+	if guard := enforceReadOnly(s.ctx, s.git, headBefore, pilotapi.RolePlan, r.log); guard.Violated {
+		s.planReadOnlyViolation = true
+	}
+
 	if err != nil {
 		r.log.Warn("Pipeline plan stage failed, executing without a spec",
 			slog.String("task_id", task.ID),

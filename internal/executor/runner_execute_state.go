@@ -53,11 +53,22 @@ type executeState struct {
 	// the versioned, content-addressable audit record.
 	planArtifact pilotapi.HandoffArtifact
 
+	// planReadOnlyViolation records that the pipeline PLAN role (a read-only,
+	// design-only stage) created commits that the read-only guard had to revert
+	// (see enforceReadOnly). It stays false on a well-behaved plan run so the flag
+	// is a clean audit signal of a misbehaving planner.
+	planReadOnlyViolation bool
+
 	// TDD mode (opt-in): advisory design from the ARCHITECT role and the test
 	// names emitted by the TEST-AUTHOR (TESTS_ADDED), used to scope the RED/GREEN
 	// gates. Both empty unless config.TDD.Enabled.
 	tddArchitectDesign string
 	tddTestNames       []string
+
+	// tddArchitectReadOnlyViolation records that the TDD ARCHITECT role (design-
+	// only) created commits that the read-only guard reverted before TEST-AUTHOR
+	// ran (see enforceReadOnly). False on a well-behaved architect run.
+	tddArchitectReadOnlyViolation bool
 
 	// tddArtifacts is the chained handoff record for the TDD role pipeline,
 	// appended in role order (architect -> test-author -> implementer). Each
