@@ -82,6 +82,7 @@ type Server struct {
 	autopilotProvider      AutopilotProvider
 	dashboardStore         DashboardStore
 	logStreamStore         LogStreamStore
+	runtimeApprovals       *runtimeApprovalRegistry
 	gitGraphPath           string          // Project path for git graph API (defaults to ".")
 	gitGraphFetcher        GitGraphFetcher // Injected to avoid import cycle with internal/dashboard
 }
@@ -149,6 +150,7 @@ func NewServerWithAuth(config *Config, authConfig *AuthConfig) *Server {
 		customHandlers:         make(map[string]http.Handler),
 		githubWebhookSecret:    config.GithubWebhookSecret,
 		linearWebhookPublicKey: config.LinearWebhookPublicKey,
+		runtimeApprovals:       newRuntimeApprovalRegistry(),
 		readinessCheckers:      make([]ReadinessChecker, 0),
 		liveness: &livenessState{
 			maxGoroutines:   1000,

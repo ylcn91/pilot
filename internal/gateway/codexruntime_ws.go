@@ -7,23 +7,29 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"sync"
+	"time"
 
 	"github.com/qf-studio/pilot/internal/codexruntime"
 	"github.com/qf-studio/pilot/internal/logging"
 )
 
 const (
-	runtimeActionStart = "codexruntime.start"
-	runtimeSource      = "codexruntime"
+	runtimeActionStart           = "codexruntime.start"
+	runtimeActionApprovalRespond = "codexruntime.approval.respond"
+	runtimeApprovalTimeout       = 5 * time.Minute
+	runtimeSource                = "codexruntime"
 )
 
 type runtimeTaskPayload struct {
-	Action  string `json:"action"`
-	Prompt  string `json:"prompt"`
-	Cwd     string `json:"cwd"`
-	Model   string `json:"model,omitempty"`
-	Sandbox string `json:"sandbox,omitempty"`
-	Command string `json:"command,omitempty"`
+	Action    string          `json:"action"`
+	Prompt    string          `json:"prompt"`
+	Cwd       string          `json:"cwd"`
+	Model     string          `json:"model,omitempty"`
+	Sandbox   string          `json:"sandbox,omitempty"`
+	RequestID json.RawMessage `json:"requestId,omitempty"`
+	Decision  string          `json:"decision,omitempty"`
+	Scope     string          `json:"scope,omitempty"`
 }
 
 type runtimeProgressPayload struct {
@@ -37,6 +43,28 @@ type runtimeProgressPayload struct {
 	Choices   []string            `json:"choices,omitempty"`
 }
 
+type runtimeApprovalResponsePayload struct {
+	RequestID int
+	Decision  string
+	Scope     string
+}
+
+type runtimeApprovalKey struct {
+	sessionID string
+	requestID int
+}
+
+type runtimeApprovalRegistry struct {
+	mu      sync.Mutex
+	pending map[runtimeApprovalKey]chan runtimeApprovalResponsePayload
+}
+
+func newRuntimeApprovalRegistry() *runtimeApprovalRegistry {
+	return &runtimeApprovalRegistry{
+		pending: make(map[runtimeApprovalKey]chan runtimeApprovalResponsePayload),
+	}
+}
+
 func (s *Server) registerRuntimeHandlers() {
 	s.router.RegisterMessageHandler(MessageTypeTask, s.handleRuntimeTask)
 }
@@ -47,21 +75,32 @@ func (s *Server) handleRuntimeTask(session *Session, payload json.RawMessage) {
 		_ = sendRuntimeError(session, fmt.Errorf("invalid runtime task payload: %w", err))
 		return
 	}
-	if task.Action != runtimeActionStart {
+	switch task.Action {
+	case runtimeActionStart:
+		go s.runRuntimeTask(session, task)
+	case runtimeActionApprovalRespond:
+		response, err := parseRuntimeApprovalResponse(task)
+		if err != nil {
+			_ = sendRuntimeError(session, err)
+			return
+		}
+		if err := s.runtimeApprovals.resolve(session.ID, response); err != nil {
+			_ = sendRuntimeError(session, err)
+			return
+		}
+	default:
 		return
 	}
-
-	go s.runRuntimeTask(session, task)
 }
 
 func (s *Server) runRuntimeTask(session *Session, task runtimeTaskPayload) {
-	if err := runRuntimeSession(context.Background(), session, task); err != nil {
+	if err := s.runRuntimeSession(context.Background(), session, task); err != nil {
 		logging.WithComponent("gateway").Warn("codex runtime session failed", slog.Any("error", err))
 		_ = sendRuntimeError(session, err)
 	}
 }
 
-func runRuntimeSession(ctx context.Context, session *Session, task runtimeTaskPayload) error {
+func (s *Server) runRuntimeSession(ctx context.Context, session *Session, task runtimeTaskPayload) error {
 	if task.Prompt == "" {
 		return errors.New("prompt is required")
 	}
@@ -84,13 +123,8 @@ func runRuntimeSession(ctx context.Context, session *Session, task runtimeTaskPa
 		sandbox = parsed
 	}
 
-	command := task.Command
-	if command == "" {
-		command = "codex"
-	}
-
 	client, err := codexruntime.Start(ctx, codexruntime.Config{
-		Command: command,
+		Command: "codex",
 		Cwd:     absCwd,
 	})
 	if err != nil {
@@ -172,10 +206,11 @@ func runRuntimeSession(ctx context.Context, session *Session, task runtimeTaskPa
 			if !ok {
 				continue
 			}
-			if err := sendRuntimeApprovalRequest(session, req); err != nil {
+			response, err := s.awaitRuntimeApproval(ctx, session, req)
+			if err != nil {
 				return err
 			}
-			if err := declineRuntimeServerRequest(client, req); err != nil {
+			if err := respondRuntimeServerRequest(client, req, response); err != nil {
 				return err
 			}
 		case err := <-client.Errors():
@@ -186,8 +221,37 @@ func runRuntimeSession(ctx context.Context, session *Session, task runtimeTaskPa
 	}
 }
 
+func (s *Server) awaitRuntimeApproval(ctx context.Context, session *Session, req codexruntime.Message) (runtimeApprovalResponsePayload, error) {
+	requestID, err := runtimeRequestID(req)
+	if err != nil {
+		return runtimeApprovalResponsePayload{}, err
+	}
+
+	ch, cancel, err := s.runtimeApprovals.register(session.ID, requestID)
+	if err != nil {
+		return runtimeApprovalResponsePayload{}, err
+	}
+	defer cancel()
+
+	if err := sendRuntimeApprovalRequest(session, req); err != nil {
+		return runtimeApprovalResponsePayload{}, err
+	}
+
+	timer := time.NewTimer(runtimeApprovalTimeout)
+	defer timer.Stop()
+
+	select {
+	case response := <-ch:
+		return response, nil
+	case <-timer.C:
+		return defaultRuntimeApprovalResponse(req.Method, requestID), nil
+	case <-ctx.Done():
+		return runtimeApprovalResponsePayload{}, ctx.Err()
+	}
+}
+
 func sendRuntimeApprovalRequest(session *Session, req codexruntime.Message) error {
-	requestID, _ := codexruntime.ParseID(req.ID)
+	requestID, _ := runtimeRequestID(req)
 	return sendRuntimePayload(session, runtimeProgressPayload{
 		Source:    runtimeSource,
 		Kind:      "approval_request",
@@ -234,18 +298,101 @@ func parseRuntimeSandbox(value string) (codexruntime.SandboxMode, error) {
 	}
 }
 
-func declineRuntimeServerRequest(client *codexruntime.Client, req codexruntime.Message) error {
+func (r *runtimeApprovalRegistry) register(sessionID string, requestID int) (<-chan runtimeApprovalResponsePayload, func(), error) {
+	key := runtimeApprovalKey{sessionID: sessionID, requestID: requestID}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.pending[key]; ok {
+		return nil, nil, fmt.Errorf("runtime approval request %d is already pending", requestID)
+	}
+
+	ch := make(chan runtimeApprovalResponsePayload, 1)
+	r.pending[key] = ch
+	cancel := func() {
+		r.mu.Lock()
+		delete(r.pending, key)
+		r.mu.Unlock()
+	}
+
+	return ch, cancel, nil
+}
+
+func (r *runtimeApprovalRegistry) resolve(sessionID string, response runtimeApprovalResponsePayload) error {
+	key := runtimeApprovalKey{sessionID: sessionID, requestID: response.RequestID}
+
+	r.mu.Lock()
+	ch, ok := r.pending[key]
+	if ok {
+		delete(r.pending, key)
+	}
+	r.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("runtime approval request %d is not pending", response.RequestID)
+	}
+
+	ch <- response
+	return nil
+}
+
+func parseRuntimeApprovalResponse(task runtimeTaskPayload) (runtimeApprovalResponsePayload, error) {
+	if len(task.RequestID) == 0 {
+		return runtimeApprovalResponsePayload{}, errors.New("requestId is required")
+	}
+	requestID, err := codexruntime.ParseID(task.RequestID)
+	if err != nil {
+		return runtimeApprovalResponsePayload{}, fmt.Errorf("invalid requestId: %w", err)
+	}
+	if task.Decision == "" && task.Scope == "" {
+		return runtimeApprovalResponsePayload{}, errors.New("decision or scope is required")
+	}
+	return runtimeApprovalResponsePayload{
+		RequestID: requestID,
+		Decision:  task.Decision,
+		Scope:     task.Scope,
+	}, nil
+}
+
+func runtimeRequestID(req codexruntime.Message) (int, error) {
+	if len(req.ID) == 0 {
+		return 0, errors.New("request id is required")
+	}
+	return codexruntime.ParseID(req.ID)
+}
+
+func defaultRuntimeApprovalResponse(method string, requestID int) runtimeApprovalResponsePayload {
+	switch method {
+	case "execCommandApproval", "applyPatchApproval":
+		return runtimeApprovalResponsePayload{RequestID: requestID, Decision: string(codexruntime.ReviewDenied)}
+	case "item/commandExecution/requestApproval":
+		return runtimeApprovalResponsePayload{RequestID: requestID, Decision: string(codexruntime.CommandExecutionDecline)}
+	case "item/fileChange/requestApproval":
+		return runtimeApprovalResponsePayload{RequestID: requestID, Decision: string(codexruntime.FileChangeDecline)}
+	case "item/permissions/requestApproval":
+		return runtimeApprovalResponsePayload{RequestID: requestID, Scope: string(codexruntime.PermissionGrantTurn)}
+	default:
+		return runtimeApprovalResponsePayload{RequestID: requestID}
+	}
+}
+
+func respondRuntimeServerRequest(client *codexruntime.Client, req codexruntime.Message, response runtimeApprovalResponsePayload) error {
 	switch req.Method {
 	case "execCommandApproval", "applyPatchApproval":
-		return client.RespondReviewApproval(req, codexruntime.ReviewDenied)
+		return client.RespondReviewApproval(req, codexruntime.ReviewDecision(response.Decision))
 	case "item/commandExecution/requestApproval":
-		return client.RespondCommandExecutionApproval(req, codexruntime.CommandExecutionDecline)
+		return client.RespondCommandExecutionApproval(req, codexruntime.CommandExecutionApprovalDecision(response.Decision))
 	case "item/fileChange/requestApproval":
-		return client.RespondFileChangeApproval(req, codexruntime.FileChangeDecline)
+		return client.RespondFileChangeApproval(req, codexruntime.FileChangeApprovalDecision(response.Decision))
 	case "item/permissions/requestApproval":
+		scope := response.Scope
+		if scope == "" {
+			scope = response.Decision
+		}
 		return client.RespondPermissionsApproval(req, codexruntime.PermissionsApprovalResponse{
 			Permissions: codexruntime.GrantedPermissionProfile{},
-			Scope:       codexruntime.PermissionGrantTurn,
+			Scope:       codexruntime.PermissionGrantScope(scope),
 		})
 	default:
 		return client.RespondError(req, -32601, "unsupported server request", nil)
