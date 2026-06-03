@@ -14,11 +14,12 @@ import (
 	"github.com/ylcn91/pilot/internal/webhooks"
 )
 
-// Runner executes development tasks using an AI backend (Claude Code, OpenCode, etc.).
-// It manages task lifecycle including branch creation, AI invocation,
-// progress tracking, PR creation, and execution recording. Runner is safe for
-// concurrent use and tracks all running tasks for cancellation support.
-type Runner struct {
+// runnerBackends groups the AI execution backends. The single `backend` drives
+// the default path; the per-stage and per-role fields fan out for the optional
+// handoff pipeline and opt-in TDD mode. When those are not configured every
+// field aliases `backend`, so behavior matches the single-backend path. Embedded
+// into Runner so r.backend, r.planBackend, etc. keep resolving via promotion.
+type runnerBackends struct {
 	backend Backend // AI execution backend
 	// Per-stage backends for the optional handoff pipeline. When no pipeline is
 	// configured all three point at the single `backend` instance, so behavior
@@ -29,71 +30,64 @@ type Runner struct {
 	// Per-role backends for the optional opt-in TDD run mode. When TDD is
 	// disabled (or a role's StageConfig is nil) all four point at the single
 	// `backend` instance, so behavior is identical to the non-TDD path.
-	architectBackend      Backend
-	testAuthorBackend     Backend
-	implementerBackend    Backend
-	qaBackend             Backend
-	config                *BackendConfig
-	onProgress            ProgressCallback
-	progressCallbacks     map[string]ProgressCallback // Named callbacks for multi-listener support
-	progressMu            sync.RWMutex                // Protects progressCallbacks
-	tokenCallbacks        map[string]TokenCallback    // Named callbacks for token usage updates
-	tokenMu               sync.RWMutex                // Protects tokenCallbacks
-	mu                    sync.Mutex
-	running               map[string]*exec.Cmd
-	log                   *slog.Logger
-	recordingsPath        string                                                          // Path to recordings directory (empty = default)
-	enableRecording       bool                                                            // Whether to record executions
-	alertProcessor        AlertEventProcessor                                             // Optional alert processor for event emission
-	webhooks              *webhooks.Manager                                               // Optional webhook manager for event delivery
-	qualityCheckerFactory QualityCheckerFactory                                           // Optional factory for creating quality checkers
-	tddGateCheckerFactory TDDGateCheckerFactory                                           // Optional factory for TDD RED/GREEN single-test gates
-	tddGoTestRunner       goTestRunnerFunc                                                // Optional seam for the per-test go-test -json runner (tests inject scripted results)
-	modelRouter           *ModelRouter                                                    // Model and timeout routing based on complexity
-	parallelRunner        *ParallelRunner                                                 // Optional parallel research runner (GH-217)
-	decomposer            *TaskDecomposer                                                 // Optional task decomposer for complex tasks (GH-218)
-	subtaskParser         *SubtaskParser                                                  // Haiku-based subtask parser; nil falls back to regex (GH-501)
-	suppressProgressLogs  bool                                                            // Suppress slog output for progress (use when visual display is active)
-	tokenLimitCheck       TokenLimitCallback                                              // Optional per-task token/duration limit check (GH-539)
-	onSubIssuePRCreated   SubIssuePRCallback                                              // Optional callback when a sub-issue PR is created (GH-596)
-	subIssueMergeWait     SubIssueMergeWaitFn                                             // Optional fn to block between sub-issues until PR is merged (GH-2178)
-	subIssuePollerSkip    SubIssuePollerSkipFn                                            // GH-3240: marks sub-issues in poller so they aren't re-dispatched
-	intentJudge           *IntentJudge                                                    // Optional intent judge for diff-vs-ticket alignment (GH-624)
-	teamChecker           TeamChecker                                                     // Optional team RBAC checker (GH-633)
-	executeFunc           func(ctx context.Context, task *Task) (*ExecutionResult, error) // Internal override for testing
-	skipPreflightChecks   bool                                                            // Skip preflight checks (for testing with mock backends)
-	retrier               *Retrier                                                        // Optional smart retry handler (GH-920)
-	signalParser          *SignalParser                                                   // Structured signal parser v2 for progress extraction (GH-960)
-	knowledge             *memory.KnowledgeStore                                          // Optional knowledge store for experiential memories (GH-994)
-	profileManager        *memory.ProfileManager                                          // Optional profile manager for user preferences (GH-994)
-	driftDetector         *DriftDetector                                                  // Optional drift detector for collaboration drift (GH-997)
-	monitor               *Monitor                                                        // Optional monitor for state transitions (queued→running)
-	taskProgress          map[string]int                                                  // Per-task progress high-water mark (monotonic enforcement)
-	taskProgressMu        sync.RWMutex                                                    // Protects taskProgress
-	// GH-1077: AGENTS.md caching
-	agentsContent     string       // Cached AGENTS.md content, loaded once per Runner
-	agentsProjectPath string       // Project path for agents cache (invalidate on change)
-	agentsMu          sync.RWMutex // Protects agents cache
-	// GH-1078: Worktree pooling
-	worktreeManager *WorktreeManager // Optional worktree manager with pool support
-	// GH-1471: SubIssueCreator for non-GitHub adapters
-	subIssueCreator SubIssueCreator // Optional creator for sub-issues in external trackers
-	prCreator       PRCreator       // Optional creator for MRs/PRs in external forges
-	// GH-2211: SubIssueLinker for native GitHub sub-issue API linking
-	subIssueLinker SubIssueLinker // Optional linker for native GitHub parent→child wiring
-	// GH-1599: Execution log store for milestone entries
-	logStore *memory.Store // Optional log store for writing execution milestones
-	// GH-1811: Learning system (self-improvement)
-	learningLoop        LearningRecorder            // Optional learning loop for pattern extraction + feedback
+	architectBackend   Backend
+	testAuthorBackend  Backend
+	implementerBackend Backend
+	qaBackend          Backend
+}
+
+// runnerTDDGates groups the optional seams for the TDD RED/GREEN gate machinery.
+// Embedded into Runner so r.tddGateCheckerFactory / r.tddGoTestRunner keep
+// resolving via promotion.
+type runnerTDDGates struct {
+	tddGateCheckerFactory TDDGateCheckerFactory // Optional factory for TDD RED/GREEN single-test gates
+	tddGoTestRunner       goTestRunnerFunc      // Optional seam for the per-test go-test -json runner (tests inject scripted results)
+}
+
+// runnerObservability groups progress/event emission and metrics hooks.
+// Embedded into Runner so r.onProgress, r.alertProcessor, etc. keep resolving
+// via promotion.
+type runnerObservability struct {
+	onProgress           ProgressCallback    // Single legacy progress callback
+	alertProcessor       AlertEventProcessor // Optional alert processor for event emission
+	webhooks             *webhooks.Manager   // Optional webhook manager for event delivery
+	signalParser         *SignalParser       // Structured signal parser v2 for progress extraction (GH-960)
+	monitor              *Monitor            // Optional monitor for state transitions (queued→running)
+	metricsRecorder      MetricsRecorder     // GH-2855: Prometheus counters for tokens, cost, and executions
+	suppressProgressLogs bool                // Suppress slog output for progress (use when visual display is active)
+}
+
+// runnerKnowledge groups the experiential-memory and learning context.
+// Embedded into Runner so r.knowledge, r.learningLoop, etc. keep resolving via
+// promotion.
+type runnerKnowledge struct {
+	knowledge           *memory.KnowledgeStore      // Optional knowledge store for experiential memories (GH-994)
+	profileManager      *memory.ProfileManager      // Optional profile manager for user preferences (GH-994)
+	driftDetector       *DriftDetector              // Optional drift detector for collaboration drift (GH-997)
+	logStore            *memory.Store               // GH-1599: Optional log store for writing execution milestones
+	learningLoop        LearningRecorder            // GH-1811: Optional learning loop for pattern extraction + feedback
 	patternContext      *PatternContext             // Optional pattern context for prompt injection
 	selfReviewExtractor SelfReviewExtractor         // Optional extractor for self-review pattern learning (GH-1955)
 	outcomeTracker      *memory.ModelOutcomeTracker // Optional outcome tracker for model escalation (GH-1991)
-	// GH-2015: Knowledge graph integration for execution learnings
-	knowledgeGraph KnowledgeGraphRecorder // Optional knowledge graph for cross-project learnings
-	// GH-2256: Dry-run mode to suppress real gh CLI calls (issue close/comment)
-	dryRun bool
-	// GH-2363: Track consecutive title-rejection failures per issue so we stop
-	// retrying and post a helpful comment after the 2nd identical rejection.
+	knowledgeGraph      KnowledgeGraphRecorder      // GH-2015: Optional knowledge graph for cross-project learnings
+}
+
+// runnerEpic groups the epic-planning and sub-issue creation machinery,
+// including the injectable seams tests use to script gh CLI behavior. Embedded
+// into Runner so r.subIssueCreator, r.planEpicFn, etc. keep resolving via
+// promotion.
+type runnerEpic struct {
+	decomposer          *TaskDecomposer      // Optional task decomposer for complex tasks (GH-218)
+	subtaskParser       *SubtaskParser       // Haiku-based subtask parser; nil falls back to regex (GH-501)
+	parallelRunner      *ParallelRunner      // Optional parallel research runner (GH-217)
+	subIssueCreator     SubIssueCreator      // GH-1471: Optional creator for sub-issues in external trackers
+	prCreator           PRCreator            // Optional creator for MRs/PRs in external forges
+	subIssueLinker      SubIssueLinker       // GH-2211: Optional linker for native GitHub parent→child wiring
+	onSubIssuePRCreated SubIssuePRCallback   // Optional callback when a sub-issue PR is created (GH-596)
+	subIssueMergeWait   SubIssueMergeWaitFn  // Optional fn to block between sub-issues until PR is merged (GH-2178)
+	subIssuePollerSkip  SubIssuePollerSkipFn // GH-3240: marks sub-issues in poller so they aren't re-dispatched
+	// titleRejections tracks consecutive title-rejection failures per issue so we
+	// stop retrying and post a helpful comment after the 2nd identical rejection (GH-2363).
 	titleRejections *titleRejectionTracker
 	// openSubIssueCheck detects whether recent sub-issues for a parent already exist.
 	// Injectable for testing; defaults to queryRecentSubIssues (gh CLI).
@@ -106,8 +100,6 @@ type Runner struct {
 	// planPipelineFn overrides the opt-in pipeline plan stage for testing;
 	// nil runs the spec through the configured plan backend (r.planBackend.Execute).
 	planPipelineFn func() (string, error)
-	// GH-2855: Prometheus counters for tokens, cost, and executions.
-	metricsRecorder MetricsRecorder
 	// GH-3027 / TASK-286: Allowlist used to refuse `gh issue create` calls on
 	// repos that are not in the user's configured project list. Set via
 	// SetRepoAllowlist at construction time by cmd/pilot. When nil the
@@ -117,6 +109,58 @@ type Runner struct {
 	// issueCreationEnabled controls whether epic planning may create tracker
 	// sub-issues. Default false; wired from executor.create_sub_issues.
 	issueCreationEnabled bool
+}
+
+// Runner executes development tasks using an AI backend (Claude Code, OpenCode, etc.).
+// It manages task lifecycle including branch creation, AI invocation,
+// progress tracking, PR creation, and execution recording. Runner is safe for
+// concurrent use and tracks all running tasks for cancellation support.
+//
+// Its many collaborators are grouped into embedded, cohesive sub-structs
+// (backends, TDD gates, observability, knowledge, epic/sub-issue). The embeds
+// are anonymous so existing r.<field> selectors keep resolving via Go field
+// promotion; the construction/setter API is unchanged. Fields that the package's
+// tests set through keyed Runner composite literals (config, log, modelRouter,
+// running, the callback maps, dryRun, executeFunc, skipPreflightChecks) plus the
+// concurrency primitives stay at the top level, since promoted fields cannot be
+// addressed in an outer composite literal.
+type Runner struct {
+	runnerBackends
+	runnerTDDGates
+	runnerObservability
+	runnerKnowledge
+	runnerEpic
+
+	config              *BackendConfig
+	progressCallbacks   map[string]ProgressCallback // Named callbacks for multi-listener support
+	progressMu          sync.RWMutex                // Protects progressCallbacks
+	tokenCallbacks      map[string]TokenCallback    // Named callbacks for token usage updates
+	tokenMu             sync.RWMutex                // Protects tokenCallbacks
+	mu                  sync.Mutex
+	running             map[string]*exec.Cmd
+	log                 *slog.Logger
+	recordingsPath      string                                                          // Path to recordings directory (empty = default)
+	enableRecording     bool                                                            // Whether to record executions
+	modelRouter         *ModelRouter                                                    // Model and timeout routing based on complexity
+	tokenLimitCheck     TokenLimitCallback                                              // Optional per-task token/duration limit check (GH-539)
+	intentJudge         *IntentJudge                                                    // Optional intent judge for diff-vs-ticket alignment (GH-624)
+	teamChecker         TeamChecker                                                     // Optional team RBAC checker (GH-633)
+	executeFunc         func(ctx context.Context, task *Task) (*ExecutionResult, error) // Internal override for testing
+	skipPreflightChecks bool                                                            // Skip preflight checks (for testing with mock backends)
+	retrier             *Retrier                                                        // Optional smart retry handler (GH-920)
+	taskProgress        map[string]int                                                  // Per-task progress high-water mark (monotonic enforcement)
+	taskProgressMu      sync.RWMutex                                                    // Protects taskProgress
+	// GH-1077: AGENTS.md caching
+	agentsContent     string       // Cached AGENTS.md content, loaded once per Runner
+	agentsProjectPath string       // Project path for agents cache (invalidate on change)
+	agentsMu          sync.RWMutex // Protects agents cache
+	// GH-1078: Worktree pooling
+	worktreeManager *WorktreeManager // Optional worktree manager with pool support
+	// GH-2256: Dry-run mode to suppress real gh CLI calls (issue close/comment)
+	dryRun bool
+	// qualityCheckerFactory builds quality checkers; kept top-level alongside the
+	// other quality-gate wiring.
+	qualityCheckerFactory QualityCheckerFactory // Optional factory for creating quality checkers
 }
 
 // SetRepoAllowlist injects the allowlist used by the sub-issue creation
@@ -148,25 +192,7 @@ func NewRunner() *Runner {
 		backend = NewCodexExecBackend(nil)
 	}
 	log := logging.WithComponent("executor")
-	return &Runner{
-		backend:            backend,
-		planBackend:        backend,
-		execBackend:        backend,
-		reviewBackend:      backend,
-		architectBackend:   backend,
-		testAuthorBackend:  backend,
-		implementerBackend: backend,
-		qaBackend:          backend,
-		running:            make(map[string]*exec.Cmd),
-		progressCallbacks:  make(map[string]ProgressCallback),
-		tokenCallbacks:     make(map[string]TokenCallback),
-		taskProgress:       make(map[string]int),
-		log:                log,
-		enableRecording:    true, // Recording enabled by default
-		modelRouter:        NewModelRouter(nil, nil),
-		signalParser:       NewSignalParser(log),
-		titleRejections:    newTitleRejectionTracker(),
-	}
+	return newRunnerWithBackend(backend, log, true)
 }
 
 // NewRunnerWithBackend creates a Runner with a specific backend.
@@ -175,24 +201,39 @@ func NewRunnerWithBackend(backend Backend) *Runner {
 		backend = NewCodexExecBackend(nil)
 	}
 	log := logging.WithComponent("executor")
+	return newRunnerWithBackend(backend, log, true)
+}
+
+// newRunnerWithBackend is the shared constructor for the public NewRunner /
+// NewRunnerWithBackend entry points. It wires every backend field to the single
+// `backend` and initializes the embedded sub-structs so the per-stage/per-role
+// fields default to the single-backend path until resolveStageBackends /
+// resolveTDDBackends fan them out.
+func newRunnerWithBackend(backend Backend, log *slog.Logger, enableRecording bool) *Runner {
 	return &Runner{
-		backend:            backend,
-		planBackend:        backend,
-		execBackend:        backend,
-		reviewBackend:      backend,
-		architectBackend:   backend,
-		testAuthorBackend:  backend,
-		implementerBackend: backend,
-		qaBackend:          backend,
-		running:            make(map[string]*exec.Cmd),
-		progressCallbacks:  make(map[string]ProgressCallback),
-		tokenCallbacks:     make(map[string]TokenCallback),
-		taskProgress:       make(map[string]int),
-		log:                log,
-		enableRecording:    true,
-		modelRouter:        NewModelRouter(nil, nil),
-		signalParser:       NewSignalParser(log),
-		titleRejections:    newTitleRejectionTracker(),
+		runnerBackends: runnerBackends{
+			backend:            backend,
+			planBackend:        backend,
+			execBackend:        backend,
+			reviewBackend:      backend,
+			architectBackend:   backend,
+			testAuthorBackend:  backend,
+			implementerBackend: backend,
+			qaBackend:          backend,
+		},
+		runnerObservability: runnerObservability{
+			signalParser: NewSignalParser(log),
+		},
+		runnerEpic: runnerEpic{
+			titleRejections: newTitleRejectionTracker(),
+		},
+		running:           make(map[string]*exec.Cmd),
+		progressCallbacks: make(map[string]ProgressCallback),
+		tokenCallbacks:    make(map[string]TokenCallback),
+		taskProgress:      make(map[string]int),
+		log:               log,
+		enableRecording:   enableRecording,
+		modelRouter:       NewModelRouter(nil, nil),
 	}
 }
 
