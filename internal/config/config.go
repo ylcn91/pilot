@@ -9,17 +9,6 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/ylcn91/pilot/internal/adapters/asana"
-	"github.com/ylcn91/pilot/internal/adapters/azuredevops"
-	"github.com/ylcn91/pilot/internal/adapters/bitbucket"
-	"github.com/ylcn91/pilot/internal/adapters/discord"
-	"github.com/ylcn91/pilot/internal/adapters/github"
-	"github.com/ylcn91/pilot/internal/adapters/gitlab"
-	"github.com/ylcn91/pilot/internal/adapters/jira"
-	"github.com/ylcn91/pilot/internal/adapters/linear"
-	"github.com/ylcn91/pilot/internal/adapters/plane"
-	"github.com/ylcn91/pilot/internal/adapters/slack"
-	"github.com/ylcn91/pilot/internal/adapters/telegram"
 	"github.com/ylcn91/pilot/internal/approval"
 	"github.com/ylcn91/pilot/internal/autopilot"
 	"github.com/ylcn91/pilot/internal/budget"
@@ -73,19 +62,7 @@ func DefaultConfig() *Config {
 		Auth: &gateway.AuthConfig{
 			Type: gateway.AuthTypeClaudeCode,
 		},
-		Adapters: &AdaptersConfig{
-			Linear:      linear.DefaultConfig(),
-			Slack:       slack.DefaultConfig(),
-			Telegram:    telegram.DefaultConfig(),
-			GitHub:      github.DefaultConfig(),
-			GitLab:      gitlab.DefaultConfig(),
-			Bitbucket:   bitbucket.DefaultConfig(),
-			AzureDevOps: azuredevops.DefaultConfig(),
-			Jira:        jira.DefaultConfig(),
-			Asana:       asana.DefaultConfig(),
-			Plane:       plane.DefaultConfig(),
-			Discord:     discord.DefaultConfig(),
-		},
+		Adapters: defaultAdaptersConfig(),
 		Orchestrator: &OrchestratorConfig{
 			Model:         "claude-sonnet-4-6",
 			MaxConcurrent: 2,

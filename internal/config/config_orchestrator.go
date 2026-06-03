@@ -41,6 +41,26 @@ type AdaptersConfig struct {
 	Discord     *discord.Config     `yaml:"discord"`
 }
 
+// defaultAdaptersConfig assembles the default per-adapter configuration.
+// It lives here, alongside AdaptersConfig, so that the fan-in to every adapter
+// package stays contained in this file (config.go no longer needs to import
+// each adapter just to call its DefaultConfig).
+func defaultAdaptersConfig() *AdaptersConfig {
+	return &AdaptersConfig{
+		Linear:      linear.DefaultConfig(),
+		Slack:       slack.DefaultConfig(),
+		Telegram:    telegram.DefaultConfig(),
+		GitHub:      github.DefaultConfig(),
+		GitLab:      gitlab.DefaultConfig(),
+		Bitbucket:   bitbucket.DefaultConfig(),
+		AzureDevOps: azuredevops.DefaultConfig(),
+		Jira:        jira.DefaultConfig(),
+		Asana:       asana.DefaultConfig(),
+		Plane:       plane.DefaultConfig(),
+		Discord:     discord.DefaultConfig(),
+	}
+}
+
 // OrchestratorConfig holds settings for the task orchestrator including
 // the AI model to use, concurrency limits, and daily brief scheduling.
 type OrchestratorConfig struct {
