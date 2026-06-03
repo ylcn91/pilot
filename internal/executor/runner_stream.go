@@ -1,89 +1,9 @@
 package executor
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 )
-
-// parseStreamEvent parses a stream-json event and reports progress
-// Returns (finalResult, errorMessage) - non-empty when task completes
-func (r *Runner) parseStreamEvent(taskID, line string, state *progressState) (string, string) {
-	var event StreamEvent
-	if err := json.Unmarshal([]byte(line), &event); err != nil {
-		// Not valid JSON, skip
-		return "", ""
-	}
-
-	switch event.Type {
-	case "system":
-		if event.Subtype == "init" {
-			r.reportProgress(taskID, "🚀 Started", 5, "Claude Code initialized")
-		}
-
-	case "assistant":
-		if event.Message != nil {
-			for _, block := range event.Message.Content {
-				switch block.Type {
-				case "tool_use":
-					r.handleToolUse(taskID, block.Name, block.Input, state)
-				case "text":
-					// Parse Navigator-specific patterns from text
-					r.parseNavigatorPatterns(taskID, block.Text, state)
-				}
-			}
-		}
-
-	case "user":
-		// Tool results - parse for commit SHAs
-		if event.ToolUseResult != nil {
-			var toolResult ToolResultContent
-			if err := json.Unmarshal(event.ToolUseResult, &toolResult); err == nil {
-				// Extract commit SHA from git commit output
-				// Pattern: "[branch abc1234] commit message" or "[main abc1234] message"
-				extractCommitSHA(toolResult.Content, state)
-			}
-		}
-
-	case "result":
-		// Capture final usage stats from result event
-		if event.Usage != nil {
-			state.tokensInput += event.Usage.InputTokens
-			state.tokensOutput += event.Usage.OutputTokens
-			state.cacheCreationInputTokens += event.Usage.CacheCreationInputTokens
-			state.cacheReadInputTokens += event.Usage.CacheReadInputTokens
-		}
-		if event.Model != "" {
-			state.modelName = event.Model
-		}
-		r.log.Debug("Stream result received",
-			slog.String("task_id", taskID),
-			slog.Bool("is_error", event.IsError),
-			slog.String("model", event.Model),
-		)
-		if event.IsError {
-			r.log.Warn("Claude Code returned error", slog.String("task_id", taskID), slog.String("error", event.Result))
-			return "", event.Result
-		}
-		return event.Result, ""
-	}
-
-	// Capture model name before reporting tokens so the callback receives the correct model.
-	if event.Model != "" && state.modelName == "" {
-		state.modelName = event.Model
-	}
-	// Track usage from any event with usage info
-	if event.Usage != nil {
-		state.tokensInput += event.Usage.InputTokens
-		state.tokensOutput += event.Usage.OutputTokens
-		state.cacheCreationInputTokens += event.Usage.CacheCreationInputTokens
-		state.cacheReadInputTokens += event.Usage.CacheReadInputTokens
-		// Report token usage to callbacks (e.g., dashboard)
-		r.reportTokens(taskID, state.tokensInput, state.tokensOutput, state.modelName)
-	}
-
-	return "", ""
-}
 
 // processBackendEvent handles events from any backend and updates progress state.
 // This is the unified event handler that works with both Claude Code and OpenCode.
