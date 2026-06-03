@@ -2,6 +2,7 @@ package budget
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 )
@@ -220,5 +221,61 @@ func TestEnforcer_GetConfig(t *testing.T) {
 
 	if got != config {
 		t.Error("GetConfig should return the same config reference")
+	}
+}
+
+func TestPercentOf(t *testing.T) {
+	tests := []struct {
+		name  string
+		spent float64
+		limit float64
+		want  float64
+	}{
+		{"half", 25, 50, 50},
+		{"full", 50, 50, 100},
+		{"zero limit disabled", 25, 0, 0},
+		{"negative limit disabled", 25, -1, 0},
+		{"zero spent", 0, 50, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := percentOf(tt.spent, tt.limit); got != tt.want {
+				t.Errorf("percentOf(%v, %v) = %v, want %v", tt.spent, tt.limit, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestEnforcer_GetStatus_ZeroLimits verifies that a disabled/misconfigured
+// limit (0.0) yields 0 percent instead of NaN/Inf, which would otherwise
+// poison alert-threshold comparisons and the dashboard/API.
+func TestEnforcer_GetStatus_ZeroLimits(t *testing.T) {
+	config := &Config{
+		Enabled:      true,
+		DailyLimit:   0.0,
+		MonthlyLimit: 0.0,
+	}
+	provider := &mockUsageProvider{
+		dailyCost:   10.0,
+		monthlyCost: 100.0,
+	}
+	enforcer := NewEnforcer(config, provider)
+
+	status, err := enforcer.GetStatus(context.Background(), "", "user1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if math.IsNaN(status.DailyPercent) || math.IsInf(status.DailyPercent, 0) {
+		t.Errorf("DailyPercent is NaN/Inf: %v", status.DailyPercent)
+	}
+	if math.IsNaN(status.MonthlyPercent) || math.IsInf(status.MonthlyPercent, 0) {
+		t.Errorf("MonthlyPercent is NaN/Inf: %v", status.MonthlyPercent)
+	}
+	if status.DailyPercent != 0 {
+		t.Errorf("DailyPercent = %v, want 0 for disabled limit", status.DailyPercent)
+	}
+	if status.MonthlyPercent != 0 {
+		t.Errorf("MonthlyPercent = %v, want 0 for disabled limit", status.MonthlyPercent)
 	}
 }

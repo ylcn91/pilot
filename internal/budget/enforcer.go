@@ -153,10 +153,10 @@ func (e *Enforcer) GetStatus(ctx context.Context, teamID, userID string) (*Statu
 	status := &Status{
 		DailySpent:     dailySummary.TotalCost,
 		DailyLimit:     e.config.DailyLimit,
-		DailyPercent:   (dailySummary.TotalCost / e.config.DailyLimit) * 100,
+		DailyPercent:   percentOf(dailySummary.TotalCost, e.config.DailyLimit),
 		MonthlySpent:   monthlySummary.TotalCost,
 		MonthlyLimit:   e.config.MonthlyLimit,
-		MonthlyPercent: (monthlySummary.TotalCost / e.config.MonthlyLimit) * 100,
+		MonthlyPercent: percentOf(monthlySummary.TotalCost, e.config.MonthlyLimit),
 		IsPaused:       paused,
 		PauseReason:    pauseReason,
 		BlockedTasks:   blockedTasks,
@@ -168,6 +168,16 @@ func (e *Enforcer) GetStatus(ctx context.Context, teamID, userID string) (*Statu
 	e.mu.Unlock()
 
 	return status, nil
+}
+
+// percentOf returns spent/limit*100. When the limit is disabled or
+// misconfigured (<= 0), it returns 0 instead of NaN/Inf so the value can be
+// safely compared against alert thresholds and rendered in the API/dashboard.
+func percentOf(spent, limit float64) float64 {
+	if limit <= 0 {
+		return 0
+	}
+	return (spent / limit) * 100
 }
 
 // GetPerTaskLimits returns the per-task limits for executor
