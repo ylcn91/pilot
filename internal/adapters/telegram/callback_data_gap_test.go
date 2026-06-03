@@ -95,20 +95,18 @@ func makeConfirmCallback(id, data string) *CallbackQuery {
 	}
 }
 
-// TestHandleCallback_ConfirmationDataMismatch documents the CURRENT (buggy)
-// behavior: TelegramMessenger.SendConfirmation emits CallbackData of the form
-// "execute_task:<id>" / "cancel_task:<id>" (see messenger.go), but
-// Handler.handleCallback only matches the bare strings "execute" / "cancel".
-// As a result, tapping the Execute/Cancel buttons produced by SendConfirmation
-// never reaches the shared comms.Handler.
+// TestHandleCallback_ConfirmationDataMismatch verifies the FIXED behavior:
+// TelegramMessenger.SendConfirmation emits CallbackData of the form
+// "execute_task:<id>" / "cancel_task:<id>" (see messenger.go), and
+// Handler.handleCallback now recognizes both those prefixed forms AND the
+// legacy bare strings "execute" / "cancel". As a result, tapping the
+// Execute/Cancel buttons produced by SendConfirmation reaches the shared
+// comms.Handler (AcknowledgeCallback fires).
 //
-// This test asserts that current behavior (it does NOT change prod code):
+// This test asserts:
 //   - bare "execute"/"cancel" DO dispatch to comms (AcknowledgeCallback fires)
 //   - the prefixed "execute_task:<id>"/"cancel_task:<id>" forms that
-//     SendConfirmation actually emits DO NOT dispatch (no AcknowledgeCallback)
-//
-// If the mismatch is ever fixed in prod, the prefixed sub-tests below will
-// start failing, flagging that this characterization test needs updating.
+//     SendConfirmation actually emits DO dispatch (AcknowledgeCallback fires)
 func TestHandleCallback_ConfirmationDataMismatch(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -118,14 +116,14 @@ func TestHandleCallback_ConfirmationDataMismatch(t *testing.T) {
 		{name: "bare execute dispatches", data: "execute", wantDispatch: true},
 		{name: "bare cancel dispatches", data: "cancel", wantDispatch: true},
 		{
-			name:         "prefixed execute_task does NOT dispatch (mismatch)",
+			name:         "prefixed execute_task dispatches",
 			data:         "execute_task:TASK-1",
-			wantDispatch: false,
+			wantDispatch: true,
 		},
 		{
-			name:         "prefixed cancel_task does NOT dispatch (mismatch)",
+			name:         "prefixed cancel_task dispatches",
 			data:         "cancel_task:TASK-1",
-			wantDispatch: false,
+			wantDispatch: true,
 		},
 	}
 
