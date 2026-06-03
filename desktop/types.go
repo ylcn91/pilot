@@ -86,6 +86,19 @@ type ServerStatus struct {
 	Error        string `json:"error,omitempty"`
 }
 
+// Finding mirrors pilotapi.Finding for the desktop architect panel. The JSON
+// tags match the gateway /api/v1/architect wire format so the same shape is
+// consumed identically by the Wails bindings and the browser HTTP fetch.
+type Finding struct {
+	Title             string   `json:"title"`
+	Kind              string   `json:"kind"`
+	Risk              string   `json:"risk"`
+	WhyItMatters      string   `json:"why_it_matters"`
+	SuggestedPRPieces []string `json:"suggested_pr_pieces"`
+	TestPlan          string   `json:"test_plan"`
+	Files             []string `json:"files"`
+}
+
 // GitGraphLine represents one parsed line of git log --graph output.
 type GitGraphLine struct {
 	GraphChars string `json:"graph_chars"`
