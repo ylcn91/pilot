@@ -2,6 +2,7 @@ package executor
 
 import (
 	"log/slog"
+	"os"
 	"slices"
 	"testing"
 )
@@ -169,6 +170,20 @@ func TestBuildExecEnv(t *testing.T) {
 }
 
 func TestBuildExecEnv_Defaults(t *testing.T) {
+	// buildExecEnv inherits the parent environment on purpose (GH-2371), so a
+	// shell that exports ANTHROPIC_*/CLAUDE_CODE_* (e.g. running inside Claude
+	// Code) would leak those into the result and break the assertions below.
+	// Clear them for this test so we only assert what buildExecEnv itself adds.
+	for _, k := range []string{
+		"ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_MODEL",
+		"CLAUDE_CODE_DISABLE_1M_CONTEXT", "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
+	} {
+		if v, ok := os.LookupEnv(k); ok {
+			t.Cleanup(func() { os.Setenv(k, v) })
+			os.Unsetenv(k)
+		}
+	}
+
 	b := newArgsTestBackend(nil)
 	env := b.buildExecEnv()
 	if !slices.Contains(env, "PILOT_EXECUTOR=1") {
