@@ -24,6 +24,7 @@ func (p *pollingRuntime) run() error {
 	dispatcher := p.dispatcher
 	briefScheduler := p.briefScheduler
 	architectScheduler := p.architectScheduler
+	architectStore := p.architectStore
 
 	// Dashboard mode: run TUI and handle shutdown via TUI quit
 	if p.dashboardMode && program != nil {
@@ -106,6 +107,9 @@ func (p *pollingRuntime) run() error {
 					if monitor != nil {
 						tasks := convertTaskStatesToDisplay(monitor.GetAll())
 						program.Send(dashboard.UpdateTasks(tasks)())
+					}
+					if architectStore != nil {
+						program.Send(dashboard.UpdateFindings(architectStore.Findings())())
 					}
 				}
 			}

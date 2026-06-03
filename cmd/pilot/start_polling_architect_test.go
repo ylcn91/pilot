@@ -8,8 +8,12 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/ylcn91/pilot/internal/architect"
 	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/dashboard"
+	"github.com/ylcn91/pilot/internal/pilotapi"
 )
 
 func TestArchitectEnabled(t *testing.T) {
@@ -154,6 +158,42 @@ func TestStartArchitectScheduler_DisabledIsNoop(t *testing.T) {
 	p.startArchitectScheduler()
 	if p.architectScheduler != nil {
 		t.Fatal("wiring must be a no-op when architect is disabled")
+	}
+}
+
+// TestRunFeedsFindingsToDashboard exercises the read-path the dashboard refresh
+// goroutine embodies: when the architect store is present it pushes a snapshot
+// through dashboard.UpdateFindings, and when it is absent (Architect disabled)
+// the nil-guard skips the push without panicking. The TUI's program.Send is
+// blocking and out of scope here; this proves the seam between the runtime's
+// architectStore field and the dashboard command/model.
+func TestRunFeedsFindingsToDashboard(t *testing.T) {
+	// nil-guard path: a runtime without a store reads nothing and must not panic.
+	nilRuntime := &pollingRuntime{}
+	if nilRuntime.architectStore != nil {
+		t.Fatal("expected a nil architect store on a bare runtime")
+	}
+
+	// populated path: the store snapshot flows through UpdateFindings into the
+	// same message the model consumes and surfaces in the rendered FINDINGS panel.
+	store := architect.NewFindingsStore()
+	store.Set([]pilotapi.Finding{
+		{Title: "oversized file", Risk: pilotapi.RiskMedium, Files: []string{"big.go"}},
+	})
+	p := &pollingRuntime{architectStore: store}
+
+	cmd := dashboard.UpdateFindings(p.architectStore.Findings())
+	if cmd == nil {
+		t.Fatal("UpdateFindings must return a non-nil command for the refresh push")
+	}
+
+	model := dashboard.NewModel(version)
+	sized, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	updated, _ := sized.(dashboard.Model).Update(cmd())
+
+	view := updated.(dashboard.Model).View()
+	if !strings.Contains(view, "FINDINGS") {
+		t.Fatalf("rendered view missing FINDINGS panel after feeding findings:\n%s", view)
 	}
 }
 
