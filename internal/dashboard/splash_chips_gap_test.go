@@ -33,7 +33,7 @@ func TestRenderSplash_LampProgression(t *testing.T) {
 
 	for _, tt := range tests {
 		m := NewModel("v2.0.0")
-		m.splashFrame = tt.frame
+		m.splash.frame = tt.frame
 		out := stripANSI(m.renderSplash())
 		if got := countLitLamps(out); got != tt.wantLit {
 			t.Errorf("frame %d: lit lamps = %d, want %d\n%s", tt.frame, got, tt.wantLit, out)
@@ -57,7 +57,7 @@ func TestRenderSplash_ReadyFooterTiming(t *testing.T) {
 
 	for _, tt := range tests {
 		m := NewModel("v2.0.0")
-		m.splashFrame = tt.frame
+		m.splash.frame = tt.frame
 		out := stripANSI(m.renderSplash())
 		hasReady := strings.Contains(out, "READY")
 		if hasReady != tt.wantReady {
@@ -122,8 +122,8 @@ func TestBuildAdapterChipsRow_IdleFallback(t *testing.T) {
 // count bumped) until the summary fits, while DAEMON is never dropped.
 func TestBuildAdapterChipsRow_ChipDropLoop(t *testing.T) {
 	adapters := []AdapterStatus{
-		{Name: "github", Active: true},  // active, included first
-		{Name: "slack", Active: false},  // inactive
+		{Name: "github", Active: true},   // active, included first
+		{Name: "slack", Active: false},   // inactive
 		{Name: "discord", Active: false}, // inactive
 	}
 

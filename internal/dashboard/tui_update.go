@@ -17,7 +17,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.quitting = true
 			return m, tea.Quit
 		case "b":
-			m.showBanner = !m.showBanner
+			m.banner.show = !m.banner.show
 			return m, tea.ClearScreen
 		case "l":
 			m.showLogs = !m.showLogs
@@ -27,29 +27,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.ClearScreen // Findings toggle changes height
 		case "g":
 			// Toggle git graph: Hidden ↔ Visible (auto-sizes)
-			if m.gitGraphMode == GitGraphHidden {
-				m.gitGraphMode = GitGraphVisible
+			if m.gitGraph.mode == GitGraphHidden {
+				m.gitGraph.mode = GitGraphVisible
 			} else {
-				m.gitGraphMode = GitGraphHidden
+				m.gitGraph.mode = GitGraphHidden
 			}
-			m.gitGraphFocus = false
-			if m.gitGraphMode != GitGraphHidden {
+			m.gitGraph.focus = false
+			if m.gitGraph.mode != GitGraphHidden {
 				// Start refresh and 15s tick when becoming visible
 				return m, tea.Batch(
-					refreshGitGraphCmd(m.projectPath),
+					refreshGitGraphCmd(m.gitGraph.projectPath),
 					gitRefreshTickCmd(),
 					tea.ClearScreen,
 				)
 			}
 			return m, tea.ClearScreen
 		case "tab":
-			if m.gitGraphMode != GitGraphHidden {
-				m.gitGraphFocus = !m.gitGraphFocus
+			if m.gitGraph.mode != GitGraphHidden {
+				m.gitGraph.focus = !m.gitGraph.focus
 			}
 		case "up", "k":
-			if m.gitGraphFocus {
-				if m.gitGraphScroll > 0 {
-					m.gitGraphScroll--
+			if m.gitGraph.focus {
+				if m.gitGraph.scroll > 0 {
+					m.gitGraph.scroll--
 				}
 			} else if m.selectedTask > 0 {
 				m.selectedTask--
@@ -58,15 +58,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "down", "j":
-			if m.gitGraphFocus {
-				if m.gitGraphState != nil {
+			if m.gitGraph.focus {
+				if m.gitGraph.state != nil {
 					viewportH := m.gitGraphViewportHeight()
-					maxScroll := len(m.gitGraphState.Lines) - viewportH
+					maxScroll := len(m.gitGraph.state.Lines) - viewportH
 					if maxScroll < 0 {
 						maxScroll = 0
 					}
-					if m.gitGraphScroll < maxScroll {
-						m.gitGraphScroll++
+					if m.gitGraph.scroll < maxScroll {
+						m.gitGraph.scroll++
 					}
 				}
 			} else if m.selectedTask < len(m.tasks)-1 {
@@ -76,23 +76,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "ctrl+d":
-			if m.gitGraphFocus && m.gitGraphState != nil {
+			if m.gitGraph.focus && m.gitGraph.state != nil {
 				viewportH := m.gitGraphViewportHeight()
-				m.gitGraphScroll += viewportH / 2
-				maxScroll := len(m.gitGraphState.Lines) - viewportH
+				m.gitGraph.scroll += viewportH / 2
+				maxScroll := len(m.gitGraph.state.Lines) - viewportH
 				if maxScroll < 0 {
 					maxScroll = 0
 				}
-				if m.gitGraphScroll > maxScroll {
-					m.gitGraphScroll = maxScroll
+				if m.gitGraph.scroll > maxScroll {
+					m.gitGraph.scroll = maxScroll
 				}
 			}
 		case "ctrl+u":
-			if m.gitGraphFocus {
+			if m.gitGraph.focus {
 				viewportH := m.gitGraphViewportHeight()
-				m.gitGraphScroll -= viewportH / 2
-				if m.gitGraphScroll < 0 {
-					m.gitGraphScroll = 0
+				m.gitGraph.scroll -= viewportH / 2
+				if m.gitGraph.scroll < 0 {
+					m.gitGraph.scroll = 0
 				}
 			}
 		case "enter":
@@ -104,13 +104,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "u":
 			// Trigger upgrade if update is available and not already upgrading
-			if m.updateInfo != nil && m.upgradeState == UpgradeStateAvailable && m.upgradeCh != nil {
-				m.upgradeState = UpgradeStateInProgress
-				m.upgradeProgress = 0
-				m.upgradeMessage = "Starting upgrade..."
+			if m.upgrade.info != nil && m.upgrade.state == UpgradeStateAvailable && m.upgrade.ch != nil {
+				m.upgrade.state = UpgradeStateInProgress
+				m.upgrade.progress = 0
+				m.upgrade.message = "Starting upgrade..."
 				// Non-blocking send to upgrade channel
 				select {
-				case m.upgradeCh <- struct{}{}:
+				case m.upgrade.ch <- struct{}{}:
 				default:
 				}
 			}
@@ -122,29 +122,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.ClearScreen // GH-1249: Terminal resized → full repaint
 
 	case tickMsg:
-		m.sparklineTick = !m.sparklineTick
-		m.shimmerTick++
-		m.dbSyncTick++
+		m.metrics.sparklineTick = !m.metrics.sparklineTick
+		m.metrics.shimmerTick++
+		m.gitGraph.dbSyncTick++
 		if m.autopilotPanel != nil {
 			m.autopilotPanel.SetTick(m.autopilotPanel.tick + 1)
 		}
 		// GH-2248: Re-sync history and metrics from SQLite every 5 seconds
 		// so external DB changes (orphan cleanup, manual edits) are reflected.
-		if m.store != nil && m.dbSyncTick%5 == 0 {
+		if m.store != nil && m.gitGraph.dbSyncTick%5 == 0 {
 			return m, tea.Batch(tickCmd(), storeRefreshCmd(m.store))
 		}
 		return m, tickCmd()
 
 	case splashTickMsg:
-		if !m.splashActive {
+		if !m.splash.active {
 			return m, nil
 		}
-		if m.splashStart.IsZero() {
-			m.splashStart = time.Time(msg)
+		if m.splash.start.IsZero() {
+			m.splash.start = time.Time(msg)
 		}
-		m.splashFrame++
-		if m.splashFrame >= splashFramesTotal {
-			m.splashActive = false
+		m.splash.frame++
+		if m.splash.frame >= splashFramesTotal {
+			m.splash.active = false
 			return m, tea.ClearScreen
 		}
 		return m, splashTickCmd()
@@ -189,20 +189,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.persistTokenUsage(inputDelta, outputDelta)
 
 		// Add deltas to lifetime metrics card totals (not replace with session values)
-		m.metricsCard.InputTokens += inputDelta
-		m.metricsCard.OutputTokens += outputDelta
-		m.metricsCard.TotalTokens += inputDelta + outputDelta
+		m.metrics.card.InputTokens += inputDelta
+		m.metrics.card.OutputTokens += outputDelta
+		m.metrics.card.TotalTokens += inputDelta + outputDelta
 		costModel := msg.Model
 		if costModel == "" {
 			costModel = memory.DefaultModel
 		}
-		m.metricsCard.TotalCostUSD += memory.EstimateCost(
+		m.metrics.card.TotalCostUSD += memory.EstimateCost(
 			int64(inputDelta),
 			int64(outputDelta),
 			costModel,
 		)
-		if m.metricsCard.TotalTasks > 0 {
-			m.metricsCard.CostPerTask = m.metricsCard.TotalCostUSD / float64(m.metricsCard.TotalTasks)
+		if m.metrics.card.TotalTasks > 0 {
+			m.metrics.card.CostPerTask = m.metrics.card.TotalCostUSD / float64(m.metrics.card.TotalTasks)
 		}
 
 	case addCompletedTaskMsg:
@@ -213,14 +213,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Update metrics card task counters
-		m.metricsCard.TotalTasks++
+		m.metrics.card.TotalTasks++
 		if CompletedTask(msg).Status == "success" {
-			m.metricsCard.Succeeded++
+			m.metrics.card.Succeeded++
 		} else {
-			m.metricsCard.Failed++
+			m.metrics.card.Failed++
 		}
-		if m.metricsCard.TotalTasks > 0 {
-			m.metricsCard.CostPerTask = m.metricsCard.TotalCostUSD / float64(m.metricsCard.TotalTasks)
+		if m.metrics.card.TotalTasks > 0 {
+			m.metrics.card.CostPerTask = m.metrics.card.TotalCostUSD / float64(m.metrics.card.TotalTasks)
 		}
 
 		// GH-1249: History count changed → force repaint
@@ -229,52 +229,52 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case updateMetricsCardMsg:
-		m.metricsCard = MetricsCardData(msg)
+		m.metrics.card = MetricsCardData(msg)
 
 	case storeRefreshMsg:
 		// GH-2248: Replace in-memory history and metrics with live DB state.
 		prevLen := len(m.completedTasks)
 		m.completedTasks = msg.completedTasks
-		m.metricsCard = msg.metricsCard
+		m.metrics.card = msg.metricsCard
 		m.loadMetricsHistory()
 		if len(m.completedTasks) != prevLen {
 			return m, tea.ClearScreen
 		}
 
 	case updateAvailableMsg:
-		m.updateInfo = &UpdateInfo{
+		m.upgrade.info = &UpdateInfo{
 			CurrentVersion: msg.CurrentVersion,
 			LatestVersion:  msg.LatestVersion,
 			ReleaseNotes:   msg.ReleaseNotes,
 		}
-		m.upgradeState = UpgradeStateAvailable
+		m.upgrade.state = UpgradeStateAvailable
 		return m, tea.ClearScreen // GH-1249: New panel added
 
 	case upgradeProgressMsg:
-		m.upgradeProgress = msg.Progress
-		m.upgradeMessage = msg.Message
+		m.upgrade.progress = msg.Progress
+		m.upgrade.message = msg.Message
 
 	case upgradeCompleteMsg:
 		if msg.Success {
-			m.upgradeState = UpgradeStateComplete
-			m.upgradeMessage = "Upgrade complete! Restart Pilot to apply."
+			m.upgrade.state = UpgradeStateComplete
+			m.upgrade.message = "Upgrade complete! Restart Pilot to apply."
 		} else {
-			m.upgradeState = UpgradeStateFailed
-			m.upgradeError = msg.Error
-			m.upgradeMessage = "Upgrade failed"
+			m.upgrade.state = UpgradeStateFailed
+			m.upgrade.err = msg.Error
+			m.upgrade.message = "Upgrade failed"
 		}
 
 	case gitRefreshMsg:
-		m.gitGraphState = msg.state
+		m.gitGraph.state = msg.state
 		// Re-arm the 15-second refresh tick if panel is still visible
-		if m.gitGraphMode != GitGraphHidden {
+		if m.gitGraph.mode != GitGraphHidden {
 			return m, gitRefreshTickCmd()
 		}
 
 	case gitRefreshTickMsg:
 		// Only refresh when visible to save resources
-		if m.gitGraphMode != GitGraphHidden {
-			return m, refreshGitGraphCmd(m.projectPath)
+		if m.gitGraph.mode != GitGraphHidden {
+			return m, refreshGitGraphCmd(m.gitGraph.projectPath)
 		}
 	}
 

@@ -12,14 +12,14 @@ func (m Model) View() string {
 		return "Pilot stopped.\n"
 	}
 
-	if m.splashActive {
+	if m.splash.active {
 		return m.renderSplash()
 	}
 
 	dashboard := m.renderDashboard()
 
 	var result string
-	if m.gitGraphMode == GitGraphHidden {
+	if m.gitGraph.mode == GitGraphHidden {
 		result = dashboard
 	} else if m.width > 0 && m.width < panelTotalWidth+1+20 {
 		// Terminal too narrow for side-by-side — stack graph below at full terminal width.
@@ -82,13 +82,13 @@ func (m Model) renderDashboard() string {
 	// Header: bordered banner frame (GH-2455 / GH-2459).
 	// The ASCII logo is shown only during the splash; steady-state dashboard
 	// uses the compact banner frame to keep header real-estate small.
-	if m.showBanner {
+	if m.banner.show {
 		b.WriteString(m.renderBanner())
 		b.WriteString("\n")
 	}
 
 	// Update notification (if available) — always visible regardless of banner
-	if m.updateInfo != nil {
+	if m.upgrade.info != nil {
 		b.WriteString(m.renderUpdateNotification())
 		b.WriteString("\n")
 	}
@@ -132,10 +132,10 @@ func (m Model) renderDashboard() string {
 func (m Model) renderHelp() string {
 	var parts []string
 	switch {
-	case m.gitGraphMode == GitGraphHidden:
+	case m.gitGraph.mode == GitGraphHidden:
 		// Graph hidden: show navigation and graph-open key
 		parts = []string{"q: quit", "l: logs", "f: findings", "b: banner", "g: graph", "j/k: select"}
-	case m.gitGraphFocus:
+	case m.gitGraph.focus:
 		// Graph visible, graph panel focused
 		parts = []string{"q: quit", "b: banner", "g: close", "tab: dashboard"}
 	default:

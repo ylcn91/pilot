@@ -27,7 +27,7 @@ func TestRenderShimmerBar_StaggerCenters(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := Model{shimmerTick: tt.shimmerTick}
+			m := Model{metrics: metricsState{shimmerTick: tt.shimmerTick}}
 			out := stripANSI(m.renderShimmerBar(width, tt.offset))
 
 			// The bright spot rune is '▓'; it sits at the center position,
@@ -55,7 +55,7 @@ func TestRenderShimmerBar_StaggerCenters(t *testing.T) {
 // TestRenderShimmerBar_AdjacentQueuedDistinct verifies that two adjacent queued
 // items at the same tick render visually distinct bars (different center).
 func TestRenderShimmerBar_AdjacentQueuedDistinct(t *testing.T) {
-	m := Model{shimmerTick: 0}
+	m := Model{metrics: metricsState{shimmerTick: 0}}
 	bar0 := stripANSI(m.renderShimmerBar(14, 0))
 	bar1 := stripANSI(m.renderShimmerBar(14, 1))
 	if bar0 == bar1 {
@@ -67,7 +67,7 @@ func TestRenderShimmerBar_AdjacentQueuedDistinct(t *testing.T) {
 // increasing shimmer offsets to consecutive queued items so their bars differ.
 func TestRenderTasks_QueuedStaggerOffsets(t *testing.T) {
 	m := NewModel("test")
-	m.shimmerTick = 0
+	m.metrics.shimmerTick = 0
 	m.selectedTask = -1 // no selection so neither row gets the ▸ marker
 	m.tasks = []TaskDisplay{
 		{ID: "GH-1", Title: "first", Status: "queued"},

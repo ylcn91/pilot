@@ -107,7 +107,7 @@ func (m *Model) hydrateFromStore() {
 	if !ok {
 		return
 	}
-	m.metricsCard = snapshot.metricsCard
+	m.metrics.card = snapshot.metricsCard
 	m.completedTasks = append(m.completedTasks, snapshot.completedTasks...)
 
 	// Load sparkline history
@@ -147,15 +147,15 @@ func (m *Model) loadMetricsHistory() {
 	}
 
 	// Fill 7-day arrays oldest→newest (left→right in sparkline)
-	m.metricsCard.TokenHistory = make([]int64, 7)
-	m.metricsCard.CostHistory = make([]float64, 7)
-	m.metricsCard.TaskHistory = make([]int, 7)
+	m.metrics.card.TokenHistory = make([]int64, 7)
+	m.metrics.card.CostHistory = make([]float64, 7)
+	m.metrics.card.TaskHistory = make([]int, 7)
 	for i := 0; i < 7; i++ {
 		day := now.AddDate(0, 0, -6+i).Format("2006-01-02")
 		if dm, ok := byDate[day]; ok {
-			m.metricsCard.TokenHistory[i] = dm.TotalTokens
-			m.metricsCard.CostHistory[i] = dm.TotalCostUSD
-			m.metricsCard.TaskHistory[i] = dm.ExecutionCount
+			m.metrics.card.TokenHistory[i] = dm.TotalTokens
+			m.metrics.card.CostHistory[i] = dm.TotalCostUSD
+			m.metrics.card.TaskHistory[i] = dm.ExecutionCount
 		}
 	}
 }

@@ -172,17 +172,17 @@ func buildMiniCard(title, value, detail1, detail2, sparkline string, cw int) str
 // renderTokenCard renders the TOKENS mini-card with the given card width.
 func (m Model) renderTokenCard(cw int) string {
 	ciw := cw - 6
-	value := titleStyle.Render(formatCompact(m.metricsCard.TotalTokens))
-	detail1 := dimStyle.Render(fmt.Sprintf("↑ %s input", formatCompact(m.metricsCard.InputTokens)))
-	detail2 := dimStyle.Render(fmt.Sprintf("↓ %s output", formatCompact(m.metricsCard.OutputTokens)))
+	value := titleStyle.Render(formatCompact(m.metrics.card.TotalTokens))
+	detail1 := dimStyle.Render(fmt.Sprintf("↑ %s input", formatCompact(m.metrics.card.InputTokens)))
+	detail2 := dimStyle.Render(fmt.Sprintf("↓ %s output", formatCompact(m.metrics.card.OutputTokens)))
 
 	// Convert int64 history to float64
-	floats := make([]float64, len(m.metricsCard.TokenHistory))
-	for i, v := range m.metricsCard.TokenHistory {
+	floats := make([]float64, len(m.metrics.card.TokenHistory))
+	for i, v := range m.metrics.card.TokenHistory {
 		floats[i] = float64(v)
 	}
 	levels := normalizeToSparkline(floats, ciw-1)
-	spark := statusRunningStyle.Render(renderSparkline(levels, m.sparklineTick, ciw))
+	spark := statusRunningStyle.Render(renderSparkline(levels, m.metrics.sparklineTick, ciw))
 
 	return buildMiniCard("tokens", value, detail1, detail2, spark, cw)
 }
@@ -190,13 +190,13 @@ func (m Model) renderTokenCard(cw int) string {
 // renderCostCard renders the COST mini-card with the given card width.
 func (m Model) renderCostCard(cw int) string {
 	ciw := cw - 6
-	value := costStyle.Render(fmt.Sprintf("$%.2f", m.metricsCard.TotalCostUSD))
-	costPerTask := m.metricsCard.CostPerTask
+	value := costStyle.Render(fmt.Sprintf("$%.2f", m.metrics.card.TotalCostUSD))
+	costPerTask := m.metrics.card.CostPerTask
 	detail1 := dimStyle.Render(fmt.Sprintf("~$%.2f/task", costPerTask))
 	detail2 := ""
 
-	levels := normalizeToSparkline(m.metricsCard.CostHistory, ciw-1)
-	spark := statusRunningStyle.Render(renderSparkline(levels, m.sparklineTick, ciw))
+	levels := normalizeToSparkline(m.metrics.card.CostHistory, ciw-1)
+	spark := statusRunningStyle.Render(renderSparkline(levels, m.metrics.sparklineTick, ciw))
 
 	return buildMiniCard("cost", value, detail1, detail2, spark, cw)
 }
@@ -235,22 +235,22 @@ func nonFailureSuffix(c MetricsCardData) string {
 func (m Model) renderTaskCard(cw int) string {
 	ciw := cw - 6
 	value := fmt.Sprintf("%d", len(m.tasks))
-	detail1 := statusCompletedStyle.Render(fmt.Sprintf("✓ %d succeeded", m.metricsCard.Succeeded))
+	detail1 := statusCompletedStyle.Render(fmt.Sprintf("✓ %d succeeded", m.metrics.card.Succeeded))
 	// TASK-358: "failed" counts genuine failures only. Non-failure terminal
 	// outcomes (no-op / stalled / declined) are shown as a muted suffix so the
 	// numbers reconcile and a no-op is no longer miscounted as a failure.
-	detail2 := statusFailedStyle.Render(fmt.Sprintf("✗ %d failed", m.metricsCard.Failed))
-	if suffix := nonFailureSuffix(m.metricsCard); suffix != "" {
+	detail2 := statusFailedStyle.Render(fmt.Sprintf("✗ %d failed", m.metrics.card.Failed))
+	if suffix := nonFailureSuffix(m.metrics.card); suffix != "" {
 		detail2 += statusPendingStyle.Render(suffix)
 	}
 
 	// Convert int history to float64
-	floats := make([]float64, len(m.metricsCard.TaskHistory))
-	for i, v := range m.metricsCard.TaskHistory {
+	floats := make([]float64, len(m.metrics.card.TaskHistory))
+	for i, v := range m.metrics.card.TaskHistory {
 		floats[i] = float64(v)
 	}
 	levels := normalizeToSparkline(floats, ciw-1)
-	spark := statusRunningStyle.Render(renderSparkline(levels, m.sparklineTick, ciw))
+	spark := statusRunningStyle.Render(renderSparkline(levels, m.metrics.sparklineTick, ciw))
 
 	return buildMiniCard("queue", value, detail1, detail2, spark, cw)
 }

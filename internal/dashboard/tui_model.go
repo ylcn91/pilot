@@ -13,7 +13,7 @@ import (
 // isStackedMode returns true when the git graph is visible and the terminal is
 // too narrow for side-by-side layout, so the graph stacks below the dashboard.
 func (m Model) isStackedMode() bool {
-	if m.gitGraphMode == GitGraphHidden || m.width <= 0 {
+	if m.gitGraph.mode == GitGraphHidden || m.width <= 0 {
 		return false
 	}
 	// Minimum for side-by-side: dashboard + gap + smallest useful graph (20)
@@ -35,7 +35,7 @@ func NewModel(version string) Model {
 		tasks:          []TaskDisplay{},
 		logs:           []string{},
 		showLogs:       true,
-		showBanner:     true,
+		banner:         bannerMeta{show: true},
 		showFindings:   true,
 		completedTasks: []CompletedTask{},
 		costPerMToken:  3.0,
@@ -51,7 +51,7 @@ func NewModelWithStore(version string, store *memory.Store) Model {
 		tasks:          []TaskDisplay{},
 		logs:           []string{},
 		showLogs:       true,
-		showBanner:     true,
+		banner:         bannerMeta{show: true},
 		showFindings:   true,
 		completedTasks: []CompletedTask{},
 		costPerMToken:  3.0,
@@ -69,7 +69,7 @@ func NewModelWithAutopilot(version string, controller *autopilot.Controller) Mod
 		tasks:          []TaskDisplay{},
 		logs:           []string{},
 		showLogs:       true,
-		showBanner:     true,
+		banner:         bannerMeta{show: true},
 		showFindings:   true,
 		completedTasks: []CompletedTask{},
 		costPerMToken:  3.0,
@@ -84,7 +84,7 @@ func NewModelWithStoreAndAutopilot(version string, store *memory.Store, controll
 		tasks:          []TaskDisplay{},
 		logs:           []string{},
 		showLogs:       true,
-		showBanner:     true,
+		banner:         bannerMeta{show: true},
 		showFindings:   true,
 		completedTasks: []CompletedTask{},
 		costPerMToken:  3.0,
@@ -102,14 +102,14 @@ func NewModelWithOptions(version string, store *memory.Store, controller *autopi
 		tasks:          []TaskDisplay{},
 		logs:           []string{},
 		showLogs:       true,
-		showBanner:     true,
+		banner:         bannerMeta{show: true},
 		showFindings:   true,
 		completedTasks: []CompletedTask{},
 		costPerMToken:  3.0,
 		autopilotPanel: NewAutopilotPanel(controller),
 		version:        version,
 		store:          store,
-		upgradeCh:      upgradeCh,
+		upgrade:        upgradeStatus{ch: upgradeCh},
 	}
 	m.hydrateFromStore()
 	return m
@@ -118,9 +118,9 @@ func NewModelWithOptions(version string, store *memory.Store, controller *autopi
 // SetProjectPath sets the working directory used for git graph commands.
 // The first call also sets the default fallback path (GH-2167).
 func (m *Model) SetProjectPath(path string) {
-	m.projectPath = path
-	if m.defaultProjectPath == "" {
-		m.defaultProjectPath = path
+	m.gitGraph.projectPath = path
+	if m.gitGraph.defaultProjectPath == "" {
+		m.gitGraph.defaultProjectPath = path
 	}
 }
 
@@ -132,18 +132,18 @@ func (m Model) RenderBannerForTest() string { return m.renderBanner() }
 // Adapters provided here are all rendered as Active=true (legacy contract).
 // New callers should use SetBannerAdapters for richer state (active vs configured).
 func (m *Model) SetBannerMeta(envName, modelStack string, adapters []string, startTime time.Time) {
-	m.envName = envName
-	m.modelStack = modelStack
-	m.activeAdapters = adapters
+	m.banner.envName = envName
+	m.banner.modelStack = modelStack
+	m.banner.activeAdapters = adapters
 	// Mirror into bannerAdapters with Active=true so renderBanner has a single source.
-	m.bannerAdapters = make([]AdapterStatus, 0, len(adapters))
+	m.banner.adapters = make([]AdapterStatus, 0, len(adapters))
 	for _, a := range adapters {
-		m.bannerAdapters = append(m.bannerAdapters, AdapterStatus{Name: a, Active: true})
+		m.banner.adapters = append(m.banner.adapters, AdapterStatus{Name: a, Active: true})
 	}
 	if startTime.IsZero() {
-		m.startTime = time.Now()
+		m.banner.startTime = time.Now()
 	} else {
-		m.startTime = startTime
+		m.banner.startTime = startTime
 	}
 }
 
@@ -151,15 +151,15 @@ func (m *Model) SetBannerMeta(envName, modelStack string, adapters []string, sta
 // ~1.5s after the dashboard starts. configPath is displayed in the boot
 // block (e.g. "~/.pilot/config.yaml").
 func (m *Model) EnableSplash(configPath string) {
-	m.splashActive = true
-	m.configPath = configPath
+	m.splash.active = true
+	m.splash.configPath = configPath
 }
 
 // SetBannerAdapters replaces the adapter status list shown in the banner.
 // Pass an entry with Active=false for adapters that are configured but not
 // running this session; omit entries entirely for adapters with no config.
 func (m *Model) SetBannerAdapters(adapters []AdapterStatus) {
-	m.bannerAdapters = adapters
+	m.banner.adapters = adapters
 	// Mirror Active-true names into legacy field for any consumers still reading it.
 	names := make([]string, 0, len(adapters))
 	for _, a := range adapters {
@@ -167,18 +167,18 @@ func (m *Model) SetBannerAdapters(adapters []AdapterStatus) {
 			names = append(names, a.Name)
 		}
 	}
-	m.activeAdapters = names
+	m.banner.activeAdapters = names
 }
 
 // syncGitGraphToSelectedTask updates projectPath to match the selected task's project.
 // Returns a tea.Cmd to refresh the git graph if the project changed, nil otherwise.
 // Falls back to defaultProjectPath when no task is selected or the task has no project. (GH-2167)
 func (m *Model) syncGitGraphToSelectedTask() tea.Cmd {
-	if m.gitGraphMode == GitGraphHidden {
+	if m.gitGraph.mode == GitGraphHidden {
 		return nil
 	}
 
-	newPath := m.defaultProjectPath
+	newPath := m.gitGraph.defaultProjectPath
 	newName := ""
 
 	if m.selectedTask >= 0 && m.selectedTask < len(m.tasks) {
@@ -192,22 +192,22 @@ func (m *Model) syncGitGraphToSelectedTask() tea.Cmd {
 		}
 	}
 
-	if newPath == m.projectPath {
+	if newPath == m.gitGraph.projectPath {
 		// Project unchanged — just update display name if needed
-		m.gitProjectName = newName
+		m.gitGraph.projectName = newName
 		return nil
 	}
 
-	m.projectPath = newPath
-	m.gitProjectName = newName
-	m.gitGraphScroll = 0
-	return refreshGitGraphCmd(m.projectPath)
+	m.gitGraph.projectPath = newPath
+	m.gitGraph.projectName = newName
+	m.gitGraph.scroll = 0
+	return refreshGitGraphCmd(m.gitGraph.projectPath)
 }
 
 // Init initializes the model
 func (m Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{tickCmd(), tea.EnterAltScreen}
-	if m.splashActive {
+	if m.splash.active {
 		cmds = append(cmds, splashTickCmd())
 	}
 	return tea.Batch(cmds...)

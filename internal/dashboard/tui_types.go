@@ -166,6 +166,56 @@ const (
 	UpgradeStateFailed
 )
 
+// metricsState groups the metrics-card data and its animation counters.
+type metricsState struct {
+	card          MetricsCardData
+	sparklineTick bool
+	shimmerTick   int // Counter for queue shimmer animation (increments each tick)
+}
+
+// upgradeStatus groups the self-upgrade flow state.
+type upgradeStatus struct {
+	info     *UpdateInfo
+	state    UpgradeState
+	progress int
+	message  string
+	err      string
+	ch       chan<- struct{} // Channel to trigger upgrade (write-only)
+}
+
+// bannerMeta groups the banner toggle and metadata (GH-2455 / GH-2459 rework):
+// env name, model stack, adapter status list.
+type bannerMeta struct {
+	show       bool // Banner toggle (GH-1520)
+	startTime  time.Time
+	modelStack string
+	envName    string
+	adapters   []AdapterStatus
+	// activeAdapters retained for backwards compatibility with SetBannerMeta callers.
+	activeAdapters []string
+}
+
+// splashState — shown for the first ~1.5s of the session inside the same
+// tea.Program (avoids alt-screen flicker that a separate splash program caused).
+type splashState struct {
+	active     bool
+	frame      int       // increments each splashTickMsg
+	start      time.Time // first frame timestamp
+	configPath string    // shown in splash boot block ("~/.pilot/config.yaml")
+}
+
+// gitGraphPanelState groups the git graph panel state (GH-1506).
+type gitGraphPanelState struct {
+	mode               GitGraphMode
+	state              *GitGraphState
+	scroll             int
+	focus              bool
+	dbSyncTick         int    // Counter for periodic DB re-sync (GH-2248)
+	projectPath        string // Working directory for git commands
+	defaultProjectPath string // Fallback project path from config (GH-2167)
+	projectName        string // Current project name shown in git panel title (GH-2167)
+}
+
 // Model is the TUI model
 type Model struct {
 	tasks          []TaskDisplay
@@ -186,51 +236,15 @@ type Model struct {
 	store     *memory.Store // SQLite persistence (GH-367)
 	sessionID string        // Current session ID for persistence
 
-	// Metrics cards
-	metricsCard   MetricsCardData
-	sparklineTick bool
-	shimmerTick   int // Counter for queue shimmer animation (increments each tick)
-
-	// Upgrade state
-	updateInfo      *UpdateInfo
-	upgradeState    UpgradeState
-	upgradeProgress int
-	upgradeMessage  string
-	upgradeError    string
-	upgradeCh       chan<- struct{} // Channel to trigger upgrade (write-only)
-
-	// Banner toggle (GH-1520)
-	showBanner bool
+	metrics  metricsState
+	upgrade  upgradeStatus
+	banner   bannerMeta
+	splash   splashState
+	gitGraph gitGraphPanelState
 
 	// Findings panel toggle. When false the FINDINGS panel is hidden even if
 	// findings are present.
 	showFindings bool
-
-	// Banner metadata (GH-2455 / GH-2459 rework): env name, model stack, adapter
-	// status list.
-	startTime      time.Time
-	modelStack     string
-	envName        string
-	bannerAdapters []AdapterStatus
-	// activeAdapters retained for backwards compatibility with SetBannerMeta callers.
-	activeAdapters []string
-
-	// Splash state — shown for the first ~1.5s of the session inside the same
-	// tea.Program (avoids alt-screen flicker that a separate splash program caused).
-	splashActive bool
-	splashFrame  int       // increments each splashTickMsg
-	splashStart  time.Time // first frame timestamp
-	configPath   string    // shown in splash boot block ("~/.pilot/config.yaml")
-
-	// Git graph panel (GH-1506)
-	gitGraphMode       GitGraphMode
-	gitGraphState      *GitGraphState
-	gitGraphScroll     int
-	gitGraphFocus      bool
-	dbSyncTick         int    // Counter for periodic DB re-sync (GH-2248)
-	projectPath        string // Working directory for git commands
-	defaultProjectPath string // Fallback project path from config (GH-2167)
-	gitProjectName     string // Current project name shown in git panel title (GH-2167)
 }
 
 // AdapterStatus describes a configured adapter for the banner status row.

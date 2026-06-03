@@ -9,10 +9,10 @@ import (
 // TestRenderGitGraph_AutoSizeSmall verifies narrow width auto-selects small rendering.
 func TestRenderGitGraph_AutoSizeSmall(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphVisible
+	m.gitGraph.mode = GitGraphVisible
 	m.width = panelTotalWidth + 2 + 35 // available = 35 < 40 → small
 	m.height = 30
-	m.gitGraphState = &GitGraphState{
+	m.gitGraph.state = &GitGraphState{
 		Lines: []GitGraphLine{
 			{GraphChars: "● ", SHA: "abc1234", Author: "Alice", Refs: "HEAD -> main", Message: "test commit"},
 		},
@@ -32,10 +32,10 @@ func TestRenderGitGraph_AutoSizeSmall(t *testing.T) {
 // TestRenderGitGraph_AutoSizeMedium verifies medium width auto-selects medium rendering.
 func TestRenderGitGraph_AutoSizeMedium(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphVisible
+	m.gitGraph.mode = GitGraphVisible
 	m.width = panelTotalWidth + 2 + 50 // available = 50, between 40-64 → medium
 	m.height = 30
-	m.gitGraphState = &GitGraphState{
+	m.gitGraph.state = &GitGraphState{
 		Lines: []GitGraphLine{
 			{GraphChars: "● ", SHA: "abc1234", Author: "Alice", Refs: "HEAD -> main", Message: "test commit"},
 		},
@@ -55,10 +55,10 @@ func TestRenderGitGraph_AutoSizeMedium(t *testing.T) {
 // TestRenderGitGraph_AutoSizeFull verifies wide width auto-selects full rendering.
 func TestRenderGitGraph_AutoSizeFull(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphVisible
+	m.gitGraph.mode = GitGraphVisible
 	m.width = panelTotalWidth + 2 + 70 // available = 70 > 65 → full
 	m.height = 30
-	m.gitGraphState = &GitGraphState{
+	m.gitGraph.state = &GitGraphState{
 		Lines: []GitGraphLine{
 			{GraphChars: "● ", SHA: "abc1234", Author: "Alice", Message: "test commit"},
 		},
@@ -77,7 +77,7 @@ func TestRenderGitGraph_AutoSizeFull(t *testing.T) {
 // TestRenderGitGraph_Hidden verifies no output when mode is Hidden.
 func TestRenderGitGraph_Hidden(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphHidden
+	m.gitGraph.mode = GitGraphHidden
 
 	got := m.renderGitGraph()
 	if got != "" {
@@ -88,7 +88,7 @@ func TestRenderGitGraph_Hidden(t *testing.T) {
 // TestRenderGitGraph_NarrowTerminal verifies graph is hidden when too narrow.
 func TestRenderGitGraph_NarrowTerminal(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphVisible
+	m.gitGraph.mode = GitGraphVisible
 	m.width = 75 // remaining = 75 - 69 - 2 = 4, below minimum 20
 
 	got := m.renderGitGraph()
@@ -100,8 +100,8 @@ func TestRenderGitGraph_NarrowTerminal(t *testing.T) {
 // TestRenderGitGraph_Loading verifies loading state renders correctly.
 func TestRenderGitGraph_Loading(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphVisible
-	m.gitGraphState = nil
+	m.gitGraph.mode = GitGraphVisible
+	m.gitGraph.state = nil
 	m.width = 130
 
 	got := m.renderGitGraph()
@@ -118,9 +118,9 @@ func TestRenderGitGraph_Loading(t *testing.T) {
 // TestRenderGitGraph_Error verifies error state renders correctly.
 func TestRenderGitGraph_Error(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphVisible
+	m.gitGraph.mode = GitGraphVisible
 	m.width = 130
-	m.gitGraphState = &GitGraphState{
+	m.gitGraph.state = &GitGraphState{
 		Error:       "fatal: not a git repository",
 		LastRefresh: time.Now(),
 	}
@@ -139,9 +139,9 @@ func TestRenderGitGraph_Error(t *testing.T) {
 // TestRenderGitGraph_WithData verifies full rendering with commit data.
 func TestRenderGitGraph_WithData(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphVisible
+	m.gitGraph.mode = GitGraphVisible
 	m.width = 140
-	m.gitGraphState = &GitGraphState{
+	m.gitGraph.state = &GitGraphState{
 		TotalCount:  3,
 		LastRefresh: time.Now(),
 		Lines: []GitGraphLine{
@@ -185,19 +185,19 @@ func TestRenderGitGraph_WithData(t *testing.T) {
 // and contain the correct panel structure.
 func TestRenderGitGraph_FocusedBorder(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphVisible
+	m.gitGraph.mode = GitGraphVisible
 	m.width = 140
-	m.gitGraphState = &GitGraphState{Lines: []GitGraphLine{{GraphChars: "● ", SHA: "abc1234", Message: "test"}}}
+	m.gitGraph.state = &GitGraphState{Lines: []GitGraphLine{{GraphChars: "● ", SHA: "abc1234", Message: "test"}}}
 
 	// Focused panel
-	m.gitGraphFocus = true
+	m.gitGraph.focus = true
 	focused := m.renderGitGraph()
 	if focused == "" {
 		t.Error("focused panel should render non-empty")
 	}
 
 	// Unfocused panel
-	m.gitGraphFocus = false
+	m.gitGraph.focus = false
 	unfocused := m.renderGitGraph()
 	if unfocused == "" {
 		t.Error("unfocused panel should render non-empty")
@@ -217,9 +217,9 @@ func TestRenderGitGraph_FocusedBorder(t *testing.T) {
 // TestGitGraphState_ScrollIndicator verifies scroll indicator shows correct range.
 func TestGitGraphState_ScrollIndicator(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphVisible
+	m.gitGraph.mode = GitGraphVisible
 	m.width = 130
-	m.gitGraphScroll = 10
+	m.gitGraph.scroll = 10
 
 	lines := make([]GitGraphLine, 50)
 	for i := range lines {
@@ -229,7 +229,7 @@ func TestGitGraphState_ScrollIndicator(t *testing.T) {
 			Message:    "commit message",
 		}
 	}
-	m.gitGraphState = &GitGraphState{
+	m.gitGraph.state = &GitGraphState{
 		TotalCount: 50,
 		Lines:      lines,
 	}

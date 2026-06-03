@@ -97,33 +97,33 @@ func (m Model) renderUpdateNotification() string {
 	tw := m.effectivePanelTotalWidth()
 	iw := tw - 4
 
-	switch m.upgradeState {
+	switch m.upgrade.state {
 	case UpgradeStateAvailable:
 		title = "^ UPDATE"
 		// Left: version info, Right: will be hint below panel
-		leftText := fmt.Sprintf("%s -> %s available", m.updateInfo.CurrentVersion, m.updateInfo.LatestVersion)
+		leftText := fmt.Sprintf("%s -> %s available", m.upgrade.info.CurrentVersion, m.upgrade.info.LatestVersion)
 		rightText := ""
 		content.WriteString(formatPanelRow(leftText, rightText, iw))
 		hint = "u: upgrade"
 
 	case UpgradeStateInProgress:
 		title = "* UPGRADING"
-		bar := m.renderProgressBar(m.upgradeProgress, 30)
-		content.WriteString(fmt.Sprintf("  Installing %s... %s %d%%", m.updateInfo.LatestVersion, bar, m.upgradeProgress))
-		if m.upgradeMessage != "" {
-			content.WriteString("\n  " + m.upgradeMessage)
+		bar := m.renderProgressBar(m.upgrade.progress, 30)
+		content.WriteString(fmt.Sprintf("  Installing %s... %s %d%%", m.upgrade.info.LatestVersion, bar, m.upgrade.progress))
+		if m.upgrade.message != "" {
+			content.WriteString("\n  " + m.upgrade.message)
 		}
 
 	case UpgradeStateComplete:
 		title = "+ UPGRADED"
-		content.WriteString(fmt.Sprintf("  Upgrade to %s installed — restart Pilot manually to apply.", m.updateInfo.LatestVersion))
+		content.WriteString(fmt.Sprintf("  Upgrade to %s installed — restart Pilot manually to apply.", m.upgrade.info.LatestVersion))
 
 	case UpgradeStateFailed:
 		title = "! UPGRADE FAILED"
-		if m.upgradeError != "" {
-			content.WriteString("  " + m.upgradeError)
+		if m.upgrade.err != "" {
+			content.WriteString("  " + m.upgrade.err)
 		} else {
-			content.WriteString("  " + m.upgradeMessage)
+			content.WriteString("  " + m.upgrade.message)
 		}
 
 	default:
@@ -152,7 +152,7 @@ func formatPanelRow(left, right string, iw int) string {
 
 // SetUpgradeChannel sets the channel used to trigger upgrades
 func (m *Model) SetUpgradeChannel(ch chan<- struct{}) {
-	m.upgradeCh = ch
+	m.upgrade.ch = ch
 }
 
 // NotifyUpdateAvailable sends an update available message to the TUI

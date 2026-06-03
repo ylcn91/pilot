@@ -23,7 +23,7 @@ import (
 //
 // Adapter dots: ● filled (statusRunningStyle) when active this session,
 // ○ empty (dimStyle) when configured but not flagged. Adapters with no
-// config are not present in m.bannerAdapters and don't render at all.
+// config are not present in m.banner.adapters and don't render at all.
 // pilotLogo is the ASCII art shown during splash boot.
 const pilotLogo = `
    ██████╗ ██╗██╗      ██████╗ ████████╗
@@ -65,19 +65,19 @@ func (m Model) renderSplash() string {
 	rule := dimStyle.Render(strings.Repeat("─", ruleWidth))
 	sb.WriteString("   " + dimStyle.Render("BOOT ") + dimStyle.Render(strings.Repeat("─", ruleWidth-5)) + "\n")
 
-	cfgPath := m.configPath
+	cfgPath := m.splash.configPath
 	if cfgPath == "" {
 		cfgPath = "~/.pilot/config.yaml"
 	}
-	adapterList := splashAdapterList(m.bannerAdapters)
+	adapterList := splashAdapterList(m.banner.adapters)
 	if adapterList == "" {
 		adapterList = dimStyle.Render("(none configured)")
 	}
-	model := m.modelStack
+	model := m.banner.modelStack
 	if model == "" {
 		model = dimStyle.Render("(unset)")
 	}
-	envName := strings.ToUpper(m.envName)
+	envName := strings.ToUpper(m.banner.envName)
 	if envName == "" {
 		envName = dimStyle.Render("(default)")
 	}
@@ -91,7 +91,7 @@ func (m Model) renderSplash() string {
 		{"env", envName},
 	}
 	// Threshold = ceil(splashFramesTotal/2) so all 4 lamps light by mid-splash.
-	litCount := m.splashFrame * len(lamps) / (splashFramesTotal / 2)
+	litCount := m.splash.frame * len(lamps) / (splashFramesTotal / 2)
 	if litCount > len(lamps) {
 		litCount = len(lamps)
 	}
@@ -108,7 +108,7 @@ func (m Model) renderSplash() string {
 	sb.WriteString("   " + rule + "\n")
 
 	// READY footer: appears in the last 3 frames.
-	if m.splashFrame >= splashFramesTotal-3 {
+	if m.splash.frame >= splashFramesTotal-3 {
 		sb.WriteString(strings.Repeat(" ", 45) + statusCompletedStyle.Render("READY") + "\n")
 	} else {
 		sb.WriteString("\n")
@@ -153,13 +153,13 @@ func (m Model) renderBanner() string {
 	leftPart := labelStyle.Render(ver)
 
 	envSeg := ""
-	if m.envName != "" {
-		envSeg = dimStyle.Render("ENV") + " " + statusRunningStyle.Render(strings.ToUpper(m.envName))
+	if m.banner.envName != "" {
+		envSeg = dimStyle.Render("ENV") + " " + statusRunningStyle.Render(strings.ToUpper(m.banner.envName))
 	}
 
 	modelSeg := ""
-	if m.modelStack != "" {
-		modelSeg = dimStyle.Render("MODEL") + " " + labelStyle.Render(m.modelStack)
+	if m.banner.modelStack != "" {
+		modelSeg = dimStyle.Render("MODEL") + " " + labelStyle.Render(m.banner.modelStack)
 	}
 
 	line1 := joinSegmentsSpaced(w, leftPart, envSeg, modelSeg)
@@ -169,8 +169,8 @@ func (m Model) renderBanner() string {
 
 	// --- Line 3: adapter chips (left), uptime + clock (right)
 	upStr := ""
-	if !m.startTime.IsZero() {
-		upStr = dimStyle.Render("UP") + " " + labelStyle.Render(formatDurationShort(time.Since(m.startTime)))
+	if !m.banner.startTime.IsZero() {
+		upStr = dimStyle.Render("UP") + " " + labelStyle.Render(formatDurationShort(time.Since(m.banner.startTime)))
 	}
 	clockStr := dimStyle.Render(time.Now().UTC().Format("15:04") + " UTC")
 	rightPart := clockStr
@@ -181,7 +181,7 @@ func (m Model) renderBanner() string {
 	// Available room for chips = inner width minus right side and a small gap.
 	chipsBudget := w - lipgloss.Width(rightPart) - 2
 
-	chipsStr := buildAdapterChipsRow(m.bannerAdapters, chipsBudget)
+	chipsStr := buildAdapterChipsRow(m.banner.adapters, chipsBudget)
 
 	line3 := padLeftRightLine(w, chipsStr, rightPart)
 

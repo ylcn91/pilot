@@ -14,7 +14,7 @@ import (
 func TestSyncGitGraph_SwitchesProjectOnTaskChange(t *testing.T) {
 	m := NewModel("test")
 	m.SetProjectPath("/home/user/pilot")
-	m.gitGraphMode = GitGraphVisible
+	m.gitGraph.mode = GitGraphVisible
 	m.tasks = []TaskDisplay{
 		{ID: "1", Title: "Task A", Status: "running", ProjectPath: "/home/user/pilot", ProjectName: "pilot"},
 		{ID: "2", Title: "Task B", Status: "queued", ProjectPath: "/home/user/aso-generator", ProjectName: "aso-generator"},
@@ -28,17 +28,17 @@ func TestSyncGitGraph_SwitchesProjectOnTaskChange(t *testing.T) {
 	if m.selectedTask != 1 {
 		t.Errorf("selectedTask = %d, want 1", m.selectedTask)
 	}
-	if m.projectPath != "/home/user/aso-generator" {
-		t.Errorf("projectPath = %q, want /home/user/aso-generator", m.projectPath)
+	if m.gitGraph.projectPath != "/home/user/aso-generator" {
+		t.Errorf("projectPath = %q, want /home/user/aso-generator", m.gitGraph.projectPath)
 	}
-	if m.gitProjectName != "aso-generator" {
-		t.Errorf("gitProjectName = %q, want aso-generator", m.gitProjectName)
+	if m.gitGraph.projectName != "aso-generator" {
+		t.Errorf("gitProjectName = %q, want aso-generator", m.gitGraph.projectName)
 	}
 	if cmd == nil {
 		t.Error("expected refresh cmd when project changes, got nil")
 	}
-	if m.gitGraphScroll != 0 {
-		t.Errorf("gitGraphScroll should reset to 0, got %d", m.gitGraphScroll)
+	if m.gitGraph.scroll != 0 {
+		t.Errorf("gitGraphScroll should reset to 0, got %d", m.gitGraph.scroll)
 	}
 }
 
@@ -47,7 +47,7 @@ func TestSyncGitGraph_SwitchesProjectOnTaskChange(t *testing.T) {
 func TestSyncGitGraph_NoRefreshWhenSameProject(t *testing.T) {
 	m := NewModel("test")
 	m.SetProjectPath("/home/user/pilot")
-	m.gitGraphMode = GitGraphVisible
+	m.gitGraph.mode = GitGraphVisible
 	m.tasks = []TaskDisplay{
 		{ID: "1", Title: "Task A", Status: "running", ProjectPath: "/home/user/pilot", ProjectName: "pilot"},
 		{ID: "2", Title: "Task B", Status: "queued", ProjectPath: "/home/user/pilot", ProjectName: "pilot"},
@@ -71,8 +71,8 @@ func TestSyncGitGraph_NoRefreshWhenSameProject(t *testing.T) {
 func TestSyncGitGraph_FallsBackToDefault(t *testing.T) {
 	m := NewModel("test")
 	m.SetProjectPath("/home/user/pilot")
-	m.gitGraphMode = GitGraphVisible
-	m.projectPath = "/home/user/aso-generator" // currently showing different project
+	m.gitGraph.mode = GitGraphVisible
+	m.gitGraph.projectPath = "/home/user/aso-generator" // currently showing different project
 	m.tasks = []TaskDisplay{
 		{ID: "1", Title: "Task A", Status: "running"}, // no ProjectPath
 	}
@@ -80,8 +80,8 @@ func TestSyncGitGraph_FallsBackToDefault(t *testing.T) {
 
 	cmd := m.syncGitGraphToSelectedTask()
 
-	if m.projectPath != "/home/user/pilot" {
-		t.Errorf("projectPath = %q, want default /home/user/pilot", m.projectPath)
+	if m.gitGraph.projectPath != "/home/user/pilot" {
+		t.Errorf("projectPath = %q, want default /home/user/pilot", m.gitGraph.projectPath)
 	}
 	if cmd == nil {
 		t.Error("expected refresh cmd when reverting to default project")
@@ -91,11 +91,11 @@ func TestSyncGitGraph_FallsBackToDefault(t *testing.T) {
 // TestGitGraphTitle_IncludesProjectName verifies the panel title shows the project name.
 func TestGitGraphTitle_IncludesProjectName(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphVisible
-	m.gitProjectName = "aso-generator"
+	m.gitGraph.mode = GitGraphVisible
+	m.gitGraph.projectName = "aso-generator"
 	m.width = 140
 	m.height = 40
-	m.gitGraphState = &GitGraphState{
+	m.gitGraph.state = &GitGraphState{
 		TotalCount: 1,
 		Lines: []GitGraphLine{
 			{GraphChars: "● ", SHA: "abc1234", Message: "init"},
@@ -114,14 +114,14 @@ func TestGitGraphTitle_IncludesProjectName(t *testing.T) {
 func TestSyncGitGraph_UpNavigation(t *testing.T) {
 	m := NewModel("test")
 	m.SetProjectPath("/home/user/pilot")
-	m.gitGraphMode = GitGraphVisible
+	m.gitGraph.mode = GitGraphVisible
 	m.tasks = []TaskDisplay{
 		{ID: "1", Title: "Task A", Status: "running", ProjectPath: "/home/user/pilot", ProjectName: "pilot"},
 		{ID: "2", Title: "Task B", Status: "queued", ProjectPath: "/home/user/aso-generator", ProjectName: "aso-generator"},
 	}
 	m.selectedTask = 1
-	m.projectPath = "/home/user/aso-generator"
-	m.gitProjectName = "aso-generator"
+	m.gitGraph.projectPath = "/home/user/aso-generator"
+	m.gitGraph.projectName = "aso-generator"
 
 	updated, cmd := m.Update(makeKey("k"))
 	m = updated.(Model)
@@ -129,8 +129,8 @@ func TestSyncGitGraph_UpNavigation(t *testing.T) {
 	if m.selectedTask != 0 {
 		t.Errorf("selectedTask = %d, want 0", m.selectedTask)
 	}
-	if m.projectPath != "/home/user/pilot" {
-		t.Errorf("projectPath = %q, want /home/user/pilot", m.projectPath)
+	if m.gitGraph.projectPath != "/home/user/pilot" {
+		t.Errorf("projectPath = %q, want /home/user/pilot", m.gitGraph.projectPath)
 	}
 	if cmd == nil {
 		t.Error("expected refresh cmd when project changes via k")

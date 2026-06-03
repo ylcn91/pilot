@@ -9,39 +9,39 @@ import (
 // TestModelUpdate_GToggle verifies 'g' key toggles graph on/off.
 func TestModelUpdate_GToggle(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphHidden
-	m.projectPath = "."
+	m.gitGraph.mode = GitGraphHidden
+	m.gitGraph.projectPath = "."
 
 	// Hidden → Visible
 	updated, _ := m.Update(makeKey("g"))
 	m = updated.(Model)
-	if m.gitGraphMode != GitGraphVisible {
-		t.Errorf("after 1st g: mode = %d, want GitGraphVisible(%d)", m.gitGraphMode, GitGraphVisible)
+	if m.gitGraph.mode != GitGraphVisible {
+		t.Errorf("after 1st g: mode = %d, want GitGraphVisible(%d)", m.gitGraph.mode, GitGraphVisible)
 	}
 
 	// Visible → Hidden
 	updated, _ = m.Update(makeKey("g"))
 	m = updated.(Model)
-	if m.gitGraphMode != GitGraphHidden {
-		t.Errorf("after 2nd g: mode = %d, want GitGraphHidden(%d)", m.gitGraphMode, GitGraphHidden)
+	if m.gitGraph.mode != GitGraphHidden {
+		t.Errorf("after 2nd g: mode = %d, want GitGraphHidden(%d)", m.gitGraph.mode, GitGraphHidden)
 	}
 }
 
 // TestModelUpdate_TabFocus verifies Tab toggles focus when graph is visible.
 func TestModelUpdate_TabFocus(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphVisible
-	m.gitGraphFocus = false
+	m.gitGraph.mode = GitGraphVisible
+	m.gitGraph.focus = false
 
 	updated, _ := m.Update(makeKey("tab"))
 	m = updated.(Model)
-	if !m.gitGraphFocus {
+	if !m.gitGraph.focus {
 		t.Error("Tab should set gitGraphFocus=true when graph is visible")
 	}
 
 	updated, _ = m.Update(makeKey("tab"))
 	m = updated.(Model)
-	if m.gitGraphFocus {
+	if m.gitGraph.focus {
 		t.Error("second Tab should set gitGraphFocus=false")
 	}
 }
@@ -49,12 +49,12 @@ func TestModelUpdate_TabFocus(t *testing.T) {
 // TestModelUpdate_TabNoFocusWhenHidden verifies Tab is a no-op when graph hidden.
 func TestModelUpdate_TabNoFocusWhenHidden(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphHidden
-	m.gitGraphFocus = false
+	m.gitGraph.mode = GitGraphHidden
+	m.gitGraph.focus = false
 
 	updated, _ := m.Update(makeKey("tab"))
 	m = updated.(Model)
-	if m.gitGraphFocus {
+	if m.gitGraph.focus {
 		t.Error("Tab should NOT toggle focus when graph is hidden")
 	}
 }
@@ -62,61 +62,61 @@ func TestModelUpdate_TabNoFocusWhenHidden(t *testing.T) {
 // TestModelUpdate_ScrollWhenFocused verifies j/k scroll the graph when focused.
 func TestModelUpdate_ScrollWhenFocused(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphVisible
-	m.gitGraphFocus = true
-	m.gitGraphScroll = 5
+	m.gitGraph.mode = GitGraphVisible
+	m.gitGraph.focus = true
+	m.gitGraph.scroll = 5
 	m.height = 40 // viewport = 35
-	m.gitGraphState = &GitGraphState{
+	m.gitGraph.state = &GitGraphState{
 		Lines: make([]GitGraphLine, 50),
 	}
 
 	// 'j' scrolls down
 	updated, _ := m.Update(makeKey("j"))
 	m = updated.(Model)
-	if m.gitGraphScroll != 6 {
-		t.Errorf("after j: scroll = %d, want 6", m.gitGraphScroll)
+	if m.gitGraph.scroll != 6 {
+		t.Errorf("after j: scroll = %d, want 6", m.gitGraph.scroll)
 	}
 
 	// 'k' scrolls up
 	updated, _ = m.Update(makeKey("k"))
 	m = updated.(Model)
-	if m.gitGraphScroll != 5 {
-		t.Errorf("after k: scroll = %d, want 5", m.gitGraphScroll)
+	if m.gitGraph.scroll != 5 {
+		t.Errorf("after k: scroll = %d, want 5", m.gitGraph.scroll)
 	}
 }
 
 // TestModelUpdate_ScrollBoundaries verifies scroll doesn't go out of bounds.
 func TestModelUpdate_ScrollBoundaries(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphVisible
-	m.gitGraphFocus = true
-	m.gitGraphScroll = 0
+	m.gitGraph.mode = GitGraphVisible
+	m.gitGraph.focus = true
+	m.gitGraph.scroll = 0
 	m.height = 8 // viewport = 3
-	m.gitGraphState = &GitGraphState{
+	m.gitGraph.state = &GitGraphState{
 		Lines: make([]GitGraphLine, 5),
 	}
 
 	// Can't scroll up past 0
 	updated, _ := m.Update(makeKey("k"))
 	m = updated.(Model)
-	if m.gitGraphScroll != 0 {
-		t.Errorf("scroll should stay at 0, got %d", m.gitGraphScroll)
+	if m.gitGraph.scroll != 0 {
+		t.Errorf("scroll should stay at 0, got %d", m.gitGraph.scroll)
 	}
 
 	// maxScroll = 5 - 3 = 2; can't scroll past that
-	m.gitGraphScroll = 2
+	m.gitGraph.scroll = 2
 	updated, _ = m.Update(makeKey("j"))
 	m = updated.(Model)
-	if m.gitGraphScroll != 2 {
-		t.Errorf("scroll should stay at 2 (max), got %d", m.gitGraphScroll)
+	if m.gitGraph.scroll != 2 {
+		t.Errorf("scroll should stay at 2 (max), got %d", m.gitGraph.scroll)
 	}
 }
 
 // TestModelUpdate_DashboardScrollWhenNotFocused verifies j/k select tasks when not focused.
 func TestModelUpdate_DashboardScrollWhenNotFocused(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphVisible
-	m.gitGraphFocus = false
+	m.gitGraph.mode = GitGraphVisible
+	m.gitGraph.focus = false
 	m.tasks = []TaskDisplay{
 		{ID: "1", Title: "Task A", Status: "running"},
 		{ID: "2", Title: "Task B", Status: "queued"},
@@ -128,41 +128,41 @@ func TestModelUpdate_DashboardScrollWhenNotFocused(t *testing.T) {
 	if m.selectedTask != 1 {
 		t.Errorf("j should move selectedTask to 1, got %d", m.selectedTask)
 	}
-	if m.gitGraphScroll != 0 {
-		t.Errorf("gitGraphScroll should stay at 0, got %d", m.gitGraphScroll)
+	if m.gitGraph.scroll != 0 {
+		t.Errorf("gitGraphScroll should stay at 0, got %d", m.gitGraph.scroll)
 	}
 }
 
 // TestModelUpdate_HalfPageScroll verifies Ctrl+D/Ctrl+U half-page scrolling.
 func TestModelUpdate_HalfPageScroll(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphVisible
-	m.gitGraphFocus = true
-	m.gitGraphScroll = 0
+	m.gitGraph.mode = GitGraphVisible
+	m.gitGraph.focus = true
+	m.gitGraph.scroll = 0
 	m.height = 40 // viewport = 35, half-page = 17
-	m.gitGraphState = &GitGraphState{
+	m.gitGraph.state = &GitGraphState{
 		Lines: make([]GitGraphLine, 100),
 	}
 
 	// Ctrl+D: down half-page (35/2 = 17)
 	updated, _ := m.Update(makeKey("ctrl+d"))
 	m = updated.(Model)
-	if m.gitGraphScroll != 17 {
-		t.Errorf("ctrl+d: scroll = %d, want 17", m.gitGraphScroll)
+	if m.gitGraph.scroll != 17 {
+		t.Errorf("ctrl+d: scroll = %d, want 17", m.gitGraph.scroll)
 	}
 
 	// Ctrl+U: up half-page (back to 0)
 	updated, _ = m.Update(makeKey("ctrl+u"))
 	m = updated.(Model)
-	if m.gitGraphScroll != 0 {
-		t.Errorf("ctrl+u: scroll = %d, want 0", m.gitGraphScroll)
+	if m.gitGraph.scroll != 0 {
+		t.Errorf("ctrl+u: scroll = %d, want 0", m.gitGraph.scroll)
 	}
 }
 
 // TestModelUpdate_GitRefreshMsg verifies state is updated on refresh.
 func TestModelUpdate_GitRefreshMsg(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphVisible
+	m.gitGraph.mode = GitGraphVisible
 
 	state := &GitGraphState{
 		TotalCount:  42,
@@ -175,18 +175,18 @@ func TestModelUpdate_GitRefreshMsg(t *testing.T) {
 	updated, _ := m.Update(gitRefreshMsg{state: state})
 	m = updated.(Model)
 
-	if m.gitGraphState == nil {
+	if m.gitGraph.state == nil {
 		t.Fatal("gitGraphState should be set after gitRefreshMsg")
 	}
-	if m.gitGraphState.TotalCount != 42 {
-		t.Errorf("TotalCount = %d, want 42", m.gitGraphState.TotalCount)
+	if m.gitGraph.state.TotalCount != 42 {
+		t.Errorf("TotalCount = %d, want 42", m.gitGraph.state.TotalCount)
 	}
 }
 
 // TestModelUpdate_GitRefreshTickHidden verifies no refresh cmd when graph is hidden.
 func TestModelUpdate_GitRefreshTickHidden(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphHidden
+	m.gitGraph.mode = GitGraphHidden
 
 	_, cmd := m.Update(gitRefreshTickMsg{})
 	if cmd != nil {
@@ -197,10 +197,10 @@ func TestModelUpdate_GitRefreshTickHidden(t *testing.T) {
 // TestViewWithGitGraph_SideBySide verifies View renders both panels side-by-side.
 func TestViewWithGitGraph_SideBySide(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphVisible
+	m.gitGraph.mode = GitGraphVisible
 	m.width = 140 // graphWidth = 140 - 69 - 2 = 69 → full mode (>= 65)
 	m.height = 40
-	m.gitGraphState = &GitGraphState{
+	m.gitGraph.state = &GitGraphState{
 		TotalCount: 2,
 		Lines: []GitGraphLine{
 			{GraphChars: "● ", SHA: "7eb8da1", Author: "Alice", Message: "initial commit"},
@@ -225,7 +225,7 @@ func TestViewWithGitGraph_SideBySide(t *testing.T) {
 // TestViewHidden_NoGraph verifies View renders normally when graph is hidden.
 func TestViewHidden_NoGraph(t *testing.T) {
 	m := NewModel("test")
-	m.gitGraphMode = GitGraphHidden
+	m.gitGraph.mode = GitGraphHidden
 	m.width = 120
 	m.height = 40
 
@@ -244,7 +244,7 @@ func TestViewHidden_NoGraph(t *testing.T) {
 func TestSetProjectPath(t *testing.T) {
 	m := NewModel("test")
 	m.SetProjectPath("/tmp/myrepo")
-	if m.projectPath != "/tmp/myrepo" {
-		t.Errorf("projectPath = %q, want %q", m.projectPath, "/tmp/myrepo")
+	if m.gitGraph.projectPath != "/tmp/myrepo" {
+		t.Errorf("projectPath = %q, want %q", m.gitGraph.projectPath, "/tmp/myrepo")
 	}
 }

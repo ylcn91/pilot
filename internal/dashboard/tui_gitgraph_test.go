@@ -16,8 +16,8 @@ func TestGitGraph_ToggleAlwaysWorks(t *testing.T) {
 		m := Model{width: width, height: 40}
 		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
 		m = updated.(Model)
-		if m.gitGraphMode != GitGraphVisible {
-			t.Errorf("width=%d: gitGraphMode = %d, want %d (Full)", width, m.gitGraphMode, GitGraphVisible)
+		if m.gitGraph.mode != GitGraphVisible {
+			t.Errorf("width=%d: gitGraphMode = %d, want %d (Full)", width, m.gitGraph.mode, GitGraphVisible)
 		}
 	}
 }
@@ -25,7 +25,7 @@ func TestGitGraph_ToggleAlwaysWorks(t *testing.T) {
 func TestHelpFooter_AlwaysShowsGraphHint(t *testing.T) {
 	// "g: graph" should appear in help regardless of terminal width
 	for _, width := range []int{80, 120} {
-		m := Model{width: width, height: 40, gitGraphMode: GitGraphHidden}
+		m := Model{width: width, height: 40, gitGraph: gitGraphPanelState{mode: GitGraphHidden}}
 		plain := stripANSI(m.renderHelp())
 		if !strings.Contains(plain, "g: graph") {
 			t.Errorf("width=%d: help should show 'g: graph', got: %q", width, plain)
@@ -35,8 +35,8 @@ func TestHelpFooter_AlwaysShowsGraphHint(t *testing.T) {
 
 func TestHelpFooter_SurvivesHeightTruncation(t *testing.T) {
 	m := Model{
-		width: 120, height: 10, gitGraphMode: GitGraphHidden,
-		showBanner: true, showLogs: true,
+		width: 120, height: 10, gitGraph: gitGraphPanelState{mode: GitGraphHidden},
+		banner: bannerMeta{show: true}, showLogs: true,
 		autopilotPanel: NewAutopilotPanel(nil),
 	}
 
@@ -53,7 +53,7 @@ func TestHelpFooter_SurvivesHeightTruncation(t *testing.T) {
 
 func TestHelpFooter_VisibleWithoutTruncation(t *testing.T) {
 	m := Model{
-		width: 120, height: 200, gitGraphMode: GitGraphHidden,
+		width: 120, height: 200, gitGraph: gitGraphPanelState{mode: GitGraphHidden},
 		autopilotPanel: NewAutopilotPanel(nil),
 	}
 
@@ -69,12 +69,15 @@ func TestHelpFooter_VisibleWithoutTruncation(t *testing.T) {
 func TestGitGraph_StackedLayoutUsesFullWidth(t *testing.T) {
 	// On narrow terminal (<90 cols), graph should stack below dashboard at full terminal width
 	m := Model{
-		width: 80, height: 40, gitGraphMode: GitGraphVisible,
+		width: 80, height: 40,
 		autopilotPanel: NewAutopilotPanel(nil),
-		gitGraphState: &GitGraphState{
-			Lines: []GitGraphLine{
-				{GraphChars: "●", SHA: "abc1234", Author: "Test", Message: "Initial commit"},
-				{GraphChars: "●", SHA: "def5678", Author: "Test", Message: "Second commit"},
+		gitGraph: gitGraphPanelState{
+			mode: GitGraphVisible,
+			state: &GitGraphState{
+				Lines: []GitGraphLine{
+					{GraphChars: "●", SHA: "abc1234", Author: "Test", Message: "Initial commit"},
+					{GraphChars: "●", SHA: "def5678", Author: "Test", Message: "Second commit"},
+				},
 			},
 		},
 	}
@@ -108,11 +111,14 @@ func TestGitGraph_StackedLayoutUsesFullWidth(t *testing.T) {
 func TestGitGraph_SideBySideOnWideTerminal(t *testing.T) {
 	// On wide terminal (≥90 cols), graph renders side-by-side
 	m := Model{
-		width: 120, height: 40, gitGraphMode: GitGraphVisible,
+		width: 120, height: 40,
 		autopilotPanel: NewAutopilotPanel(nil),
-		gitGraphState: &GitGraphState{
-			Lines: []GitGraphLine{
-				{GraphChars: "●", SHA: "abc1234", Author: "Test", Message: "Initial commit"},
+		gitGraph: gitGraphPanelState{
+			mode: GitGraphVisible,
+			state: &GitGraphState{
+				Lines: []GitGraphLine{
+					{GraphChars: "●", SHA: "abc1234", Author: "Test", Message: "Initial commit"},
+				},
 			},
 		},
 	}
@@ -136,11 +142,14 @@ func TestGitGraph_SideBySideOnWideTerminal(t *testing.T) {
 func TestGitGraph_StackedHelpFooterVisible(t *testing.T) {
 	// Help footer must be visible at bottom even when graph is stacked
 	m := Model{
-		width: 75, height: 30, gitGraphMode: GitGraphVisible,
+		width: 75, height: 30,
 		autopilotPanel: NewAutopilotPanel(nil),
-		gitGraphState: &GitGraphState{
-			Lines: []GitGraphLine{
-				{GraphChars: "●", SHA: "abc1234", Author: "Test", Message: "commit"},
+		gitGraph: gitGraphPanelState{
+			mode: GitGraphVisible,
+			state: &GitGraphState{
+				Lines: []GitGraphLine{
+					{GraphChars: "●", SHA: "abc1234", Author: "Test", Message: "commit"},
+				},
 			},
 		},
 	}
@@ -158,11 +167,14 @@ func TestGitGraph_StackedHelpFooterVisible(t *testing.T) {
 func TestGitGraph_NarrowTerminalNotSilent(t *testing.T) {
 	// On narrow terminal with graph enabled, pressing 'g' should produce visible graph output
 	m := Model{
-		width: 60, height: 30, gitGraphMode: GitGraphVisible,
+		width: 60, height: 30,
 		autopilotPanel: NewAutopilotPanel(nil),
-		gitGraphState: &GitGraphState{
-			Lines: []GitGraphLine{
-				{GraphChars: "●", SHA: "abc1234", Author: "Test", Message: "Initial commit"},
+		gitGraph: gitGraphPanelState{
+			mode: GitGraphVisible,
+			state: &GitGraphState{
+				Lines: []GitGraphLine{
+					{GraphChars: "●", SHA: "abc1234", Author: "Test", Message: "Initial commit"},
+				},
 			},
 		},
 	}
@@ -179,11 +191,14 @@ func TestDashboardPanels_StretchInStackedMode(t *testing.T) {
 	// GH-1909: In stacked mode, dashboard panels should stretch to full terminal width,
 	// matching the git graph panel width for visual consistency.
 	m := Model{
-		width: 80, height: 40, gitGraphMode: GitGraphVisible,
+		width: 80, height: 40,
 		autopilotPanel: NewAutopilotPanel(nil),
-		gitGraphState: &GitGraphState{
-			Lines: []GitGraphLine{
-				{GraphChars: "●", SHA: "abc1234", Author: "Test", Message: "Initial commit"},
+		gitGraph: gitGraphPanelState{
+			mode: GitGraphVisible,
+			state: &GitGraphState{
+				Lines: []GitGraphLine{
+					{GraphChars: "●", SHA: "abc1234", Author: "Test", Message: "Initial commit"},
+				},
 			},
 		},
 	}
@@ -231,7 +246,7 @@ func TestDashboardPanels_StretchInStackedMode(t *testing.T) {
 func TestDashboardPanels_DefaultWidthWhenNoGraph(t *testing.T) {
 	// When graph is hidden (no stacked mode), panels should use the default panelTotalWidth (69)
 	m := Model{
-		width: 120, height: 40, gitGraphMode: GitGraphHidden,
+		width: 120, height: 40, gitGraph: gitGraphPanelState{mode: GitGraphHidden},
 		autopilotPanel: NewAutopilotPanel(nil),
 	}
 

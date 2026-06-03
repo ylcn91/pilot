@@ -163,7 +163,7 @@ func TestBuildMiniCard(t *testing.T) {
 
 func TestRenderMetricsCards(t *testing.T) {
 	m := NewModel("test")
-	m.metricsCard = MetricsCardData{
+	m.metrics.card = MetricsCardData{
 		TotalTokens:  50000,
 		InputTokens:  30000,
 		OutputTokens: 20000,
@@ -214,9 +214,9 @@ func TestRenderMetricsCards_ZeroState(t *testing.T) {
 func TestRenderTaskCard_ShowsQueueDepth(t *testing.T) {
 	m := NewModel("test")
 	// Simulate 10 lifetime tasks (succeeded + failed) in metrics
-	m.metricsCard.TotalTasks = 10
-	m.metricsCard.Succeeded = 8
-	m.metricsCard.Failed = 2
+	m.metrics.card.TotalTasks = 10
+	m.metrics.card.Succeeded = 8
+	m.metrics.card.Failed = 2
 
 	// Simulate 2 active tasks in queue (pending/running)
 	m.tasks = []TaskDisplay{
@@ -250,9 +250,9 @@ func TestRenderTaskCard_ShowsQueueDepth(t *testing.T) {
 func TestRenderTaskCard_EmptyQueue(t *testing.T) {
 	m := NewModel("test")
 	// Historical tasks exist but queue is empty
-	m.metricsCard.TotalTasks = 5
-	m.metricsCard.Succeeded = 3
-	m.metricsCard.Failed = 2
+	m.metrics.card.TotalTasks = 5
+	m.metrics.card.Succeeded = 3
+	m.metrics.card.Failed = 2
 	m.tasks = nil
 
 	output := m.renderTaskCard(cardWidth)

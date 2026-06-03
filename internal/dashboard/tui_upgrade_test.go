@@ -11,7 +11,7 @@ func TestUpgradeRender_InProgressShowsMessage(t *testing.T) {
 	// Transition to InProgress with a status message.
 	updated, _ := m.Update(upgradeProgressMsg{Progress: 50, Message: "Downloading..."})
 	model := updated.(Model)
-	model.upgradeState = UpgradeStateInProgress
+	model.upgrade.state = UpgradeStateInProgress
 
 	out := model.renderUpdateNotification()
 	if !strings.Contains(out, "Downloading...") {
@@ -24,7 +24,7 @@ func TestUpgradeRender_InProgress_NoMessageNoExtraLine(t *testing.T) {
 
 	updated, _ := m.Update(upgradeProgressMsg{Progress: 30, Message: ""})
 	model := updated.(Model)
-	model.upgradeState = UpgradeStateInProgress
+	model.upgrade.state = UpgradeStateInProgress
 
 	out := model.renderUpdateNotification()
 	if strings.Contains(out, "\n  \n") {

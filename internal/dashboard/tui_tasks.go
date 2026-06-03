@@ -103,7 +103,7 @@ func (m Model) renderTask(task TaskDisplay, selected bool, queueOffset int) stri
 
 	// Pulse the running icon on animation tick
 	renderedIcon := iconStyle.Render(icon)
-	if task.Status == "running" && !m.sparklineTick {
+	if task.Status == "running" && !m.metrics.sparklineTick {
 		renderedIcon = dimStyle.Render(icon)
 	}
 
@@ -179,7 +179,7 @@ func (m Model) renderShimmerBar(width, offset int) string {
 	}
 
 	// Center of bright spot, staggered per queue position
-	center := (m.shimmerTick + offset*3) % width
+	center := (m.metrics.shimmerTick + offset*3) % width
 
 	// Apply shimmer pattern: ░▒▓▒░
 	type shimmerChar struct {

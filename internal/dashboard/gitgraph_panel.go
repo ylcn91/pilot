@@ -41,7 +41,7 @@ func (m Model) gitGraphViewportHeight() int {
 //   - opts[0] = forceWidth: panel width (stacked layout uses full terminal width)
 //   - opts[1] = forceHeight: panel height (stacked layout uses remaining terminal space)
 func (m Model) renderGitGraph(opts ...int) string {
-	if m.gitGraphMode == GitGraphHidden {
+	if m.gitGraph.mode == GitGraphHidden {
 		return ""
 	}
 
@@ -80,8 +80,8 @@ func (m Model) renderGitGraph(opts ...int) string {
 	if size == gitGraphSizeFull {
 		title = "GIT GRAPH"
 	}
-	if m.gitProjectName != "" {
-		title += " — " + m.gitProjectName
+	if m.gitGraph.projectName != "" {
+		title += " — " + m.gitGraph.projectName
 	}
 
 	// Build content lines
@@ -91,16 +91,16 @@ func (m Model) renderGitGraph(opts ...int) string {
 	var scrollIndicator string
 
 	// Error or loading state
-	if m.gitGraphState == nil {
+	if m.gitGraph.state == nil {
 		contentLines = append(contentLines, "  Loading...")
-	} else if m.gitGraphState.Error != "" {
-		contentLines = append(contentLines, "  "+truncateVisual(m.gitGraphState.Error, innerWidth-2))
+	} else if m.gitGraph.state.Error != "" {
+		contentLines = append(contentLines, "  "+truncateVisual(m.gitGraph.state.Error, innerWidth-2))
 	} else {
-		lines := m.gitGraphState.Lines
+		lines := m.gitGraph.state.Lines
 		total := len(lines)
 
 		// Apply scroll offset
-		start := m.gitGraphScroll
+		start := m.gitGraph.scroll
 		if start >= total {
 			start = 0
 		}
@@ -186,7 +186,7 @@ func (m Model) renderGitGraph(opts ...int) string {
 // panelStyle, keeping the title bright (labelStyle) like the slate panels.
 func (m Model) renderGraphPanel(title string, contentLines []string, totalWidth int) string {
 	var borderSty lipgloss.Style
-	if m.gitGraphFocus {
+	if m.gitGraph.focus {
 		borderSty = lipgloss.NewStyle().Foreground(lipgloss.Color("#7eb8da")) // steel blue
 	} else {
 		borderSty = lipgloss.NewStyle().Foreground(lipgloss.Color("#3d4450")) // slate
