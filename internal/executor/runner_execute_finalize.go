@@ -116,6 +116,9 @@ func (r *Runner) executeFinalize(s *executeState) (*ExecutionResult, error) {
 	// GH-2015: Record execution into knowledge graph for cross-project learnings
 	r.recordGraphLearning(task, result)
 
+	// ITEM 4c: Persist the typed handoff-artifact lineage (plan -> TDD roles) for audit
+	r.recordHandoffLineage(s)
+
 	// GH-1991: Record outcome for model routing escalation
 	r.recordOutcome(task, result, complexity, duration)
 

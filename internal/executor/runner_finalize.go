@@ -7,7 +7,16 @@ import (
 	"time"
 
 	"github.com/ylcn91/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/pilotapi"
 )
+
+// handoffLineageRecorder is the narrow capability recordHandoffLineage needs:
+// writing a flat learning node with metadata. *memory.KnowledgeGraph satisfies
+// it; r.knowledgeGraph (a KnowledgeGraphRecorder) is type-asserted to it so the
+// lineage sink stays optional without widening the executor's interface.
+type handoffLineageRecorder interface {
+	AddLearning(title, content string, metadata map[string]interface{}) error
+}
 
 // recordLearning records the execution outcome for pattern learning.
 // It is non-fatal — errors are logged but do not affect the execution result.
@@ -109,6 +118,55 @@ func (r *Runner) recordGraphLearning(task *Task, result *ExecutionResult) {
 	}
 	if err := r.knowledgeGraph.AddExecutionLearning(task.Title, content, nil, patterns, outcome); err != nil {
 		r.log.Warn("Failed to record graph learning", slog.Any("error", err))
+	}
+}
+
+// recordHandoffLineage persists the typed handoff-artifact chain
+// (plan -> architect -> test-author -> implementer) into the knowledge graph as
+// flat learning nodes for audit (ITEM 4c). It is non-fatal — a nil sink, a graph
+// without AddLearning, or a write error is logged and never affects the result.
+//
+// The chain is [planArtifact (if it ran)] ++ tddArtifacts in order; an empty
+// chain (no plan/TDD stage) writes nothing. Each node carries the artifact's
+// role, trace/parent hashes, task ID, and schema version so the lineage stays
+// reconstructable from the graph alone.
+func (r *Runner) recordHandoffLineage(s *executeState) {
+	if r.knowledgeGraph == nil {
+		return
+	}
+	sink, ok := r.knowledgeGraph.(handoffLineageRecorder)
+	if !ok {
+		return
+	}
+
+	chain := make([]pilotapi.HandoffArtifact, 0, len(s.tddArtifacts)+1)
+	if s.planArtifact.TraceHash != "" {
+		chain = append(chain, s.planArtifact)
+	}
+	chain = append(chain, s.tddArtifacts...)
+	if len(chain) == 0 {
+		return
+	}
+
+	for _, art := range chain {
+		content := art.Content
+		if len(content) > 500 {
+			content = content[:500]
+		}
+		metadata := map[string]interface{}{
+			"task_id":        art.TaskID,
+			"role":           art.Role,
+			"trace_hash":     art.TraceHash,
+			"parent_hash":    art.ParentHash,
+			"schema_version": art.SchemaVersion,
+		}
+		if err := sink.AddLearning("handoff:"+art.Role, content, metadata); err != nil {
+			r.log.Warn("Failed to record handoff lineage",
+				slog.String("role", art.Role),
+				slog.String("trace_hash", art.TraceHash),
+				slog.Any("error", err),
+			)
+		}
 	}
 }
 

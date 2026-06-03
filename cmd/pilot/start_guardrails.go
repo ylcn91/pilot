@@ -36,6 +36,11 @@ func maybeAttachGuardrails(controller *autopilot.Controller, cfg *config.Config,
 		Mode:          cfg.Guardrails.EffectiveMode(),
 		DisabledRules: cfg.Guardrails.DisabledRules,
 	}
+	// projectPath is the local clone, passed as the gate's repoPath: the gate
+	// fetches each PR's head SHA from it and materialises the PR's changed files
+	// at that SHA into a per-run tempdir before evaluating the rules. The module
+	// prefix is read from projectPath/go.mod above and stays branch-stable, so it
+	// is derived once at wiring time rather than per PR.
 	gate := autopilot.NewGuardrailsGate(ghClient, registry, gateCfg, projectPath, owner, repo)
 	controller.SetGuardrailsGate(gate)
 }

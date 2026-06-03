@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/adapters/linear"
 	"github.com/ylcn91/pilot/internal/architect"
 	"github.com/ylcn91/pilot/internal/config"
 	"github.com/ylcn91/pilot/internal/executor"
@@ -26,6 +27,9 @@ type architectFlags struct {
 	backend      string
 	jsonOut      bool
 	lens         string
+	export       string
+	linearParent string
+	suggestRules bool
 }
 
 // newArchitectCmd builds the `pilot architect` command: it runs the proactive
@@ -65,6 +69,9 @@ Examples:
 	cmd.Flags().StringVar(&f.backend, "backend", "", "Override the PROPOSE backend type (e.g. claude-code, codex-exec)")
 	cmd.Flags().BoolVar(&f.jsonOut, "json", false, "Emit findings as JSON")
 	cmd.Flags().StringVar(&f.lens, "lens", "", fmt.Sprintf("Collector lens to run (default %q; e.g. depdoctor). Available: %s", architect.CoreLensName, strings.Join(architect.LensNames(), ", ")))
+	cmd.Flags().StringVar(&f.export, "export", "", fmt.Sprintf("Where to file proposals: %s (default %q, or architect.export). 'adr' applies to the rfc lens.", strings.Join(config.ValidArchitectExports, "|"), config.DefaultArchitectExport))
+	cmd.Flags().StringVar(&f.linearParent, "linear-parent", "", "Existing Linear issue ID to file sub-issues under (required when --export linear)")
+	cmd.Flags().BoolVar(&f.suggestRules, "suggest-rules", false, "Surface advisory DRAFT guardrail rules mined from recorded pitfalls/decisions (never enforced; human review required)")
 
 	return cmd
 }
@@ -90,11 +97,23 @@ func runArchitect(ctx context.Context, f *architectFlags) error {
 		return fmt.Errorf("resolve project root: %w", err)
 	}
 
+	export, err := architectExportTarget(ac, f.export)
+	if err != nil {
+		return err
+	}
+
 	// The RFC-generator lens produces a document, not a list of issues, so it
 	// takes its own render/write path rather than the SCAN->PROPOSE->EMIT
-	// pipeline.
+	// pipeline. --export adr selects this document path explicitly.
 	if architect.IsRFCLens(f.lens) {
 		return runArchitectRFC(ctx, cfg, agentDir, f)
+	}
+
+	// adr export only makes sense for the RFC lens (the only path that writes a
+	// document); reject it for the issue-filing lenses rather than silently
+	// ignoring it.
+	if export == config.ArchitectExportADR {
+		return fmt.Errorf("--export adr is only valid with --lens %s", architect.RFCLensName)
 	}
 
 	// The refactor lens's dry-run headline is the ordered, blast-radius-driven
@@ -138,11 +157,13 @@ func buildArchitectRunConfig(cfg *config.Config, agentDir string, f *architectFl
 	}
 
 	scanner, err := architect.BuildLensScanner(f.lens, agentDir, architect.ScanOptions{
-		QualityRunner: architectQualityRunner(cfg, agentDir),
-		MinCoverage:   ac.Thresholds.MinCoverage,
-		Signals:       ac.Signals,
-		FailureSource: architectFailureSource(cfg),
-		ProjectID:     agentDir,
+		QualityRunner:   architectQualityRunner(cfg, agentDir),
+		MinCoverage:     ac.Thresholds.MinCoverage,
+		Signals:         ac.Signals,
+		FailureSource:   architectFailureSource(cfg),
+		ProjectID:       agentDir,
+		SuggestRules:    f.suggestRules,
+		KnowledgeSource: architectKnowledgeSource(cfg),
 	})
 	if err != nil {
 		return architect.RunConfig{}, err
@@ -166,7 +187,27 @@ func buildArchitectRunConfig(cfg *config.Config, agentDir string, f *architectFl
 		Labels:      ac.Labels,
 	}
 
-	// Owner/repo are only needed when we actually file (or dedup against) issues.
+	export, err := architectExportTarget(ac, f.export)
+	if err != nil {
+		return architect.RunConfig{}, err
+	}
+
+	// The Linear export target files sub-issues under an existing parent epic; it
+	// derives team/project from that parent rather than a GitHub owner/repo.
+	if export == config.ArchitectExportLinear {
+		if !f.dryRun {
+			creator, searcher, err := architectLinearClients(cfg, f.linearParent)
+			if err != nil {
+				return architect.RunConfig{}, err
+			}
+			rc.Creator = creator
+			rc.Searcher = searcher
+		}
+		return rc, nil
+	}
+
+	// Owner/repo are only needed when we actually file (or dedup against) GitHub
+	// issues.
 	owner, repo, repoErr := architectOwnerRepo(cfg)
 	if !f.dryRun {
 		if repoErr != nil {
@@ -183,6 +224,63 @@ func buildArchitectRunConfig(cfg *config.Config, agentDir string, f *architectFl
 	rc.Repo = repo
 
 	return rc, nil
+}
+
+// architectExportTarget resolves the export target: an explicit --export flag
+// wins, then architect.export from config, else the GitHub default. An invalid
+// value (from either source) is rejected here, mirroring the flag-over-config
+// pattern of architectBackendStage.
+func architectExportTarget(ac *config.ArchitectConfig, flag string) (string, error) {
+	target := flag
+	if target == "" {
+		target = ac.Export
+	}
+	if target == "" {
+		target = config.DefaultArchitectExport
+	}
+	switch target {
+	case config.ArchitectExportGitHub, config.ArchitectExportLinear, config.ArchitectExportADR:
+		return target, nil
+	default:
+		return "", fmt.Errorf("invalid export target %q; expected one of %s", target, strings.Join(config.ValidArchitectExports, ", "))
+	}
+}
+
+// architectLinearClients builds the Linear issue creator (sub-issues under
+// parentID) and dedup searcher. It requires a non-empty parentID — Linear's
+// CreateIssue derives team/project from an existing parent — and an API key from
+// config or LINEAR_API_KEY. *linear.Client satisfies both the SubIssueCreator
+// and IssueSearcher seams.
+func architectLinearClients(cfg *config.Config, parentID string) (architect.IssueCreator, architect.IssueSearcher, error) {
+	if strings.TrimSpace(parentID) == "" {
+		return nil, nil, fmt.Errorf("--linear-parent is required when --export linear; pass an existing Linear issue ID to file sub-issues under")
+	}
+	client := architectLinearClient(cfg)
+	if client == nil {
+		return nil, nil, fmt.Errorf("Linear API key not configured; set adapters.linear.api_key or LINEAR_API_KEY to export to Linear")
+	}
+	creator := architect.NewLinearIssueCreator(client, parentID)
+	return creator, client, nil
+}
+
+// architectLinearClient resolves the Linear client from the LINEAR_API_KEY
+// source (config adapters.linear.api_key, then the env var), returning nil when
+// no key is available so callers can fail with an actionable error.
+func architectLinearClient(cfg *config.Config) *linear.Client {
+	key := architectLinearAPIKey(cfg)
+	if key == "" {
+		return nil
+	}
+	return linear.NewClient(key)
+}
+
+// architectLinearAPIKey resolves the Linear API key from config, falling back to
+// the LINEAR_API_KEY environment variable.
+func architectLinearAPIKey(cfg *config.Config) string {
+	if cfg.Adapters != nil && cfg.Adapters.Linear != nil && cfg.Adapters.Linear.APIKey != "" {
+		return cfg.Adapters.Linear.APIKey
+	}
+	return os.Getenv("LINEAR_API_KEY")
 }
 
 // architectBackendStage resolves the PROPOSE backend stage: an explicit
@@ -229,6 +327,31 @@ func architectFailureSource(cfg *config.Config) architect.FailureSource {
 		return nil
 	}
 	return store
+}
+
+// architectKnowledgeSource opens the memory knowledge store backing the
+// guardrail rule-suggester's pitfall/decision collectors. It mirrors
+// architectFailureSource: a missing memory config or an unopenable store yields
+// a nil source (fail-open), leaving those collectors out of the roster rather
+// than failing the scan. QueryByType lives on *memory.KnowledgeStore, which
+// wraps the shared *memory.Store DB handle, so the source is built from the same
+// store rather than opening a second connection.
+func architectKnowledgeSource(cfg *config.Config) architect.PitfallSource {
+	if cfg.Memory == nil || cfg.Memory.Path == "" {
+		return nil
+	}
+	store, err := memory.NewStore(cfg.Memory.Path)
+	if err != nil || store == nil {
+		return nil
+	}
+	ks := memory.NewKnowledgeStore(store.DB())
+	// The memories table is owned by the knowledge store's own schema, not the
+	// base Store migrations, so ensure it exists before the suggester queries it
+	// (idempotent; mirrors the start-command wiring). Fail open on error.
+	if err := ks.InitSchema(); err != nil {
+		return nil
+	}
+	return ks
 }
 
 // architectIssueClients builds the issue creator and dedup searcher from the

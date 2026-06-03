@@ -132,7 +132,18 @@ func BuildLensScanner(name, projectPath string, opts ScanOptions) (*Scanner, err
 	}
 	collectors := l.Collectors(projectPath, opts)
 	selected := filterCollectors(collectors, opts.Signals)
-	return NewScanner(selected...), nil
+	scanner := NewScanner(selected...)
+	// When the rule-suggester is enabled (and a knowledge source is wired), the
+	// pitfall/decision collectors are already in the roster; splice the suggester
+	// in as a post-collector pass so it mines DRAFT rule_suggestion Signals over
+	// the full scan output and they flow through PROPOSE without touching the
+	// runner. Off by default: the post-pass stays nil unless the flag is set.
+	if opts.SuggestRules && opts.KnowledgeSource != nil {
+		scanner.postPass = func(signals []Signal) []Signal {
+			return SuggestRulesFromSignals(opts, signals)
+		}
+	}
+	return scanner, nil
 }
 
 // init registers the core lens: the deterministic default roster. Its

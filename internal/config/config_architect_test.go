@@ -139,6 +139,39 @@ func TestArchitectConfig_NilReceiverValidate(t *testing.T) {
 	}
 }
 
+func TestArchitectConfig_EmptyExportIsValid(t *testing.T) {
+	c := baseValidConfig()
+	// Empty export falls back to the GitHub default at use-site — not an error.
+	c.Architect = &ArchitectConfig{Enabled: true, Export: ""}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("empty export (default sentinel) must be valid: %v", err)
+	}
+}
+
+func TestArchitectConfig_ValidExportsAccepted(t *testing.T) {
+	for _, target := range ValidArchitectExports {
+		t.Run(target, func(t *testing.T) {
+			c := baseValidConfig()
+			c.Architect = &ArchitectConfig{Enabled: true, Export: target}
+			if err := c.Validate(); err != nil {
+				t.Fatalf("export %q must be valid: %v", target, err)
+			}
+		})
+	}
+}
+
+func TestArchitectConfig_RejectsUnknownExport(t *testing.T) {
+	c := baseValidConfig()
+	c.Architect = &ArchitectConfig{Enabled: true, Export: "jira-but-not-yet"}
+	err := c.Validate()
+	if err == nil {
+		t.Fatal("an unknown export target must be rejected")
+	}
+	if !strings.Contains(err.Error(), "export") {
+		t.Errorf("error should mention export, got %q", err)
+	}
+}
+
 func TestArchitectConfig_RejectsBackendThenStillReportsCronWhenBackendOK(t *testing.T) {
 	// Worst case: a valid backend but a bad cron must still fail, proving the
 	// cron check runs after the backend check rather than being short-circuited.

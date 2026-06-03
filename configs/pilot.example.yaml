@@ -88,6 +88,19 @@ adapters:
       interval: 30m
       threshold: 1h
 
+  # Bitbucket - Issue polling and PR creation (Cloud 2.0 REST API)
+  bitbucket:
+    enabled: false
+    token: "${BITBUCKET_TOKEN}"         # App password or access token
+    workspace: "my-workspace"           # Bitbucket workspace slug
+    repo: "my-repo"                     # Repository slug
+    pilot_label: "pilot"                # Issues with this kind/label are picked up
+    webhook_secret: "${BITBUCKET_WEBHOOK_SECRET}"
+    polling:
+      enabled: true
+      interval: 30s
+      label: "pilot"
+
   # Azure DevOps - Work item polling and PR creation
   azure_devops:
     enabled: false
@@ -458,6 +471,19 @@ autopilot:
       - "*-optional"
     # required: []                # Only used in manual mode
     discovery_grace_period: 60s   # Wait for CI to start
+
+  # Per-PR architectural guardrails. After CI passes, the gate materialises the
+  # PR head's changed files and runs the architect rules (file LOC ceiling,
+  # forbidden import edges, gateway auth) over the PR's post-change content.
+  # Disabled by default and fail-open: turning it on can only add information.
+  #   mode: report (default) posts a pilot/guardrails commit status + PR comment
+  #         but never fails the check.
+  #   mode: block additionally fails the pilot/guardrails status; enforcement is
+  #         via branch protection requiring that status to be green.
+  guardrails:
+    enabled: false
+    mode: report                  # report | block
+    disabled_rules: []            # rule names to skip, e.g. ["loc-400"]
 
 # Proactive Architect pipeline (SCAN -> PROPOSE -> EMIT).
 # When omitted or enabled=false (default), `pilot architect` is inert.

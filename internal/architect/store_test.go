@@ -176,9 +176,9 @@ func TestBuildLensScanner_Radar(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build radar scanner: %v", err)
 	}
-	// 3 core + deps + staletests = 5.
-	if len(s.Collectors()) != 5 {
-		t.Fatalf("radar scanner collectors = %d, want 5: %v", len(s.Collectors()), names(s.Collectors()))
+	// 3 core + deps + staletests + duplication + churn = 7.
+	if len(s.Collectors()) != 7 {
+		t.Fatalf("radar scanner collectors = %d, want 7: %v", len(s.Collectors()), names(s.Collectors()))
 	}
 }
 

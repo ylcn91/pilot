@@ -267,6 +267,9 @@ func (r *Runner) executePrepare(s *executeState) (*ExecutionResult, error) {
 			// Write embedded scripts
 			if err := WriteEmbeddedScripts(scriptDir); err != nil {
 				log.Error("Failed to write embedded hook scripts", slog.Any("error", err))
+				if rmErr := os.RemoveAll(scriptDir); rmErr != nil {
+					log.Warn("Failed to clean up hook scripts after write error", slog.Any("error", rmErr))
+				}
 			} else {
 				// Generate Claude settings
 				hookSettings := GenerateClaudeSettings(r.config.Hooks, scriptDir)

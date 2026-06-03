@@ -178,6 +178,46 @@ func (s *Server) handleGitlabWebhook(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// handleBitbucketWebhook receives webhooks from Bitbucket Cloud 2.0
+func (s *Server) handleBitbucketWebhook(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Bitbucket Cloud sends the event key in X-Event-Key and signs the body
+	// with HMAC-SHA256 in X-Hub-Signature ("sha256=<hex>").
+	eventType := r.Header.Get("X-Event-Key")
+	signature := r.Header.Get("X-Hub-Signature")
+
+	// Read the raw body once. HMAC verification must run over the exact bytes
+	// Bitbucket signed; decoding into a map and re-marshaling would not
+	// reproduce them. Decode from the buffered bytes after stashing them.
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Add metadata to payload for handler
+	payload["_event_type"] = eventType
+	payload["_signature"] = signature
+	payload["_raw_body"] = string(body)
+
+	logging.WithComponent("gateway").Info("Received Bitbucket webhook", slog.String("event_type", eventType))
+
+	// Route to Bitbucket adapter
+	s.router.HandleWebhook("bitbucket", payload)
+
+	w.WriteHeader(http.StatusOK)
+}
+
 // handleAsanaWebhook receives webhooks from Asana
 func (s *Server) handleAsanaWebhook(w http.ResponseWriter, r *http.Request) {
 	// Asana webhook handshake: respond with X-Hook-Secret header

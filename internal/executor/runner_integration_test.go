@@ -23,11 +23,13 @@ func TestRunner_Integration_TaskExecution(t *testing.T) {
 	runner.SetRecordingEnabled(false)
 
 	// Create task
+	repo, cleanup := initTestRepo(t)
+	defer cleanup()
 	task := &Task{
 		ID:          "INTEG-001",
 		Title:       "Integration test task",
 		Description: "Test runner executes tasks correctly",
-		ProjectPath: t.TempDir(),
+		ProjectPath: repo,
 	}
 
 	// Execute
@@ -75,11 +77,13 @@ func TestRunner_Integration_StateTransitions(t *testing.T) {
 		}{phase: phase, message: message})
 	})
 
+	repo, cleanup := initTestRepo(t)
+	defer cleanup()
 	task := &Task{
 		ID:          "INTEG-002",
 		Title:       "State transition test",
 		Description: "Verify state transitions",
-		ProjectPath: t.TempDir(),
+		ProjectPath: repo,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -114,11 +118,13 @@ func TestRunner_Integration_AlertEmission(t *testing.T) {
 	alertProcessor := &mockAlertProcessor{}
 	runner.SetAlertProcessor(alertProcessor)
 
+	repo, cleanup := initTestRepo(t)
+	defer cleanup()
 	task := &Task{
 		ID:          "INTEG-003",
 		Title:       "Alert emission test",
 		Description: "Verify alerts are emitted",
-		ProjectPath: t.TempDir(),
+		ProjectPath: repo,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -183,11 +189,13 @@ func TestRunner_Integration_QualityGates(t *testing.T) {
 		}
 	})
 
+	repo, cleanup := initTestRepo(t)
+	defer cleanup()
 	task := &Task{
 		ID:          "INTEG-004",
 		Title:       "Quality gates test",
 		Description: "Verify quality gates are checked",
-		ProjectPath: t.TempDir(),
+		ProjectPath: repo,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -242,11 +250,13 @@ func TestRunner_Integration_QualityGatesRetry(t *testing.T) {
 		}
 	})
 
+	repo, cleanup := initTestRepo(t)
+	defer cleanup()
 	task := &Task{
 		ID:          "INTEG-005",
 		Title:       "Quality retry test",
 		Description: "Verify quality gate retry",
-		ProjectPath: t.TempDir(),
+		ProjectPath: repo,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -285,11 +295,13 @@ func TestRunner_Integration_ContextCancellation(t *testing.T) {
 	runner := NewRunnerWithBackend(backend)
 	runner.SetRecordingEnabled(false)
 
+	repo, cleanup := initTestRepo(t)
+	defer cleanup()
 	task := &Task{
 		ID:          "INTEG-006",
 		Title:       "Cancellation test",
 		Description: "Verify context cancellation",
-		ProjectPath: t.TempDir(),
+		ProjectPath: repo,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -319,6 +331,9 @@ func TestRunner_Integration_MultipleTasksSequential(t *testing.T) {
 	runner := NewRunnerWithBackend(backend)
 	runner.SetRecordingEnabled(false)
 
+	repo, cleanup := initTestRepo(t)
+	defer cleanup()
+
 	taskIDs := []string{"INTEG-007A", "INTEG-007B", "INTEG-007C"}
 	results := make([]*ExecutionResult, 0, len(taskIDs))
 
@@ -327,7 +342,7 @@ func TestRunner_Integration_MultipleTasksSequential(t *testing.T) {
 			ID:          id,
 			Title:       "Sequential task " + id,
 			Description: "Test sequential execution",
-			ProjectPath: t.TempDir(),
+			ProjectPath: repo,
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

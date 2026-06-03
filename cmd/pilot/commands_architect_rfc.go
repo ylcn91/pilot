@@ -63,11 +63,13 @@ func runArchitectRFC(ctx context.Context, cfg *config.Config, agentDir string, f
 func scanRFCSignals(ctx context.Context, cfg *config.Config, agentDir string, f *architectFlags) ([]architect.Signal, error) {
 	ac := cfg.Architect
 	scanner, err := architect.BuildLensScanner(f.lens, agentDir, architect.ScanOptions{
-		QualityRunner: architectQualityRunner(cfg, agentDir),
-		MinCoverage:   ac.Thresholds.MinCoverage,
-		Signals:       ac.Signals,
-		FailureSource: architectFailureSource(cfg),
-		ProjectID:     agentDir,
+		QualityRunner:   architectQualityRunner(cfg, agentDir),
+		MinCoverage:     ac.Thresholds.MinCoverage,
+		Signals:         ac.Signals,
+		FailureSource:   architectFailureSource(cfg),
+		ProjectID:       agentDir,
+		SuggestRules:    f.suggestRules,
+		KnowledgeSource: architectKnowledgeSource(cfg),
 	})
 	if err != nil {
 		return nil, err

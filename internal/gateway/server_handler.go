@@ -48,6 +48,7 @@ func (s *Server) buildHandler() http.Handler {
 	mux.HandleFunc("/webhooks/linear", s.handleLinearWebhook)
 	mux.HandleFunc("/webhooks/github", s.handleGithubWebhook)
 	mux.HandleFunc("/webhooks/gitlab", s.handleGitlabWebhook)
+	mux.HandleFunc("/webhooks/bitbucket", s.handleBitbucketWebhook)
 	mux.HandleFunc("/webhooks/jira", s.handleJiraWebhook)
 	mux.HandleFunc("/webhooks/asana", s.handleAsanaWebhook)
 	mux.HandleFunc("/webhooks/azuredevops", s.handleAzureDevOpsWebhook)

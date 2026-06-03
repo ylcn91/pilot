@@ -3,6 +3,7 @@ package executor
 import (
 	"log/slog"
 	"path/filepath"
+	"strings"
 
 	"github.com/ylcn91/pilot/internal/pilotapi"
 )
@@ -72,6 +73,16 @@ func (r *Runner) executePipelinePlan(s *executeState) {
 		return
 	}
 
+	// An inert (whitespace-empty) spec is treated exactly like a plan failure:
+	// non-fatal, planOutput stays empty and no plan artifact is recorded, so the
+	// execute prompt is unaffected (injectPlanOutput no-ops on an empty spec).
+	if isInertPlan(output) {
+		r.log.Warn("plan stage produced an inert spec; executing without a spec",
+			slog.String("task_id", task.ID),
+		)
+		return
+	}
+
 	s.planOutput = output
 
 	// Build the typed, traceable record alongside the prose injection. The prose
@@ -102,6 +113,14 @@ func buildPipelinePlanPrompt(task *Task, agentDir string) string {
 		"Do NOT write or modify any files, do NOT run commands that change state, " +
 		"and do NOT commit. Output the plan as text only.\n\n"
 	return readOnlyContract + buildPlanningPrompt(task, agentDir)
+}
+
+// isInertPlan reports whether a plan-stage spec carries no usable content. The
+// minimum safe check is whitespace-emptiness: such a spec would inject an empty
+// "## Implementation Plan" section that only dilutes the execute prompt, so it
+// is treated as a (non-fatal) plan failure.
+func isInertPlan(output string) bool {
+	return strings.TrimSpace(output) == ""
 }
 
 // injectPlanOutput appends the pipeline plan spec to the execute prompt as an

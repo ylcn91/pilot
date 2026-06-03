@@ -49,6 +49,7 @@ func adapterPollerRegistrations() []PollerRegistration {
 		planePollerRegistration(),
 		discordPollerRegistration(),
 		gitlabPollerRegistration(),
+		bitbucketPollerRegistration(),
 	}
 }
 

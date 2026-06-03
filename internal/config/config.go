@@ -11,6 +11,7 @@ import (
 
 	"github.com/ylcn91/pilot/internal/adapters/asana"
 	"github.com/ylcn91/pilot/internal/adapters/azuredevops"
+	"github.com/ylcn91/pilot/internal/adapters/bitbucket"
 	"github.com/ylcn91/pilot/internal/adapters/discord"
 	"github.com/ylcn91/pilot/internal/adapters/github"
 	"github.com/ylcn91/pilot/internal/adapters/gitlab"
@@ -53,7 +54,7 @@ type Config struct {
 	Webhooks       *webhooks.Config        `yaml:"webhooks"`
 	TeamID         string                  `yaml:"team_id"` // Optional team ID for scoping execution
 	Team           *TeamConfig             `yaml:"team"`
-	Architect      *ArchitectConfig        `yaml:"architect,omitempty"` // Proactive Architect pipeline (SCAN/PROPOSE/EMIT)
+	Architect      *ArchitectConfig        `yaml:"architect,omitempty"`  // Proactive Architect pipeline (SCAN/PROPOSE/EMIT)
 	Guardrails     *GuardrailsConfig       `yaml:"guardrails,omitempty"` // Per-PR architectural guardrails (report-only by default)
 }
 
@@ -78,6 +79,7 @@ func DefaultConfig() *Config {
 			Telegram:    telegram.DefaultConfig(),
 			GitHub:      github.DefaultConfig(),
 			GitLab:      gitlab.DefaultConfig(),
+			Bitbucket:   bitbucket.DefaultConfig(),
 			AzureDevOps: azuredevops.DefaultConfig(),
 			Jira:        jira.DefaultConfig(),
 			Asana:       asana.DefaultConfig(),

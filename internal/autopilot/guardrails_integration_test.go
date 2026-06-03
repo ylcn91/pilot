@@ -3,6 +3,7 @@ package autopilot
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -142,5 +143,165 @@ func TestGuardrailsGate_RealRules_DisabledRuleSuppressed(t *testing.T) {
 	}
 	if len(gh.commentBody) != 0 {
 		t.Errorf("no violations => no comment, got %+v", gh.commentBody)
+	}
+}
+
+// runGit runs a git command in dir and fails the test on error.
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com",
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+	}
+}
+
+// gitHeadSHA returns the current HEAD SHA of the repo at dir.
+func gitHeadSHA(t *testing.T, dir string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatalf("rev-parse HEAD: %v", err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// commitFiles writes each path/content pair into the repo, stages them, and
+// commits with the given message.
+func commitFiles(t *testing.T, dir, msg string, files map[string]string) {
+	t.Helper()
+	for rel, content := range files {
+		writeFixture(t, dir, rel, content)
+	}
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-q", "-m", msg)
+}
+
+// This is the regression test for the content-source bug: the rules used to read
+// the static checkout (main) instead of the PR head, so loc-400 was judged
+// against main's clean content and net-new PR files (which don't exist on main)
+// were silently skipped. With Option A (materialise the PR head per run) the gate
+// must flag the PR-head content even though main is clean.
+func TestGuardrailsGate_PRHeadContent_FlagsPRNotMain(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-q", "-b", "main")
+
+	// main: a single small file, well under the LOC limit, and nothing else.
+	commitFiles(t, repo, "seed main", map[string]string{
+		"internal/feature/grows.go": bigGoFile("feature", 50),
+	})
+
+	// PR head: grow the existing file past the limit AND add a net-new oversized
+	// file that does not exist on main at all.
+	runGit(t, repo, "checkout", "-q", "-b", "pr-head")
+	commitFiles(t, repo, "pr head: grow + net-new", map[string]string{
+		"internal/feature/grows.go":  bigGoFile("feature", 450),
+		"internal/feature/netnew.go": bigGoFile("feature", 500),
+	})
+	headSHA := gitHeadSHA(t, repo)
+
+	// Leave the clone checked out on MAIN: if the gate read the static checkout
+	// (the old bug) it would see only the 50-line file and flag nothing.
+	runGit(t, repo, "checkout", "-q", "main")
+
+	gh := &mockGuardrailsGH{files: prFiles(
+		"internal/feature/grows.go",
+		"internal/feature/netnew.go",
+	)}
+	registry := architect.DefaultRuleRegistry("github.com/ylcn91/pilot")
+	g := NewGuardrailsGate(gh, registry,
+		GuardrailsGateConfig{Enabled: true, Mode: "block"}, repo, "owner", "repo")
+
+	v, err := g.Evaluate(context.Background(), 200, headSHA)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	files := map[string]bool{}
+	for _, vio := range v {
+		if vio.Rule == "loc-400" {
+			files[vio.File] = true
+		}
+	}
+	if !files["internal/feature/grows.go"] {
+		t.Error("loc-400 must fire on the file grown past the limit on the PR head (main is clean)")
+	}
+	if !files["internal/feature/netnew.go"] {
+		t.Error("loc-400 must fire on the net-new oversized file that exists only on the PR head")
+	}
+	if len(gh.statusCalls) != 1 || gh.statusCalls[0].State != "failure" {
+		t.Fatalf("block mode + PR-head violations must post a failure status, got %+v", gh.statusCalls)
+	}
+}
+
+// Deleted-in-PR files are absent at the head SHA, so git show fails for them and
+// they are correctly skipped — they must not error the gate or appear as
+// findings.
+func TestGuardrailsGate_PRHeadContent_DeletedFileSkipped(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-q", "-b", "main")
+
+	commitFiles(t, repo, "seed main", map[string]string{
+		"internal/feature/keep.go": bigGoFile("feature", 30),
+		"internal/feature/gone.go": bigGoFile("feature", 30),
+	})
+
+	runGit(t, repo, "checkout", "-q", "-b", "pr-head")
+	runGit(t, repo, "rm", "-q", "internal/feature/gone.go")
+	runGit(t, repo, "commit", "-q", "-m", "pr head: delete gone.go")
+	headSHA := gitHeadSHA(t, repo)
+	runGit(t, repo, "checkout", "-q", "main")
+
+	gh := &mockGuardrailsGH{files: prFiles(
+		"internal/feature/keep.go",
+		"internal/feature/gone.go", // deleted on the PR head
+	)}
+	registry := architect.DefaultRuleRegistry("github.com/ylcn91/pilot")
+	g := NewGuardrailsGate(gh, registry,
+		GuardrailsGateConfig{Enabled: true, Mode: "block"}, repo, "owner", "repo")
+
+	v, err := g.Evaluate(context.Background(), 201, headSHA)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(v) != 0 {
+		t.Fatalf("clean PR-head content must yield no findings, got %+v", v)
+	}
+	if len(gh.statusCalls) != 1 || gh.statusCalls[0].State != "success" {
+		t.Fatalf("clean PR must post a green status, got %+v", gh.statusCalls)
+	}
+}
+
+// Fail-open: a bogus head SHA that cannot be resolved (and cannot be fetched,
+// since the repo has no usable origin) must skip the gate entirely — no status,
+// no comment, no findings — never block the PR on a fetch failure.
+func TestGuardrailsGate_PRHeadContent_BogusSHAFailsOpen(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-q", "-b", "main")
+	commitFiles(t, repo, "seed main", map[string]string{
+		"internal/feature/grows.go": bigGoFile("feature", 50),
+	})
+
+	gh := &mockGuardrailsGH{files: prFiles("internal/feature/grows.go")}
+	registry := architect.DefaultRuleRegistry("github.com/ylcn91/pilot")
+	g := NewGuardrailsGate(gh, registry,
+		GuardrailsGateConfig{Enabled: true, Mode: "block"}, repo, "owner", "repo")
+
+	bogus := "0000000000000000000000000000000000000000"
+	v, err := g.Evaluate(context.Background(), 202, bogus)
+	if err != nil {
+		t.Fatalf("fail-open must swallow the error, got %v", err)
+	}
+	if v != nil {
+		t.Errorf("unresolvable head SHA must yield no findings, got %+v", v)
+	}
+	if len(gh.statusCalls) != 0 {
+		t.Errorf("a fetch failure must post NO status (never block on our own failure), got %+v", gh.statusCalls)
+	}
+	if len(gh.commentBody) != 0 {
+		t.Errorf("a fetch failure must post NO comment, got %+v", gh.commentBody)
 	}
 }

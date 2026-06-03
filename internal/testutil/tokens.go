@@ -90,4 +90,10 @@ const (
 
 	// FakePlaneWebhookSecret is a safe test webhook secret for Plane.so.
 	FakePlaneWebhookSecret = "test-plane-webhook-secret"
+
+	// FakeBitbucketToken is a safe test token for Bitbucket API authentication.
+	FakeBitbucketToken = "test-bitbucket-token"
+
+	// FakeBitbucketWebhookSecret is a safe test secret for Bitbucket webhook verification.
+	FakeBitbucketWebhookSecret = "test-bitbucket-webhook-secret"
 )

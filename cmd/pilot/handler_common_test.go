@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ylcn91/pilot/internal/adapters/azuredevops"
+	"github.com/ylcn91/pilot/internal/adapters/bitbucket"
 	"github.com/ylcn91/pilot/internal/adapters/github"
 	"github.com/ylcn91/pilot/internal/adapters/gitlab"
 	"github.com/ylcn91/pilot/internal/budget"
@@ -129,6 +130,19 @@ func TestAdapterSpecificPRNumberExtraction(t *testing.T) {
 			wantNum: 55,
 		},
 		{
+			name:    "bitbucket PR URL",
+			adapter: "bitbucket",
+			prURL:   "https://bitbucket.org/workspace/repo/pull-requests/123",
+			wantNum: 123,
+		},
+		{
+			name:     "bitbucket extractor does not match github URL",
+			adapter:  "bitbucket",
+			prURL:    "https://github.com/org/repo/pull/10",
+			wantNum:  0,
+			wantFail: true,
+		},
+		{
 			name:     "github extractor does not match gitlab URL",
 			adapter:  "github",
 			prURL:    "https://gitlab.com/ns/proj/-/merge_requests/10",
@@ -153,6 +167,8 @@ func TestAdapterSpecificPRNumberExtraction(t *testing.T) {
 				got, err = gitlab.ExtractMRNumber(tc.prURL)
 			case "azuredevops":
 				got, err = azuredevops.ExtractPRNumber(tc.prURL)
+			case "bitbucket":
+				got, err = bitbucket.ExtractPRNumber(tc.prURL)
 			default:
 				got, err = github.ExtractPRNumber(tc.prURL)
 			}
