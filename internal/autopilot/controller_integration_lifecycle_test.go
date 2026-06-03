@@ -82,7 +82,7 @@ func TestController_Integration_PRLifecycle(t *testing.T) {
 	controller.SetNotifier(notifier)
 
 	// Register a PR
-	controller.OnPRCreated(1, "https://github.com/test/repo/pull/1", 100, "abc123def456", "pilot/GH-100")
+	controller.OnPRCreated(1, "https://github.com/test/repo/pull/1", 100, "abc123def456", "pilot/GH-100", "")
 
 	// Verify PR is tracked
 	if len(controller.activePRs) != 1 {
@@ -205,7 +205,7 @@ func TestController_Integration_CIFailure(t *testing.T) {
 	notifier := &integrationMockNotifier{}
 	controller.SetNotifier(notifier)
 
-	controller.OnPRCreated(2, "https://github.com/test/repo/pull/2", 200, "def456abc789", "pilot/GH-200")
+	controller.OnPRCreated(2, "https://github.com/test/repo/pull/2", 200, "def456abc789", "pilot/GH-200", "")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -282,7 +282,7 @@ func TestController_Integration_ProdApproval(t *testing.T) {
 	notifier := &integrationMockNotifier{}
 	controller.SetNotifier(notifier)
 
-	controller.OnPRCreated(3, "https://github.com/test/repo/pull/3", 300, "prodsha123", "pilot/GH-300")
+	controller.OnPRCreated(3, "https://github.com/test/repo/pull/3", 300, "prodsha123", "pilot/GH-300", "")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

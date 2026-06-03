@@ -57,16 +57,17 @@ func TestController_Integration_CircuitBreaker(t *testing.T) {
 		CIWaitTimeout:       1 * time.Minute,
 		CIPollInterval:      50 * time.Millisecond,
 		MaxFailures:         3, // Circuit breaker threshold
+		MaxMergeAttempts:    5, // Hard cap on merge retries (TASK-336); must exceed MaxFailures so the circuit breaker trips first
 		FailureResetTimeout: 1 * time.Hour,
 		CIChecks: &CIChecksConfig{
 			Mode:                 "auto",
-			DiscoveryGracePeriod: 50 * time.Millisecond,
+			DiscoveryGracePeriod: 0, // immediate CI evaluation so the synchronous loop reaches StageMerging deterministically
 		},
 	}
 
 	controller := NewController(cfg, ghClient, nil, "test", "repo")
 
-	controller.OnPRCreated(4, "https://github.com/test/repo/pull/4", 400, "cbsha123", "pilot/GH-400")
+	controller.OnPRCreated(4, "https://github.com/test/repo/pull/4", 400, "cbsha123", "pilot/GH-400", "")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -121,9 +122,9 @@ func TestController_Integration_MultiplePRs(t *testing.T) {
 	controller := NewController(cfg, ghClient, nil, "test", "repo")
 
 	// Register multiple PRs
-	controller.OnPRCreated(10, "https://github.com/test/repo/pull/10", 1000, "sha10", "pilot/GH-1000")
-	controller.OnPRCreated(11, "https://github.com/test/repo/pull/11", 1001, "sha11", "pilot/GH-1001")
-	controller.OnPRCreated(12, "https://github.com/test/repo/pull/12", 1002, "sha12", "pilot/GH-1002")
+	controller.OnPRCreated(10, "https://github.com/test/repo/pull/10", 1000, "sha10", "pilot/GH-1000", "")
+	controller.OnPRCreated(11, "https://github.com/test/repo/pull/11", 1001, "sha11", "pilot/GH-1001", "")
+	controller.OnPRCreated(12, "https://github.com/test/repo/pull/12", 1002, "sha12", "pilot/GH-1002", "")
 
 	// Verify all PRs are tracked
 	if len(controller.activePRs) != 3 {
