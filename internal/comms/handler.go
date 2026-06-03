@@ -23,6 +23,16 @@ type MemberResolver interface {
 	ResolveIdentity(senderID string) (string, error)
 }
 
+// taskExecutor is the minimal seam the Handler needs from the executor.
+// *executor.Runner satisfies it, so production wiring is unchanged while
+// tests can inject a fake to exercise intent handlers without a real backend.
+type taskExecutor interface {
+	Execute(ctx context.Context, task *executor.Task) (*executor.ExecutionResult, error)
+	Config() *executor.BackendConfig
+	AddProgressCallback(name string, callback executor.ProgressCallback)
+	RemoveProgressCallback(name string)
+}
+
 // HandlerConfig holds configuration for creating a shared Handler.
 type HandlerConfig struct {
 	Messenger      Messenger
@@ -43,7 +53,7 @@ type HandlerConfig struct {
 // rate limiting, task lifecycle, and progress tracking.
 type Handler struct {
 	messenger      Messenger
-	runner         *executor.Runner
+	runner         taskExecutor
 	projects       ProjectSource
 	projectPath    string
 	rateLimit      *RateLimiter
@@ -80,9 +90,16 @@ func NewHandler(cfg *HandlerConfig) *Handler {
 		lg = logging.WithComponent("comms.handler")
 	}
 
+	// Keep a nil *executor.Runner as a nil interface so the h.runner != nil
+	// guards in executeTaskCore stay correct (a typed-nil interface is non-nil).
+	var runner taskExecutor
+	if cfg.Runner != nil {
+		runner = cfg.Runner
+	}
+
 	return &Handler{
 		messenger:      cfg.Messenger,
-		runner:         cfg.Runner,
+		runner:         runner,
 		projects:       cfg.Projects,
 		projectPath:    cfg.ProjectPath,
 		rateLimit:      rl,
