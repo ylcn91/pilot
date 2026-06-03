@@ -130,7 +130,7 @@ func TestStageModelEffortOverrideReachesBackend(t *testing.T) {
 			selectedEffort: runEffort,
 			executionPath:  "/tmp",
 		}
-		if _, err := r.runTDDRole(s, r.implementerBackend, r.tddRoleStage("implementer"), "prompt"); err != nil {
+		if _, err := r.runTDDRole(s, r.implementerBackend, r.tddRoleStage("implementer"), "prompt", false); err != nil {
 			t.Fatalf("runTDDRole: %v", err)
 		}
 		if impl.lastModel != roleModel {
@@ -157,7 +157,7 @@ func TestStageModelEffortOverrideReachesBackend(t *testing.T) {
 			selectedEffort: runEffort,
 			executionPath:  "/tmp",
 		}
-		if _, err := r.runTDDRole(s, r.implementerBackend, r.tddRoleStage("implementer"), "prompt"); err != nil {
+		if _, err := r.runTDDRole(s, r.implementerBackend, r.tddRoleStage("implementer"), "prompt", false); err != nil {
 			t.Fatalf("runTDDRole: %v", err)
 		}
 		if impl.lastModel != runModel {

@@ -43,7 +43,7 @@ func (r *Runner) runTDDSequence(s *executeState) (*BackendResult, error) {
 	// commit. A misbehaving non-claude architect that commits is reverted before
 	// TEST-AUTHOR runs so its stray commits never enter the RED/GREEN diff.
 	archHeadBefore := r.readOnlyHeadBefore(s)
-	archRes, archErr := r.runTDDRole(s, r.architectBackend, r.tddRoleStage("architect"), buildTDDRolePrompt(base, buildArchitectAppendix()))
+	archRes, archErr := r.runTDDRole(s, r.architectBackend, r.tddRoleStage("architect"), buildTDDRolePrompt(base, buildArchitectAppendix()), true)
 	if guard := enforceReadOnly(ctx, s.git, archHeadBefore, pilotapi.RoleArchitect, log); guard.Violated {
 		s.tddArchitectReadOnlyViolation = true
 	}
@@ -227,9 +227,19 @@ func (r *Runner) tddRoleStage(role string) *StageConfig {
 // main execute call, and returns its BackendResult. stage carries the role's
 // per-stage model/effort override (nil => run-level), threaded so a role model
 // override is not shadowed by the run-level selection (backends prefer opts).
-func (r *Runner) runTDDRole(s *executeState, backend Backend, stage *StageConfig, prompt string) (*BackendResult, error) {
+//
+// readOnly scopes the role's toolbox: the ARCHITECT is design-only, so it gets
+// the read-only planning tools (DefaultAllowedToolsPlanning: Read/Grep/Glob) and
+// CANNOT write files, mirroring the pipeline plan stage. The TEST-AUTHOR and
+// IMPLEMENTER must write/commit, so they keep the normal execution toolset. This
+// composes with the H3 enforceReadOnly guard (which reverts stray architect
+// commits) for defense in depth.
+func (r *Runner) runTDDRole(s *executeState, backend Backend, stage *StageConfig, prompt string, readOnly bool) (*BackendResult, error) {
 	task := s.task
 	allowedTools, mcpConfigPath := r.executionToolOptions()
+	if readOnly {
+		allowedTools = DefaultAllowedToolsPlanning()
+	}
 	effModel, effEffort := effectiveStageModelEffort(stage, s.selectedModel, s.selectedEffort)
 	return backend.Execute(s.ctx, ExecuteOptions{
 		Prompt:        prompt,
@@ -300,7 +310,7 @@ func (r *Runner) runTDDTestAuthorOnce(s *executeState, base, feedback string) (c
 	if feedback != "" {
 		appendix += "\n\n## RED gate feedback (fix this)\n\n" + feedback
 	}
-	res, err := r.runTDDRole(s, r.testAuthorBackend, r.tddRoleStage("test_author"), buildTDDRolePrompt(base, appendix))
+	res, err := r.runTDDRole(s, r.testAuthorBackend, r.tddRoleStage("test_author"), buildTDDRolePrompt(base, appendix), false)
 	if err != nil {
 		return false, err
 	}
@@ -324,7 +334,7 @@ func (r *Runner) runTDDImplementer(s *executeState, base, feedback string) (*Bac
 		return nil, err
 	}
 	appendix := buildImplementerAppendix(s.tddArchitectDesign, s.tddTestNames, feedback)
-	res, err := r.runTDDRole(s, r.implementerBackend, r.tddRoleStage("implementer"), buildTDDRolePrompt(base, appendix))
+	res, err := r.runTDDRole(s, r.implementerBackend, r.tddRoleStage("implementer"), buildTDDRolePrompt(base, appendix), false)
 	if err != nil {
 		return nil, err
 	}
