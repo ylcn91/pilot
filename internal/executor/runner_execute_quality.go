@@ -10,6 +10,42 @@ import (
 	"github.com/ylcn91/pilot/internal/webhooks"
 )
 
+// failQualityGates emits the task-failed alert + webhook and finishes the
+// recorder for a quality-gate abort path, then returns (s.result, nil). The
+// caller is responsible for having already set s.result.Success/Error and the
+// terminal progress report. alertType/metadata/phase are the only values that
+// differ across the three quality-failure exits.
+func (r *Runner) failQualityGates(s *executeState, alertType AlertEventType, metadata map[string]string, phase string) (*ExecutionResult, error) {
+	r.emitAlertEvent(AlertEvent{
+		Type:      alertType,
+		TaskID:    s.task.ID,
+		TaskTitle: s.task.Title,
+		Project:   s.task.ProjectPath,
+		Error:     s.result.Error,
+		Metadata:  metadata,
+		Timestamp: time.Now(),
+	})
+
+	r.dispatchWebhook(s.ctx, webhooks.EventTaskFailed, webhooks.TaskFailedData{
+		TaskID:   s.task.ID,
+		Title:    s.task.Title,
+		Project:  s.task.ProjectPath,
+		Duration: time.Since(s.start),
+		Error:    s.result.Error,
+		Phase:    phase,
+	})
+
+	if s.recorder != nil {
+		s.recorder.SetModel(s.result.ModelName)
+		s.recorder.SetNavigator(s.state.hasNavigator)
+		if finErr := s.recorder.Finish("failed"); finErr != nil {
+			s.log.Warn("Failed to finish recording", slog.Any("error", finErr))
+		}
+	}
+
+	return s.result, nil
+}
+
 // executeQualityGates auto-enables a minimal build gate when no quality config
 // is present, then runs the quality-gate retry loop (GH-363/GH-209, original
 // lines ~1606-1926). It sets s.qualityGatesPassed. It returns a non-nil
@@ -19,7 +55,6 @@ func (r *Runner) executeQualityGates(s *executeState) (*ExecutionResult, error) 
 	ctx := s.ctx
 	log := s.log
 	executionPath := s.executionPath
-	start := s.start
 	result := s.result
 	state := s.state
 	recorder := s.recorder
@@ -90,34 +125,7 @@ func (r *Runner) executeQualityGates(s *executeState) (*ExecutionResult, error) 
 				result.Error = fmt.Sprintf("quality gate error: %v", qErr)
 				r.reportProgress(task.ID, "Quality Failed", 100, result.Error)
 
-				// Emit task failed event
-				r.emitAlertEvent(AlertEvent{
-					Type:      AlertEventTypeTaskFailed,
-					TaskID:    task.ID,
-					TaskTitle: task.Title,
-					Project:   task.ProjectPath,
-					Error:     result.Error,
-					Timestamp: time.Now(),
-				})
-
-				// Dispatch webhook for task failed
-				r.dispatchWebhook(ctx, webhooks.EventTaskFailed, webhooks.TaskFailedData{
-					TaskID:   task.ID,
-					Title:    task.Title,
-					Project:  task.ProjectPath,
-					Duration: time.Since(start),
-					Error:    result.Error,
-					Phase:    "Quality Gates",
-				})
-
-				if recorder != nil {
-					recorder.SetModel(result.ModelName)
-					recorder.SetNavigator(state.hasNavigator)
-					if finErr := recorder.Finish("failed"); finErr != nil {
-						log.Warn("Failed to finish recording", slog.Any("error", finErr))
-					}
-				}
-				return result, nil
+				return r.failQualityGates(s, AlertEventTypeTaskFailed, nil, "Quality Gates")
 			}
 
 			// Quality gates passed - exit retry loop
@@ -249,37 +257,10 @@ func (r *Runner) executeQualityGates(s *executeState) (*ExecutionResult, error) 
 						r.reportProgress(task.ID, "Retry Failed", 100, result.Error)
 					}
 
-					r.emitAlertEvent(AlertEvent{
-						Type:      alertType,
-						TaskID:    task.ID,
-						TaskTitle: task.Title,
-						Project:   task.ProjectPath,
-						Error:     result.Error,
-						Metadata: map[string]string{
-							"error_category": errorCategory,
-							"phase":          "quality_retry",
-						},
-						Timestamp: time.Now(),
-					})
-
-					// Dispatch webhook for task failed
-					r.dispatchWebhook(ctx, webhooks.EventTaskFailed, webhooks.TaskFailedData{
-						TaskID:   task.ID,
-						Title:    task.Title,
-						Project:  task.ProjectPath,
-						Duration: time.Since(start),
-						Error:    result.Error,
-						Phase:    "Quality Retry",
-					})
-
-					if recorder != nil {
-						recorder.SetModel(result.ModelName)
-						recorder.SetNavigator(state.hasNavigator)
-						if finErr := recorder.Finish("failed"); finErr != nil {
-							log.Warn("Failed to finish recording", slog.Any("error", finErr))
-						}
-					}
-					return result, nil
+					return r.failQualityGates(s, alertType, map[string]string{
+						"error_category": errorCategory,
+						"phase":          "quality_retry",
+					}, "Quality Retry")
 				}
 
 				// Update result with retry execution stats
@@ -310,34 +291,7 @@ func (r *Runner) executeQualityGates(s *executeState) (*ExecutionResult, error) 
 
 			r.reportProgress(task.ID, "Quality Failed", 100, "Quality gates did not pass")
 
-			// Emit task failed event
-			r.emitAlertEvent(AlertEvent{
-				Type:      AlertEventTypeTaskFailed,
-				TaskID:    task.ID,
-				TaskTitle: task.Title,
-				Project:   task.ProjectPath,
-				Error:     result.Error,
-				Timestamp: time.Now(),
-			})
-
-			// Dispatch webhook for task failed
-			r.dispatchWebhook(ctx, webhooks.EventTaskFailed, webhooks.TaskFailedData{
-				TaskID:   task.ID,
-				Title:    task.Title,
-				Project:  task.ProjectPath,
-				Duration: time.Since(start),
-				Error:    result.Error,
-				Phase:    "Quality Gates",
-			})
-
-			if recorder != nil {
-				recorder.SetModel(result.ModelName)
-				recorder.SetNavigator(state.hasNavigator)
-				if finErr := recorder.Finish("failed"); finErr != nil {
-					log.Warn("Failed to finish recording", slog.Any("error", finErr))
-				}
-			}
-			return result, nil
+			return r.failQualityGates(s, AlertEventTypeTaskFailed, nil, "Quality Gates")
 		}
 
 		// Populate quality gate results in ExecutionResult (GH-209)

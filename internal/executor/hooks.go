@@ -26,7 +26,8 @@ type HooksConfig struct {
 
 	// RunTestsOnStop enables the Stop hook that runs build/tests before Claude finishes.
 	// When enabled, Claude must fix any build/test failures before completing.
-	// Default: true when Enabled is true
+	// Default: false (GH-2432); a nil pointer means "no override" and does not install
+	// the Stop hook. Set explicitly to true to opt in.
 	RunTestsOnStop *bool `yaml:"run_tests_on_stop,omitempty"`
 
 	// BlockDestructive enables the PreToolUse hook that blocks dangerous Bash commands.
@@ -106,7 +107,7 @@ func GetScriptNames(config *HooksConfig) []string {
 
 	var scripts []string
 
-	if GetBoolPtrValue(config.RunTestsOnStop, true) {
+	if GetBoolPtrValue(config.RunTestsOnStop, false) {
 		scripts = append(scripts, "pilot-stop-gate.sh")
 	}
 

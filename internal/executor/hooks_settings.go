@@ -16,8 +16,10 @@ func GenerateClaudeSettings(config *HooksConfig, scriptDir string) map[string]in
 
 	hooks := make(map[string][]HookMatcherEntry)
 
-	// Stop hook: run tests before Claude finishes (no matcher — Stop hooks must omit it)
-	if config.RunTestsOnStop == nil || *config.RunTestsOnStop {
+	// Stop hook: run tests before Claude finishes (no matcher — Stop hooks must omit it).
+	// GH-2432: the default is now false, so a nil pointer ("no override") must NOT
+	// install the Stop hook; only an explicit true opts in.
+	if GetBoolPtrValue(config.RunTestsOnStop, false) {
 		hooks["Stop"] = []HookMatcherEntry{
 			{
 				// Matcher intentionally nil — Stop hooks must not have matcher field

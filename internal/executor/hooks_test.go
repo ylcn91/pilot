@@ -33,8 +33,10 @@ func TestGenerateClaudeSettings(t *testing.T) {
 	}{
 		{"nil config", nil, 0},
 		{"disabled config", &HooksConfig{Enabled: false}, 0},
-		{"enabled with defaults", &HooksConfig{Enabled: true}, 2},               // Stop + PreToolUse
-		{"enabled with lint", &HooksConfig{Enabled: true, LintOnSave: true}, 3}, // Stop + PreToolUse + PostToolUse
+		// GH-2432: nil RunTestsOnStop no longer installs the Stop hook by default.
+		{"enabled with defaults", &HooksConfig{Enabled: true}, 1},               // PreToolUse only
+		{"enabled with lint", &HooksConfig{Enabled: true, LintOnSave: true}, 2}, // PreToolUse + PostToolUse
+		{"stop opt-in", &HooksConfig{Enabled: true, RunTestsOnStop: boolPtr(true)}, 2}, // Stop + PreToolUse
 		{"all disabled", &HooksConfig{Enabled: true, RunTestsOnStop: boolPtr(false), BlockDestructive: boolPtr(false)}, 0},
 	}
 
@@ -65,8 +67,9 @@ func TestGenerateClaudeSettings(t *testing.T) {
 // - Stop: no "matcher" field
 func TestGenerateClaudeSettingsJSONFormat(t *testing.T) {
 	config := &HooksConfig{
-		Enabled:    true,
-		LintOnSave: true,
+		Enabled:        true,
+		RunTestsOnStop: boolPtr(true), // GH-2432: Stop hook is now opt-in
+		LintOnSave:     true,
 	}
 
 	settings := GenerateClaudeSettings(config, "/scripts")
@@ -240,8 +243,9 @@ func TestGetScriptNames(t *testing.T) {
 	}{
 		{"nil config", nil, nil},
 		{"disabled", &HooksConfig{Enabled: false}, nil},
-		{"defaults", &HooksConfig{Enabled: true}, []string{"pilot-stop-gate.sh", "pilot-bash-guard.sh"}},
-		{"all features", &HooksConfig{Enabled: true, LintOnSave: true}, []string{"pilot-stop-gate.sh", "pilot-bash-guard.sh", "pilot-lint.sh"}},
+		// GH-2432: nil RunTestsOnStop no longer lists the Stop-hook script by default.
+		{"defaults", &HooksConfig{Enabled: true}, []string{"pilot-bash-guard.sh"}},
+		{"all features", &HooksConfig{Enabled: true, RunTestsOnStop: boolPtr(true), LintOnSave: true}, []string{"pilot-stop-gate.sh", "pilot-bash-guard.sh", "pilot-lint.sh"}},
 		{"all disabled", &HooksConfig{Enabled: true, RunTestsOnStop: boolPtr(false), BlockDestructive: boolPtr(false)}, []string{}},
 	}
 	for _, tt := range tests {
