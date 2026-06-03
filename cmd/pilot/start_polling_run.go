@@ -23,6 +23,7 @@ func (p *pollingRuntime) run() error {
 	tgHandler := p.tgHandler
 	dispatcher := p.dispatcher
 	briefScheduler := p.briefScheduler
+	architectScheduler := p.architectScheduler
 
 	// Dashboard mode: run TUI and handle shutdown via TUI quit
 	if p.dashboardMode && program != nil {
@@ -216,6 +217,9 @@ func (p *pollingRuntime) run() error {
 		if briefScheduler != nil {
 			briefScheduler.Stop()
 		}
+		if architectScheduler != nil {
+			architectScheduler.Stop()
+		}
 		return nil
 	}
 
@@ -241,6 +245,9 @@ func (p *pollingRuntime) run() error {
 	}
 	if briefScheduler != nil {
 		briefScheduler.Stop()
+	}
+	if architectScheduler != nil {
+		architectScheduler.Stop()
 	}
 
 	return nil

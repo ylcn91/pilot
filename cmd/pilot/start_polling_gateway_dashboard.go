@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/architect"
 	"github.com/ylcn91/pilot/internal/dashboard"
 	"github.com/ylcn91/pilot/internal/executor"
 	"github.com/ylcn91/pilot/internal/gateway"
@@ -63,6 +64,15 @@ func (p *pollingRuntime) setupGateway() {
 		if store != nil {
 			gwServer.SetDashboardStore(store)
 			gwServer.SetLogStreamStore(store)
+		}
+		// Wire the Architect radar findings sink into the gateway so periodic
+		// scans surface on web/TUI/desktop. The same store is handed to the
+		// architect scheduler (startArchitectScheduler), which refreshes it on
+		// each tick. Construct it only when the feature is enabled so a disabled
+		// config leaves /api/v1/architect reporting an empty radar.
+		if architectEnabled(cfg) {
+			p.architectStore = architect.NewFindingsStore()
+			gwServer.SetArchitectProvider(p.architectStore)
 		}
 		gwServer.SetGitGraphFetcher(func(path string, limit int) interface{} {
 			return dashboard.FetchGitGraph(path, limit)

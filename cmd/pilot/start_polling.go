@@ -68,6 +68,7 @@ func runPollingMode(cmd *cobra.Command, cfg *config.Config, projectPath string, 
 	p.startTelegramPolling()
 	p.startSlackSocketMode()
 	p.startBriefScheduler()
+	p.startArchitectScheduler()
 
 	return p.run()
 }

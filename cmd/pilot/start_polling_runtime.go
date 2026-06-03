@@ -12,6 +12,7 @@ import (
 	"github.com/ylcn91/pilot/internal/adapters/telegram"
 	"github.com/ylcn91/pilot/internal/alerts"
 	"github.com/ylcn91/pilot/internal/approval"
+	"github.com/ylcn91/pilot/internal/architect"
 	"github.com/ylcn91/pilot/internal/autopilot"
 	"github.com/ylcn91/pilot/internal/banner"
 	"github.com/ylcn91/pilot/internal/briefs"
@@ -67,6 +68,9 @@ type pollingRuntime struct {
 	ghPollers []*github.Poller
 
 	briefScheduler *briefs.Scheduler
+
+	architectStore     *architect.FindingsStore
+	architectScheduler *architect.Scheduler
 }
 
 // validatePollingConfig validates Telegram and Slack Socket Mode config.
