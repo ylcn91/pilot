@@ -127,32 +127,8 @@ func (d *DeliveryService) deliverSlack(ctx context.Context, brief *Brief, channe
 	// Format as Slack blocks
 	blocks := d.slackFmt.SlackBlocks(brief)
 
-	// Convert blocks to slack.Block format
-	slackBlocks := make([]slack.Block, 0, len(blocks))
-	for _, b := range blocks {
-		slackBlock := slack.Block{
-			Type: b["type"].(string),
-		}
-
-		if text, ok := b["text"].(map[string]interface{}); ok {
-			slackBlock.Text = &slack.TextObject{
-				Type: text["type"].(string),
-				Text: text["text"].(string),
-			}
-		}
-
-		if elements, ok := b["elements"].([]map[string]interface{}); ok {
-			slackBlock.Elements = make([]slack.TextObject, 0, len(elements))
-			for _, elem := range elements {
-				slackBlock.Elements = append(slackBlock.Elements, slack.TextObject{
-					Type: elem["type"].(string),
-					Text: elem["text"].(string),
-				})
-			}
-		}
-
-		slackBlocks = append(slackBlocks, slackBlock)
-	}
+	// Convert blocks to slack.Block format (panic-safe against malformed shapes)
+	slackBlocks := convertSlackBlocks(blocks)
 
 	msg := &slack.Message{
 		Channel: channel.Channel,
@@ -178,6 +154,48 @@ func (d *DeliveryService) deliverSlack(ctx context.Context, brief *Brief, channe
 	)
 
 	return result
+}
+
+// convertSlackBlocks converts the loosely-typed []map[string]any produced by
+// SlackFormatter.SlackBlocks into typed slack.Block values. Every type
+// assertion is comma-ok so a malformed block shape is skipped/ignored rather
+// than panicking the delivery (and the whole scheduler goroutine).
+func convertSlackBlocks(blocks []map[string]interface{}) []slack.Block {
+	slackBlocks := make([]slack.Block, 0, len(blocks))
+	for _, b := range blocks {
+		blockType, ok := b["type"].(string)
+		if !ok {
+			// A block without a string "type" is meaningless to Slack; skip it.
+			continue
+		}
+
+		slackBlock := slack.Block{Type: blockType}
+
+		if text, ok := b["text"].(map[string]interface{}); ok {
+			textType, _ := text["type"].(string)
+			textValue, _ := text["text"].(string)
+			slackBlock.Text = &slack.TextObject{
+				Type: textType,
+				Text: textValue,
+			}
+		}
+
+		if elements, ok := b["elements"].([]map[string]interface{}); ok {
+			slackBlock.Elements = make([]slack.TextObject, 0, len(elements))
+			for _, elem := range elements {
+				elemType, _ := elem["type"].(string)
+				elemText, _ := elem["text"].(string)
+				slackBlock.Elements = append(slackBlock.Elements, slack.TextObject{
+					Type: elemType,
+					Text: elemText,
+				})
+			}
+		}
+
+		slackBlocks = append(slackBlocks, slackBlock)
+	}
+
+	return slackBlocks
 }
 
 // deliverEmail sends brief via email

@@ -115,10 +115,11 @@ func TestMaybeCatchUpRecentBriefDoesNotFire(t *testing.T) {
 	// Sent "now": prevScheduled is always <= now (the loop stops once the next
 	// run would be after now), so a record at now is never Before(prevScheduled)
 	// and catch-up must not fire. This avoids the narrow flaky window just
-	// after the scheduled hour.
+	// after the scheduled hour. The record must be keyed by the production
+	// delivery identifier ("telegram:@test"), which is what catch-up queries.
 	seed := &memory.BriefRecord{
 		SentAt:    time.Now(),
-		Channel:   "telegram",
+		Channel:   "telegram:@test",
 		BriefType: "daily",
 	}
 	if err := store.RecordBriefSent(seed); err != nil {

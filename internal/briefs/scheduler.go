@@ -2,6 +2,7 @@ package briefs
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -208,9 +209,12 @@ func (s *Scheduler) maybeCatchUp(ctx context.Context) {
 		return
 	}
 
-	// Get the most recent brief sent for any channel
-	// We use "telegram" as a representative channel since it's the primary delivery mechanism
-	lastRecord, err := s.store.GetLastBriefSent("telegram")
+	// Determine "was a brief sent?" from the channels this deployment is
+	// actually configured to deliver to, not a hardcoded "telegram" literal.
+	// Records are keyed by the per-channel delivery identifier (see
+	// deliverSlack/deliverEmail/deliverTelegram and runBriefWithResults), so we
+	// query each configured channel and keep the most recent record across them.
+	lastRecord, err := s.lastBriefSentForConfiguredChannels()
 	if err != nil {
 		s.logger.Warn("catch-up: failed to get last brief sent", "error", err)
 		return
@@ -268,6 +272,47 @@ func (s *Scheduler) maybeCatchUp(ctx context.Context) {
 			"prev_scheduled", prevScheduled.Format(time.RFC3339),
 		)
 	}
+}
+
+// recordChannelKey returns the store key under which a successful delivery to
+// the given channel is recorded. It must match the DeliveryResult.Channel
+// produced by deliverSlack/deliverEmail/deliverTelegram, since
+// runBriefWithResults records under that identifier.
+func recordChannelKey(channel ChannelConfig) string {
+	switch channel.Type {
+	case "email":
+		return "email"
+	default:
+		return fmt.Sprintf("%s:%s", channel.Type, channel.Channel)
+	}
+}
+
+// lastBriefSentForConfiguredChannels returns the most recent brief record
+// across all configured delivery channels, or nil if none has ever been sent.
+// This derives the "was a brief sent?" signal from the actual configuration
+// rather than assuming a single representative channel.
+func (s *Scheduler) lastBriefSentForConfiguredChannels() (*memory.BriefRecord, error) {
+	seen := make(map[string]struct{}, len(s.config.Channels))
+	var latest *memory.BriefRecord
+	for _, channel := range s.config.Channels {
+		key := recordChannelKey(channel)
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		record, err := s.store.GetLastBriefSent(key)
+		if err != nil {
+			return nil, err
+		}
+		if record == nil {
+			continue
+		}
+		if latest == nil || record.SentAt.After(latest.SentAt) {
+			latest = record
+		}
+	}
+	return latest, nil
 }
 
 // Status returns scheduler status information
