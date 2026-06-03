@@ -106,7 +106,7 @@ func (m *TelegramMessenger) SendResult(ctx context.Context, contextID, threadID,
 
 // SendChunked sends long content split into platform-appropriate chunks.
 func (m *TelegramMessenger) SendChunked(ctx context.Context, contextID, threadID, content, prefix string) error {
-	chunks := chunkContent(content, m.MaxMessageLength())
+	chunks := comms.ChunkContent(content, m.MaxMessageLength())
 	for i, chunk := range chunks {
 		text := chunk
 		if prefix != "" && i == 0 {
