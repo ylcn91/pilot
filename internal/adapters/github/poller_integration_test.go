@@ -144,12 +144,15 @@ func TestPoller_Integration_LabelFiltering(t *testing.T) {
 					CreatedAt: time.Now(),
 				},
 				{
+					// NOTE: pilot-failed is intentionally NOT used here: since GH-2176
+					// a pilot-failed issue (without pilot-done) is auto-retried, not
+					// skipped. pilot-blocked is a deterministic skip label (GH-2402).
 					Number: 13,
-					Title:  "Has pilot-failed label (should skip)",
+					Title:  "Has pilot-blocked label (should skip)",
 					State:  "open",
 					Labels: []Label{
 						{Name: "pilot"},
-						{Name: "pilot-failed"},
+						{Name: "pilot-blocked"},
 					},
 					CreatedAt: time.Now(),
 				},
