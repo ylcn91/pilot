@@ -52,6 +52,48 @@ func (c *clientIssueCreator) CreatePilotIssue(ctx context.Context, owner, repo, 
 	return github.CreatePilotIssue(ctx, c.client, github.AllowAllIssueRepos(), owner, repo, title, body, labels)
 }
 
+// SubIssueCreator is the minimal sub-issue creation surface the Linear EMIT
+// backend needs. It mirrors executor.SubIssueCreator (which *linear.Client
+// satisfies) but is redeclared here so the architect package depends only on a
+// narrow seam, keeping the Linear emit path unit-testable with a network-free
+// stub. CreateIssue files a child of parentID and returns the new issue's
+// identifier and URL.
+type SubIssueCreator interface {
+	CreateIssue(ctx context.Context, parentID, title, body string, labels []string) (identifier string, url string, err error)
+}
+
+// linearIssueCreator adapts a SubIssueCreator (e.g. *linear.Client) to the
+// Emitter's IssueCreator interface. Every Architect finding becomes one Linear
+// sub-issue hung off parentID; the dedup marker travels inside body exactly as
+// it does for GitHub, so MarkerFor still embeds and cross-run dedup still works.
+// owner/repo from the Emitter are ignored — Linear derives team/project from the
+// parent. The returned *github.Issue is a thin shim (number is unavailable from
+// Linear's string identifier) so the Emitter's logging path stays uniform.
+type linearIssueCreator struct {
+	client   SubIssueCreator
+	parentID string
+}
+
+// NewLinearIssueCreator wraps a SubIssueCreator as an IssueCreator that files
+// every finding as a sub-issue under parentID. Returns nil when client is nil so
+// callers can detect an unconfigured Linear adapter. parentID must be a real,
+// existing Linear issue ID; the caller is responsible for rejecting an empty one
+// before reaching a non-dry-run emit.
+func NewLinearIssueCreator(client SubIssueCreator, parentID string) IssueCreator {
+	if client == nil {
+		return nil
+	}
+	return &linearIssueCreator{client: client, parentID: parentID}
+}
+
+func (c *linearIssueCreator) CreatePilotIssue(ctx context.Context, _, _, title, body string, labels []string) (*github.Issue, error) {
+	identifier, _, err := c.client.CreateIssue(ctx, c.parentID, title, body, labels)
+	if err != nil {
+		return nil, err
+	}
+	return &github.Issue{Title: identifier}, nil
+}
+
 // Emitter is the EMIT stage: it turns ranked proposals into idempotent GitHub
 // issues. It owns the issue creator, the dedup tracker, the target owner/repo,
 // and the labels to apply. Emit is the single entry point.

@@ -13,6 +13,24 @@ import (
 // design; this keeps a single run from flooding a repo with issues.
 const DefaultArchitectMaxTickets = 10
 
+// Architect export targets select where a run files its proposals. github (the
+// default, preserving prior behaviour) files GitHub issues; linear files one
+// Linear sub-issue per finding under an existing parent epic; adr writes an ADR
+// document and is only meaningful for the RFC lens.
+const (
+	ArchitectExportGitHub = "github"
+	ArchitectExportLinear = "linear"
+	ArchitectExportADR    = "adr"
+
+	// DefaultArchitectExport is the export target applied when none is set,
+	// preserving the historical GitHub-issue behaviour.
+	DefaultArchitectExport = ArchitectExportGitHub
+)
+
+// ValidArchitectExports lists the accepted export targets, for validation and
+// help text.
+var ValidArchitectExports = []string{ArchitectExportGitHub, ArchitectExportLinear, ArchitectExportADR}
+
 // ArchitectThresholds bounds the deterministic SCAN collectors. LOC flags Go
 // files at or over the given line count; MinCoverage flags packages below the
 // given coverage fraction. Zero values fall back to the collectors' own
@@ -45,6 +63,11 @@ type ArchitectConfig struct {
 	// MaxTickets caps how many ranked proposals a run emits as issues. Zero =>
 	// DefaultArchitectMaxTickets at use-site.
 	MaxTickets int `yaml:"max_tickets,omitempty"`
+
+	// Export selects where proposals are filed: "github" (default), "linear", or
+	// "adr". Empty falls back to DefaultArchitectExport at use-site. The --export
+	// flag overrides this per run.
+	Export string `yaml:"export,omitempty"`
 
 	// Labels are applied to every filed issue. Empty falls back to the
 	// emitter's default pilot+architect label set.
@@ -82,6 +105,10 @@ func (a *ArchitectConfig) Validate() error {
 		return fmt.Errorf("architect.max_tickets must be >= 1, got %d", a.MaxTickets)
 	}
 
+	if a.Export != "" && !isValidArchitectExport(a.Export) {
+		return fmt.Errorf("architect.export must be one of %v, got %q", ValidArchitectExports, a.Export)
+	}
+
 	if a.Schedule != "" {
 		if _, err := cron.ParseStandard(a.Schedule); err != nil {
 			return fmt.Errorf("architect.schedule is not a valid cron expression: %w", err)
@@ -89,4 +116,14 @@ func (a *ArchitectConfig) Validate() error {
 	}
 
 	return nil
+}
+
+// isValidArchitectExport reports whether target names a supported export.
+func isValidArchitectExport(target string) bool {
+	for _, v := range ValidArchitectExports {
+		if v == target {
+			return true
+		}
+	}
+	return false
 }
