@@ -22,18 +22,18 @@ func (r *Runner) executeLintPushPR(s *executeState) (*ExecutionResult, error) {
 
 	// Handle direct commit mode: push directly to main
 
-	// Pre-push lint gate (GH-1376)
-	if r.config != nil && r.config.PrePushLint != nil && *r.config.PrePushLint {
-		r.reportProgress(task.ID, "Linting", 95, "Running pre-push lint check...")
-		lintResult := git.autoFixLint(ctx)
-		if !lintResult.Clean && !lintResult.FixedAll {
-			// Include unfixable lint issues in execution result for self-review
-			if len(lintResult.Issues) > 0 {
-				result.IntentWarning = "Lint issues detected but not auto-fixable:\n" + strings.Join(lintResult.Issues, "\n")
+	if task.DirectCommit {
+		// Pre-push lint gate (GH-1376)
+		if r.config != nil && r.config.PrePushLint != nil && *r.config.PrePushLint {
+			r.reportProgress(task.ID, "Linting", 95, "Running pre-push lint check...")
+			lintResult := git.autoFixLint(ctx)
+			if !lintResult.Clean && !lintResult.FixedAll {
+				// Include unfixable lint issues in execution result for self-review
+				if len(lintResult.Issues) > 0 {
+					result.IntentWarning = "Lint issues detected but not auto-fixable:\n" + strings.Join(lintResult.Issues, "\n")
+				}
 			}
 		}
-	}
-	if task.DirectCommit {
 		r.reportProgress(task.ID, "Pushing", 96, "Pushing to main...")
 
 		if err := git.PushToMain(ctx); err != nil {
