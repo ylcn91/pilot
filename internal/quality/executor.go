@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ylcn91/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/pilotapi"
 )
 
 // ExecutorConfig configures quality gate execution in the pipeline
@@ -42,6 +43,26 @@ type ExecutionOutcome struct {
 	ShouldRetry   bool
 	RetryFeedback string // Error feedback to send to Claude for retry
 	Attempt       int
+}
+
+// GateDetails converts the per-gate results into the package-neutral
+// pilotapi.QualityGateDetail slice consumed by the executor. Returns nil when
+// results is nil.
+func GateDetails(results *CheckResults) []pilotapi.QualityGateDetail {
+	if results == nil {
+		return nil
+	}
+	details := make([]pilotapi.QualityGateDetail, len(results.Results))
+	for i, r := range results.Results {
+		details[i] = pilotapi.QualityGateDetail{
+			Name:       r.GateName,
+			Passed:     r.Status == StatusPassed,
+			Duration:   r.Duration,
+			RetryCount: r.RetryCount,
+			Error:      r.Error,
+		}
+	}
+	return details
 }
 
 // Check runs all quality gates and returns the outcome

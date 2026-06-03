@@ -55,22 +55,12 @@ func (c *simpleQualityChecker) Check(ctx context.Context) (*QualityOutcome, erro
 		Passed:        results.AllPassed,
 		ShouldRetry:   !results.AllPassed && c.config.OnFailure.Action == quality.ActionRetry,
 		TotalDuration: results.TotalTime,
-		GateDetails:   make([]QualityGateDetail, 0, len(results.Results)),
+		GateDetails:   quality.GateDetails(results),
 	}
 
 	// Build retry feedback if failed
 	if !results.AllPassed {
 		outcome.RetryFeedback = quality.FormatErrorFeedback(results)
-	}
-
-	for _, r := range results.Results {
-		outcome.GateDetails = append(outcome.GateDetails, QualityGateDetail{
-			Name:       r.GateName,
-			Passed:     r.Status == quality.StatusPassed,
-			Duration:   r.Duration,
-			RetryCount: r.RetryCount,
-			Error:      r.Error,
-		})
 	}
 
 	return outcome, nil

@@ -253,16 +253,7 @@ func (w *qualityCheckerWrapper) Check(ctx context.Context) (*executor.QualityOut
 	// Populate gate details if results are available (GH-209)
 	if outcome.Results != nil {
 		result.TotalDuration = outcome.Results.TotalTime
-		result.GateDetails = make([]executor.QualityGateDetail, len(outcome.Results.Results))
-		for i, r := range outcome.Results.Results {
-			result.GateDetails[i] = executor.QualityGateDetail{
-				Name:       r.GateName,
-				Passed:     r.Status == quality.StatusPassed,
-				Duration:   r.Duration,
-				RetryCount: r.RetryCount,
-				Error:      r.Error,
-			}
-		}
+		result.GateDetails = quality.GateDetails(outcome.Results)
 	}
 
 	return result, nil

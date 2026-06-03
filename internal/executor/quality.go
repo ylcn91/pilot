@@ -2,32 +2,17 @@ package executor
 
 import (
 	"context"
-	"time"
+
+	"github.com/ylcn91/pilot/internal/pilotapi"
 )
 
-// QualityGateDetail represents detailed information about a single gate check.
-// This is used to pass gate results from the quality package to the executor
-// without creating import cycles.
-type QualityGateDetail struct {
-	Name       string
-	Passed     bool
-	Duration   time.Duration
-	RetryCount int
-	Error      string
-}
+// QualityGateDetail is the shared gate-detail contract, defined in the leaf
+// pilotapi package. Aliased here so existing in-package references keep working.
+type QualityGateDetail = pilotapi.QualityGateDetail
 
-// QualityOutcome represents the result of quality gate checks.
-// This mirrors quality.ExecutionOutcome to avoid import cycles.
-type QualityOutcome struct {
-	Passed        bool
-	ShouldRetry   bool
-	RetryFeedback string // Error feedback to send to Claude for retry
-	Attempt       int
-	// GateDetails contains detailed results for each gate
-	GateDetails []QualityGateDetail
-	// TotalDuration is the total time spent running all gates
-	TotalDuration time.Duration
-}
+// QualityOutcome is the shared quality-run contract, defined in the leaf
+// pilotapi package. Aliased here so existing in-package references keep working.
+type QualityOutcome = pilotapi.QualityOutcome
 
 // QualityChecker is an interface for running quality gate checks.
 // This interface allows the executor to run quality gates without
