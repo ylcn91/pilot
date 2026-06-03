@@ -1,3 +1,8 @@
+---
+title: Architecture & Execution Flow
+description: Pilot's system architecture, the full issue-to-merged-PR execution flow, component interactions, and the autopilot state machine.
+---
+
 import { Callout } from 'nextra/components'
 
 # Architecture & Execution Flow
@@ -6,27 +11,20 @@ Pilot is a Go-based autonomous development pipeline. This page covers the system
 
 ## High-Level Architecture
 
-```
-                     ┌─────────────────────────────────────────┐
-                     │              CLI (cmd/pilot)            │
-                     │  start | task | github | telegram | ... │
-                     └─────────────────┬───────────────────────┘
-                                       │
-                     ┌─────────────────▼───────────────────────┐
-                     │           internal/pilot                │
-                     │  Orchestration + Component Coordination │
-                     └──────────┬─────────────────┬────────────┘
-                                │                 │
-         ┌──────────────────────┼─────────────────┼───────────────────────┐
-         │                      │                 │                       │
-┌────────▼────────┐  ┌──────────▼──────────┐  ┌──▼─────────────┐  ┌──────▼──────┐
-│    Adapters     │  │     Executor        │  │    Memory      │  │   Gateway   │
-│ telegram/github │  │ Claude Code Runner  │  │ SQLite + Graph │  │ HTTP + WS   │
-│ linear/jira/    │  │ Progress Display    │  │ Patterns Store │  │ Webhooks    │
-│ slack/discord/  │  │ Git Operations      │  └────────────────┘  └─────────────┘
-│ plane/gitlab    │  │ Quality Gates       │
-└─────────────────┘  │ Alerts Integration  │
-                     └─────────────────────┘
+```mermaid
+flowchart TD
+    CLI["CLI (cmd/pilot)<br/>start · task · github · telegram · ..."]
+    Pilot["internal/pilot<br/>Orchestration + Component Coordination"]
+    Adapters["Adapters<br/>telegram · github · linear · jira<br/>slack · discord · plane · gitlab"]
+    Executor["Executor<br/>Claude Code Runner · Progress Display<br/>Git Operations · Quality Gates · Alerts"]
+    Memory["Memory<br/>SQLite + Graph · Patterns Store"]
+    Gateway["Gateway<br/>HTTP + WS · Webhooks"]
+
+    CLI --> Pilot
+    Pilot --> Adapters
+    Pilot --> Executor
+    Pilot --> Memory
+    Pilot --> Gateway
 ```
 
 **37 packages** across four layers:
@@ -42,58 +40,19 @@ Pilot is a Go-based autonomous development pipeline. This page covers the system
 
 This is the primary data flow — the path a GitHub issue takes from creation to merged PR. For the step-by-step runtime walkthrough with Navigator/non-Navigator/LocalMode callouts, see [Execution Pipeline](./execution-pipeline).
 
-```
-  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-  │   Telegram    │     │ GitHub Issue │     │ Linear/Jira  │
-  │   Message     │     │ (label:pilot)│     │   Webhook    │
-  └──────┬───────┘     └──────┬───────┘     └──────┬───────┘
-         │                    │                     │
-         └────────────────────┼─────────────────────┘
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │   Dispatcher    │  Per-project queue
-                    │                 │  Sequential by default
-                    └────────┬────────┘
-                             │
-                    ┌────────▼────────┐
-                    │ Model Routing   │  Classify complexity:
-                    │                 │  trivial → Haiku
-                    │                 │  simple/medium → Sonnet 4.6
-                    │                 │  complex → Opus 4.6
-                    └────────┬────────┘
-                             │
-                    ┌────────▼────────┐
-                    │ Epic Detection  │  Is this too big for one PR?
-                    │                 │  Yes → decompose into 3-5 subtasks
-                    │                 │  No  → continue
-                    └────────┬────────┘
-                             │
-                    ┌────────▼────────┐
-                    │ Executor        │  Claude Code subprocess
-                    │ runner.Execute  │  stream-json output parsing
-                    │                 │  Progress tracking + alerts
-                    └────────┬────────┘
-                             │
-                    ┌────────▼────────┐
-                    │ Quality Gates   │  Build → Test → Lint → Coverage
-                    │                 │  Failed? → retry with error feedback
-                    └────────┬────────┘
-                             │
-                    ┌────────▼────────┐
-                    │ Self-Review     │  Claude reviews its own diff
-                    │                 │  May push additional commits
-                    └────────┬────────┘
-                             │
-                    ┌────────▼────────┐
-                    │ Git Push + PR   │  Branch: pilot/GH-{number}
-                    │ Creation        │  PR linked to issue
-                    └────────┬────────┘
-                             │
-                    ┌────────▼────────┐
-                    │ Autopilot       │  CI monitoring → merge → release
-                    │ State Machine   │  (see Autopilot section below)
-                    └─────────────────┘
+```mermaid
+flowchart TD
+    TG["Telegram Message"] --> D
+    GH["GitHub Issue<br/>(label:pilot)"] --> D
+    LJ["Linear/Jira Webhook"] --> D
+    D["Dispatcher<br/>Per-project queue · Sequential by default"]
+    D --> MR["Model Routing<br/>trivial → Haiku · simple/medium → Sonnet 4.6 · complex → Opus 4.6"]
+    MR --> EP["Epic Detection<br/>Too big for one PR? → decompose into 3–5 subtasks"]
+    EP --> EX["Executor (runner.Execute)<br/>Claude Code subprocess · stream-json parsing · progress + alerts"]
+    EX --> QG["Quality Gates<br/>Build → Test → Lint → Coverage · retry with error feedback"]
+    QG --> SR["Self-Review<br/>Claude reviews its own diff · may push commits"]
+    SR --> PR["Git Push + PR Creation<br/>Branch: pilot/GH-{number} · PR linked to issue"]
+    PR --> AP["Autopilot State Machine<br/>CI monitoring → merge → release"]
 ```
 
 ### Step-by-Step Walkthrough
@@ -199,53 +158,28 @@ Pilot pushes the branch (`pilot/GH-{issue_number}`) and creates a PR via the Git
 
 Once a PR exists, the autopilot controller manages its lifecycle through 10 stages:
 
-```
-                              ┌─────────────┐
-                              │ PR Created  │
-                              └──────┬──────┘
-                                     │
-                              ┌──────▼──────┐
-                              │ Waiting CI  │ ← Poll every 30s
-                              └──────┬──────┘   Refresh HeadSHA from API
-                                     │
-                           ┌─────────┴─────────┐
-                           │                   │
-                    ┌──────▼──────┐     ┌──────▼──────┐
-                    │  CI Passed  │     │  CI Failed  │
-                    └──────┬──────┘     └──────┬──────┘
-                           │                   │
-                      ┌────┴────┐         ┌────▼────────────┐
-                      │         │         │ Feedback Loop   │
-                      │    env? │         │ Create fix issue│
-                      │         │         │ on same branch  │
-                ┌─────▼──┐ ┌───▼─────┐   └────────┬────────┘
-                │  dev/  │ │  prod   │            │
-                │  stage │ │         │     ┌──────▼──────┐
-                └───┬────┘ └───┬─────┘     │  New PR     │
-                    │          │           │  (same branch)│
-                    │   ┌──────▼──────┐    └──────────────┘
-                    │   │  Awaiting   │
-                    │   │  Approval   │
-                    │   └──────┬──────┘
-                    │          │ Human approves
-                    │          │ (Telegram/Slack/GitHub Review)
-                    └────┬─────┘
-                         │
-                  ┌──────▼──────┐
-                  │   Merging   │ ← Squash merge (default)
-                  └──────┬──────┘
-                         │
-                  ┌──────▼──────┐
-                  │   Merged    │
-                  └──────┬──────┘
-                         │
-                  ┌──────▼──────────┐
-                  │ Post-Merge CI   │ ← Optional: wait for main CI
-                  └──────┬──────────┘
-                         │
-                  ┌──────▼──────┐
-                  │  Releasing  │ ← Optional: auto-release
-                  └─────────────┘
+```mermaid
+stateDiagram-v2
+    [*] --> PRCreated : PR opened
+    PRCreated --> WaitingCI
+    WaitingCI --> CIPassed : checks green
+    WaitingCI --> CIFailed : check failed
+
+    CIFailed --> FeedbackLoop
+    FeedbackLoop --> WaitingCI : new PR (same branch)
+
+    CIPassed --> Merging : dev / stage (auto)
+    CIPassed --> AwaitingApproval : prod
+    AwaitingApproval --> Merging : human approves<br/>(Telegram/Slack/GitHub)
+
+    Merging --> Merged : squash merge
+    Merged --> PostMergeCI : optional
+    PostMergeCI --> Releasing : optional auto-release
+    Releasing --> [*]
+    Merged --> [*]
+
+    note right of WaitingCI : Poll every 30s,<br/>refresh HeadSHA from API
+    note right of FeedbackLoop : Create fix issue<br/>on same branch
 ```
 
 ### Stage Definitions
@@ -280,39 +214,26 @@ Once a PR exists, the autopilot controller manages its lifecycle through 10 stag
 
 ## Component Interaction Diagram
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                          cmd/pilot/main.go                         │
-│  Parses CLI flags, loads config, wires components, starts adapters │
-└─────┬─────────────┬──────────────┬──────────────┬──────────────────┘
-      │             │              │              │
-      ▼             ▼              ▼              ▼
-┌──────────┐ ┌──────────┐ ┌────────────┐ ┌──────────────┐
-│ GitHub   │ │ Telegram │ │ Executor   │ │ Autopilot    │
-│ Poller   │ │ Bot      │ │            │ │ Controller   │
-│          │ │          │ │ ┌────────┐ │ │              │
-│ Issues → │ │ Msgs  → │ │ │Runner  │ │ │ PR lifecycle │
-│ Executor │ │ Executor │ │ │Backend │ │ │ CI monitor   │
-│          │ │          │ │ │Quality │ │ │ Auto-merger   │
-└──────────┘ └──────────┘ │ │Alerts  │ │ │ Feedback loop│
-┌──────────┐ ┌──────────┐ │ └────────┘ │ └──────┬───────┘
-│ Discord  │ │ Plane    │ └──────┬─────┘        │
-│ Bot      │ │ Poller   │       │              │
-│          │ │          │       │              │
-│ Cmds  → │ │ Issues → │       │              │
-│ Executor │ │ Executor │       │              │
-└──────────┘ └──────────┘       │              │
-                                 │              │
-                    ┌────────────┼──────────────┘
-                    │            │
-                    ▼            ▼
-             ┌──────────┐ ┌──────────┐
-             │ Memory   │ │ Alerts   │
-             │ (SQLite) │ │ Engine   │
-             │          │ │          │
-             │ Patterns │ │ Slack    │
-             │ History  │ │ Telegram │
-             └──────────┘ └──────────┘
+```mermaid
+flowchart TD
+    Main["cmd/pilot/main.go<br/>Parses CLI flags · loads config · wires components · starts adapters"]
+
+    Main --> GHP["GitHub Poller<br/>Issues → Executor"]
+    Main --> TGB["Telegram Bot<br/>Msgs → Executor"]
+    Main --> DCB["Discord Bot<br/>Cmds → Executor"]
+    Main --> PLP["Plane Poller<br/>Issues → Executor"]
+    Main --> EX["Executor<br/>Runner · Backend · Quality · Alerts"]
+    Main --> AP["Autopilot Controller<br/>PR lifecycle · CI monitor · Auto-merger · Feedback loop"]
+
+    GHP --> EX
+    TGB --> EX
+    DCB --> EX
+    PLP --> EX
+
+    EX --> MEM["Memory (SQLite)<br/>Patterns · History"]
+    EX --> AL["Alerts Engine<br/>Slack · Telegram"]
+    AP --> MEM
+    AP --> AL
 ```
 
 ### Data Flow Through Key Structs
@@ -380,34 +301,13 @@ Context intelligence is Pilot's core value proposition. The prompt injection (`S
 
 When CI fails on a Pilot PR, the feedback loop activates:
 
-```
-CI Failure Detected
-       │
-       ▼
-┌─────────────────────┐
-│ Close failed PR     │ ← Unblocks sequential poller
-└──────────┬──────────┘
-           │
-┌──────────▼──────────┐
-│ Create fix issue    │ ← Title: "Fix CI: {original title}"
-│ with metadata       │ ← Body: <!-- autopilot-meta branch:pilot/GH-123 -->
-│                     │ ← Labels: pilot, autopilot-fix
-└──────────┬──────────┘
-           │
-┌──────────▼──────────┐
-│ Poller picks up     │ ← parseAutopilotBranch() reads metadata
-│ fix issue           │ ← Checks out SAME branch, not new one
-└──────────┬──────────┘
-           │
-┌──────────▼──────────┐
-│ Execute fix         │ ← Claude sees CI error logs
-│ on original branch  │ ← Pushes fix commits
-└──────────┬──────────┘
-           │
-┌──────────▼──────────┐
-│ New PR from same    │ ← Same branch, fresh PR
-│ branch              │ ← Re-enters autopilot pipeline
-└─────────────────────┘
+```mermaid
+flowchart TD
+    F["CI Failure Detected"] --> C["Close failed PR<br/>Unblocks sequential poller"]
+    C --> I["Create fix issue with metadata<br/>Title: 'Fix CI: {original title}'<br/>Body: &lt;!-- autopilot-meta branch:pilot/GH-123 --&gt;<br/>Labels: pilot, autopilot-fix"]
+    I --> P["Poller picks up fix issue<br/>parseAutopilotBranch() reads metadata<br/>Checks out SAME branch, not new one"]
+    P --> E["Execute fix on original branch<br/>Claude sees CI error logs · pushes fix commits"]
+    E --> N["New PR from same branch<br/>Fresh PR · re-enters autopilot pipeline"]
 ```
 
 The branch metadata comment (`<!-- autopilot-meta branch:X -->`) ensures the fix happens on the original branch rather than creating a new one.
