@@ -11,12 +11,13 @@ import (
 // and removes the label so they can be picked up again.
 // GH-1830: This handles restart/crash scenarios where items were left orphaned.
 func (p *Poller) recoverOrphanedIssues(ctx context.Context) {
-	if p.inProgressLabelID == "" {
-		return
-	}
-
 	for _, projectID := range p.config.ProjectIDs {
-		items, err := p.client.ListWorkItems(ctx, p.config.WorkspaceSlug, projectID, p.inProgressLabelID)
+		inProgressLabelID := p.inProgressLabelIDs[projectID]
+		if inProgressLabelID == "" {
+			continue
+		}
+
+		items, err := p.client.ListWorkItems(ctx, p.config.WorkspaceSlug, projectID, inProgressLabelID)
 		if err != nil {
 			p.logger.Warn("Failed to check for orphaned issues",
 				slog.String("project_id", projectID),
@@ -35,7 +36,7 @@ func (p *Poller) recoverOrphanedIssues(ctx context.Context) {
 		)
 
 		for _, item := range items {
-			if err := p.client.RemoveLabel(ctx, p.config.WorkspaceSlug, projectID, item.ID, p.inProgressLabelID); err != nil {
+			if err := p.client.RemoveLabel(ctx, p.config.WorkspaceSlug, projectID, item.ID, inProgressLabelID); err != nil {
 				p.logger.Warn("Failed to remove in-progress label from orphaned issue",
 					slog.String("id", item.ID),
 					slog.Any("error", err),
@@ -56,7 +57,11 @@ func (p *Poller) checkForNewIssues(ctx context.Context) {
 	var allItems []WorkItem
 
 	for _, projectID := range p.config.ProjectIDs {
-		items, err := p.client.ListWorkItems(ctx, p.config.WorkspaceSlug, projectID, p.pilotLabelID)
+		pilotLabelID := p.pilotLabelIDs[projectID]
+		if pilotLabelID == "" {
+			continue
+		}
+		items, err := p.client.ListWorkItems(ctx, p.config.WorkspaceSlug, projectID, pilotLabelID)
 		if err != nil {
 			p.logger.Warn("Failed to fetch work items",
 				slog.String("project_id", projectID),
@@ -85,7 +90,7 @@ func (p *Poller) checkForNewIssues(ctx context.Context) {
 		// Skip if has status label (in-progress, done, or failed)
 		if p.hasStatusLabel(&item) {
 			// Only mark as processed if it has done label (allow retry of failed)
-			if HasLabelID(&item, p.doneLabelID) {
+			if doneLabelID := p.doneLabelIDs[item.ProjectID]; doneLabelID != "" && HasLabelID(&item, doneLabelID) {
 				p.markProcessed(item.ID)
 			}
 			continue
@@ -135,9 +140,13 @@ func (p *Poller) processIssueAsync(ctx context.Context, item WorkItem) {
 	// consumers see them. See sanitize.go for the shared helper.
 	sanitizeWorkItemInPlace(&item)
 
+	inProgressLabelID := p.inProgressLabelIDs[item.ProjectID]
+	doneLabelID := p.doneLabelIDs[item.ProjectID]
+	failedLabelID := p.failedLabelIDs[item.ProjectID]
+
 	// Add in-progress label
-	if p.inProgressLabelID != "" {
-		_ = p.client.AddLabel(ctx, p.config.WorkspaceSlug, item.ProjectID, item.ID, p.inProgressLabelID)
+	if inProgressLabelID != "" {
+		_ = p.client.AddLabel(ctx, p.config.WorkspaceSlug, item.ProjectID, item.ID, inProgressLabelID)
 	}
 
 	// GH-1832: Transition to started state on dispatch
@@ -157,24 +166,24 @@ func (p *Poller) processIssueAsync(ctx context.Context, item WorkItem) {
 			slog.Any("error", err),
 		)
 		// Remove in-progress label, add failed label
-		if p.inProgressLabelID != "" {
-			_ = p.client.RemoveLabel(ctx, p.config.WorkspaceSlug, item.ProjectID, item.ID, p.inProgressLabelID)
+		if inProgressLabelID != "" {
+			_ = p.client.RemoveLabel(ctx, p.config.WorkspaceSlug, item.ProjectID, item.ID, inProgressLabelID)
 		}
-		if p.failedLabelID != "" {
-			_ = p.client.AddLabel(ctx, p.config.WorkspaceSlug, item.ProjectID, item.ID, p.failedLabelID)
+		if failedLabelID != "" {
+			_ = p.client.AddLabel(ctx, p.config.WorkspaceSlug, item.ProjectID, item.ID, failedLabelID)
 		}
 		// GH-1832: On failure, leave state as-is (user decides)
 		return
 	}
 
 	// Remove in-progress label
-	if p.inProgressLabelID != "" {
-		_ = p.client.RemoveLabel(ctx, p.config.WorkspaceSlug, item.ProjectID, item.ID, p.inProgressLabelID)
+	if inProgressLabelID != "" {
+		_ = p.client.RemoveLabel(ctx, p.config.WorkspaceSlug, item.ProjectID, item.ID, inProgressLabelID)
 	}
 
 	// Add done label on success
-	if result != nil && result.Success && p.doneLabelID != "" {
-		_ = p.client.AddLabel(ctx, p.config.WorkspaceSlug, item.ProjectID, item.ID, p.doneLabelID)
+	if result != nil && result.Success && doneLabelID != "" {
+		_ = p.client.AddLabel(ctx, p.config.WorkspaceSlug, item.ProjectID, item.ID, doneLabelID)
 	}
 
 	// GH-1832: Transition to completed state on success
@@ -214,15 +223,15 @@ func (p *Poller) processIssueAsync(ctx context.Context, item WorkItem) {
 	}
 }
 
-// hasStatusLabel checks if a work item has any status label UUID.
+// hasStatusLabel checks if a work item has any status label UUID for its project.
 func (p *Poller) hasStatusLabel(item *WorkItem) bool {
-	if p.inProgressLabelID != "" && HasLabelID(item, p.inProgressLabelID) {
+	if inProgressLabelID := p.inProgressLabelIDs[item.ProjectID]; inProgressLabelID != "" && HasLabelID(item, inProgressLabelID) {
 		return true
 	}
-	if p.doneLabelID != "" && HasLabelID(item, p.doneLabelID) {
+	if doneLabelID := p.doneLabelIDs[item.ProjectID]; doneLabelID != "" && HasLabelID(item, doneLabelID) {
 		return true
 	}
-	if p.failedLabelID != "" && HasLabelID(item, p.failedLabelID) {
+	if failedLabelID := p.failedLabelIDs[item.ProjectID]; failedLabelID != "" && HasLabelID(item, failedLabelID) {
 		return true
 	}
 	return false

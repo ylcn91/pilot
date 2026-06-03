@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -158,6 +159,31 @@ func (h *WebhookHandler) processIssue(ctx context.Context, issue *Issue) error {
 	return nil
 }
 
+// webhookIssue mirrors Issue for webhook decoding. The only deviation is the
+// description: Jira Server sends it as a plain string while Jira Cloud sends
+// an Atlassian Document Format (ADF) object, so it is decoded as RawMessage
+// and normalized to text afterwards.
+type webhookIssue struct {
+	ID     string        `json:"id"`
+	Key    string        `json:"key"`
+	Self   string        `json:"self"`
+	Fields webhookFields `json:"fields"`
+}
+
+type webhookFields struct {
+	Summary     string          `json:"summary"`
+	Description json.RawMessage `json:"description"`
+	IssueType   IssueType       `json:"issuetype"`
+	Status      Status          `json:"status"`
+	Priority    *JiraPriority   `json:"priority,omitempty"`
+	Labels      []string        `json:"labels"`
+	Assignee    *User           `json:"assignee,omitempty"`
+	Reporter    *User           `json:"reporter,omitempty"`
+	Project     Project         `json:"project"`
+	Created     string          `json:"created"`
+	Updated     string          `json:"updated"`
+}
+
 // extractIssue extracts issue data from the webhook payload
 func (h *WebhookHandler) extractIssue(payload map[string]interface{}) (*Issue, error) {
 	issueData, ok := payload["issue"].(map[string]interface{})
@@ -165,89 +191,75 @@ func (h *WebhookHandler) extractIssue(payload map[string]interface{}) (*Issue, e
 		return nil, fmt.Errorf("missing issue in payload")
 	}
 
-	issue := &Issue{}
-
-	if key, ok := issueData["key"].(string); ok {
-		issue.Key = key
-	}
-	if id, ok := issueData["id"].(string); ok {
-		issue.ID = id
-	}
-	if self, ok := issueData["self"].(string); ok {
-		issue.Self = self
+	rawIssue, err := json.Marshal(issueData)
+	if err != nil {
+		return nil, err
 	}
 
-	// Extract fields.
-	//
+	var decoded webhookIssue
+	if err := json.Unmarshal(rawIssue, &decoded); err != nil {
+		return nil, err
+	}
+
+	issue := &Issue{
+		ID:   decoded.ID,
+		Key:  decoded.Key,
+		Self: decoded.Self,
+		Fields: Fields{
+			IssueType: decoded.Fields.IssueType,
+			Status:    decoded.Fields.Status,
+			Priority:  decoded.Fields.Priority,
+			Labels:    decoded.Fields.Labels,
+			Assignee:  decoded.Fields.Assignee,
+			Reporter:  decoded.Fields.Reporter,
+			Project:   decoded.Fields.Project,
+			Created:   decoded.Fields.Created,
+			Updated:   decoded.Fields.Updated,
+		},
+	}
+
 	// Untrusted text coming off the wire is sanitized before being stored on
 	// the canonical Issue struct so that every downstream consumer (not just
 	// ConvertIssueToTask) sees the cleaned form. This defends against
 	// ASCII-smuggling prompt-injection via invisible Unicode format chars.
 	var summaryStripped, descStripped int
-	if fieldsData, ok := issueData["fields"].(map[string]interface{}); ok {
-		if summary, ok := fieldsData["summary"].(string); ok {
-			issue.Fields.Summary, summaryStripped = text.SanitizeUntrusted(summary)
-		}
-		if desc, ok := fieldsData["description"].(string); ok {
-			issue.Fields.Description, descStripped = text.SanitizeUntrusted(desc)
-		}
-		// Also check for ADF description (Jira Cloud)
-		if desc, ok := fieldsData["description"].(map[string]interface{}); ok {
-			issue.Fields.Description, descStripped = text.SanitizeUntrusted(h.extractADFText(desc))
-		}
-		if summaryStripped+descStripped > 0 {
-			logging.WithComponent("jira").Warn(
-				"invisible_unicode_stripped",
-				slog.String("source", "jira-webhook"),
-				slog.String("issue", issue.Key),
-				slog.Int("summary_stripped", summaryStripped),
-				slog.Int("description_stripped", descStripped),
-			)
-		}
-
-		// Extract labels
-		if labels, ok := fieldsData["labels"].([]interface{}); ok {
-			for _, l := range labels {
-				if label, ok := l.(string); ok {
-					issue.Fields.Labels = append(issue.Fields.Labels, label)
-				}
-			}
-		}
-
-		// Extract issue type
-		if issueType, ok := fieldsData["issuetype"].(map[string]interface{}); ok {
-			if name, ok := issueType["name"].(string); ok {
-				issue.Fields.IssueType.Name = name
-			}
-		}
-
-		// Extract status
-		if status, ok := fieldsData["status"].(map[string]interface{}); ok {
-			if name, ok := status["name"].(string); ok {
-				issue.Fields.Status.Name = name
-			}
-		}
-
-		// Extract priority
-		if priority, ok := fieldsData["priority"].(map[string]interface{}); ok {
-			issue.Fields.Priority = &JiraPriority{}
-			if name, ok := priority["name"].(string); ok {
-				issue.Fields.Priority.Name = name
-			}
-		}
-
-		// Extract project
-		if project, ok := fieldsData["project"].(map[string]interface{}); ok {
-			if key, ok := project["key"].(string); ok {
-				issue.Fields.Project.Key = key
-			}
-			if name, ok := project["name"].(string); ok {
-				issue.Fields.Project.Name = name
-			}
-		}
+	issue.Fields.Summary, summaryStripped = text.SanitizeUntrusted(decoded.Fields.Summary)
+	if desc, ok := decodeDescription(decoded.Fields.Description, h); ok {
+		issue.Fields.Description, descStripped = text.SanitizeUntrusted(desc)
+	}
+	if summaryStripped+descStripped > 0 {
+		logging.WithComponent("jira").Warn(
+			"invisible_unicode_stripped",
+			slog.String("source", "jira-webhook"),
+			slog.String("issue", issue.Key),
+			slog.Int("summary_stripped", summaryStripped),
+			slog.Int("description_stripped", descStripped),
+		)
 	}
 
 	return issue, nil
+}
+
+// decodeDescription resolves a Jira webhook description that may be a plain
+// string (Server) or an ADF object (Cloud). The second return value is false
+// when the description is absent or null, matching the original behavior where
+// neither type assertion fired and Description was left empty.
+func decodeDescription(raw json.RawMessage, h *WebhookHandler) (string, bool) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return "", false
+	}
+
+	var asString string
+	if err := json.Unmarshal(raw, &asString); err == nil {
+		return asString, true
+	}
+
+	var asADF map[string]interface{}
+	if err := json.Unmarshal(raw, &asADF); err == nil {
+		return h.extractADFText(asADF), true
+	}
+
+	return "", false
 }
 
 // extractADFText extracts plain text from Atlassian Document Format

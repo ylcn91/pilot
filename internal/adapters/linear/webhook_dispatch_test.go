@@ -117,8 +117,10 @@ func TestHandle_NoCallback(t *testing.T) {
 		"action": "create",
 		"type":   "Issue",
 		"data": map[string]interface{}{
-			"id":       "issue-123",
-			"labelIds": []interface{}{"label-1"}, // Has label IDs so it passes hasPilotLabel
+			"id": "issue-123",
+			"labels": []interface{}{
+				map[string]interface{}{"id": "label-1", "name": "pilot"}, // Pilot label so it passes hasPilotLabel
+			},
 		},
 	}
 

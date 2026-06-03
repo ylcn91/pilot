@@ -7,13 +7,21 @@ import (
 	"strings"
 )
 
-// cacheLabelIDs fetches and caches the UUIDs for pilot-related labels across all configured projects.
-// Plane labels are per-project, so we resolve from the first project that has matching labels.
+// cacheLabelIDs fetches and caches the UUIDs for pilot-related labels per project.
+// Plane labels are per-project, so each project resolves its own UUIDs: applying
+// one project's UUID to another project's work item would silently fail. We
+// resolve labels for every configured project rather than stopping at the first
+// match so multi-project workspaces transition labels correctly.
 func (p *Poller) cacheLabelIDs(ctx context.Context) error {
 	pilotLabelName := p.config.PilotLabel
 	if pilotLabelName == "" {
 		pilotLabelName = LabelPilot
 	}
+
+	p.pilotLabelIDs = make(map[string]string)
+	p.inProgressLabelIDs = make(map[string]string)
+	p.doneLabelIDs = make(map[string]string)
+	p.failedLabelIDs = make(map[string]string)
 
 	for _, projectID := range p.config.ProjectIDs {
 		labels, err := p.client.ListLabels(ctx, p.config.WorkspaceSlug, projectID)
@@ -28,31 +36,26 @@ func (p *Poller) cacheLabelIDs(ctx context.Context) error {
 		for _, label := range labels {
 			switch {
 			case strings.EqualFold(label.Name, pilotLabelName):
-				p.pilotLabelID = label.ID
+				p.pilotLabelIDs[projectID] = label.ID
 			case strings.EqualFold(label.Name, LabelInProgress):
-				p.inProgressLabelID = label.ID
+				p.inProgressLabelIDs[projectID] = label.ID
 			case strings.EqualFold(label.Name, LabelDone):
-				p.doneLabelID = label.ID
+				p.doneLabelIDs[projectID] = label.ID
 			case strings.EqualFold(label.Name, LabelFailed):
-				p.failedLabelID = label.ID
+				p.failedLabelIDs[projectID] = label.ID
 			}
-		}
-
-		// If we found the pilot label, stop looking
-		if p.pilotLabelID != "" {
-			break
 		}
 	}
 
-	if p.pilotLabelID == "" {
+	if len(p.pilotLabelIDs) == 0 {
 		return fmt.Errorf("pilot label %q not found in any configured project", pilotLabelName)
 	}
 
 	p.logger.Debug("Cached label IDs",
-		slog.String("pilot", p.pilotLabelID),
-		slog.String("in_progress", p.inProgressLabelID),
-		slog.String("done", p.doneLabelID),
-		slog.String("failed", p.failedLabelID),
+		slog.Int("projects_with_pilot", len(p.pilotLabelIDs)),
+		slog.Int("projects_with_in_progress", len(p.inProgressLabelIDs)),
+		slog.Int("projects_with_done", len(p.doneLabelIDs)),
+		slog.Int("projects_with_failed", len(p.failedLabelIDs)),
 	)
 
 	return nil

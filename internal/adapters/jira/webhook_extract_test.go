@@ -191,6 +191,42 @@ func TestExtractIssue(t *testing.T) {
 	}
 }
 
+func TestExtractIssue_ADFDescription(t *testing.T) {
+	client := NewClient("https://jira.example.com", "user", "token", PlatformCloud)
+	handler := NewWebhookHandler(client, "", "pilot")
+
+	payload := map[string]interface{}{
+		"issue": map[string]interface{}{
+			"id":  "10001",
+			"key": "PROJ-42",
+			"fields": map[string]interface{}{
+				"summary": "Test Issue",
+				"description": map[string]interface{}{
+					"type":    "doc",
+					"version": 1,
+					"content": []interface{}{
+						map[string]interface{}{
+							"type": "paragraph",
+							"content": []interface{}{
+								map[string]interface{}{"type": "text", "text": "Hello world"},
+							},
+						},
+					},
+				},
+				"labels": []interface{}{"pilot"},
+			},
+		},
+	}
+
+	issue, err := handler.extractIssue(payload)
+	if err != nil {
+		t.Fatalf("extractIssue failed: %v", err)
+	}
+	if issue.Fields.Description != "Hello world" {
+		t.Errorf("issue.Fields.Description = %q, want %q", issue.Fields.Description, "Hello world")
+	}
+}
+
 func TestExtractIssue_MissingIssue(t *testing.T) {
 	client := NewClient("https://jira.example.com", "user", "token", PlatformCloud)
 	handler := NewWebhookHandler(client, "", "pilot")

@@ -50,11 +50,13 @@ type Poller struct {
 	onPRCreated func(prNumber int, prURL, issueID, headSHA, branchName string)
 	logger      *slog.Logger
 
-	// Label UUID cache (resolved on startup by name)
-	pilotLabelID      string
-	inProgressLabelID string
-	doneLabelID       string
-	failedLabelID     string
+	// Label UUID cache (resolved on startup by name).
+	// Plane labels are per-project, so UUIDs are keyed by project ID:
+	// the same label name (e.g. "pilot") has a distinct UUID in each project.
+	pilotLabelIDs      map[string]string
+	inProgressLabelIDs map[string]string
+	doneLabelIDs       map[string]string
+	failedLabelIDs     map[string]string
 
 	// GH-1830: Persistent processed store (optional)
 	processedStore ProcessedStore

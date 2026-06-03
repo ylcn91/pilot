@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -122,15 +123,27 @@ func (h *WebhookHandler) Handle(ctx context.Context, payload map[string]interfac
 		return nil
 	}
 
+	// Decode the webhook's issue payload into the typed Issue struct so the
+	// label and id checks below operate on real fields rather than a
+	// loosely-typed map. The webhook data shape matches Issue (labels are a
+	// flat [{id, name}] array, unlike the nested GraphQL connection).
+	rawData, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	var payloadIssue Issue
+	if err := json.Unmarshal(rawData, &payloadIssue); err != nil {
+		return err
+	}
+
 	// Check if issue has pilot label
-	if !h.hasPilotLabel(data) {
+	if !h.hasPilotLabel(&payloadIssue) {
 		logging.WithComponent("linear").Debug("Issue does not have pilot label, skipping")
 		return nil
 	}
 
 	// Fetch full issue details
-	issueID, _ := data["id"].(string)
-	issue, err := h.client.GetIssue(ctx, issueID)
+	issue, err := h.client.GetIssue(ctx, payloadIssue.ID)
 	if err != nil {
 		return err
 	}
@@ -185,26 +198,9 @@ func (h *WebhookHandler) isAllowedProject(issue *Issue) bool {
 }
 
 // hasPilotLabel checks if the issue has the pilot label
-func (h *WebhookHandler) hasPilotLabel(data map[string]interface{}) bool {
-	labels, ok := data["labels"].([]interface{})
-	if !ok {
-		// Check labelIds instead
-		labelIDs, ok := data["labelIds"].([]interface{})
-		if !ok {
-			return false
-		}
-		// For now, return true if there are any labels
-		// In production, we'd check against actual pilot label ID
-		return len(labelIDs) > 0
-	}
-
-	for _, label := range labels {
-		labelMap, ok := label.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		name, _ := labelMap["name"].(string)
-		if name == h.pilotLabel {
+func (h *WebhookHandler) hasPilotLabel(issue *Issue) bool {
+	for _, label := range issue.Labels {
+		if label.Name == h.pilotLabel {
 			return true
 		}
 	}

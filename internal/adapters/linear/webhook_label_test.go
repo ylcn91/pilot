@@ -11,16 +11,16 @@ func TestHasPilotLabel_WithLabels(t *testing.T) {
 	tests := []struct {
 		name       string
 		pilotLabel string
-		data       map[string]interface{}
+		issue      *Issue
 		want       bool
 	}{
 		{
 			name:       "has pilot label",
 			pilotLabel: "pilot",
-			data: map[string]interface{}{
-				"labels": []interface{}{
-					map[string]interface{}{"id": "1", "name": "bug"},
-					map[string]interface{}{"id": "2", "name": "pilot"},
+			issue: &Issue{
+				Labels: []Label{
+					{ID: "1", Name: "bug"},
+					{ID: "2", Name: "pilot"},
 				},
 			},
 			want: true,
@@ -28,10 +28,10 @@ func TestHasPilotLabel_WithLabels(t *testing.T) {
 		{
 			name:       "no pilot label",
 			pilotLabel: "pilot",
-			data: map[string]interface{}{
-				"labels": []interface{}{
-					map[string]interface{}{"id": "1", "name": "bug"},
-					map[string]interface{}{"id": "2", "name": "enhancement"},
+			issue: &Issue{
+				Labels: []Label{
+					{ID: "1", Name: "bug"},
+					{ID: "2", Name: "enhancement"},
 				},
 			},
 			want: false,
@@ -39,17 +39,15 @@ func TestHasPilotLabel_WithLabels(t *testing.T) {
 		{
 			name:       "empty labels",
 			pilotLabel: "pilot",
-			data: map[string]interface{}{
-				"labels": []interface{}{},
-			},
-			want: false,
+			issue:      &Issue{Labels: []Label{}},
+			want:       false,
 		},
 		{
 			name:       "custom pilot label",
 			pilotLabel: "ai-task",
-			data: map[string]interface{}{
-				"labels": []interface{}{
-					map[string]interface{}{"id": "1", "name": "ai-task"},
+			issue: &Issue{
+				Labels: []Label{
+					{ID: "1", Name: "ai-task"},
 				},
 			},
 			want: true,
@@ -57,9 +55,9 @@ func TestHasPilotLabel_WithLabels(t *testing.T) {
 		{
 			name:       "label without name field",
 			pilotLabel: "pilot",
-			data: map[string]interface{}{
-				"labels": []interface{}{
-					map[string]interface{}{"id": "1"},
+			issue: &Issue{
+				Labels: []Label{
+					{ID: "1"},
 				},
 			},
 			want: false,
@@ -71,7 +69,7 @@ func TestHasPilotLabel_WithLabels(t *testing.T) {
 			client := NewClient(testutil.FakeLinearAPIKey)
 			handler := NewWebhookHandler(client, tt.pilotLabel, nil)
 
-			got := handler.hasPilotLabel(tt.data)
+			got := handler.hasPilotLabel(tt.issue)
 			if got != tt.want {
 				t.Errorf("hasPilotLabel() = %v, want %v", got, tt.want)
 			}
@@ -79,34 +77,39 @@ func TestHasPilotLabel_WithLabels(t *testing.T) {
 	}
 }
 
-func TestHasPilotLabel_WithLabelIds(t *testing.T) {
+// TestHasPilotLabel_NoLabels covers issues that carry no matching label.
+// The legacy labelIds fallback (return true when any labelId is present)
+// was removed: label matching is now driven solely by the typed Labels
+// slice, so an issue without the pilot label never matches.
+func TestHasPilotLabel_NoLabels(t *testing.T) {
 	tests := []struct {
 		name       string
 		pilotLabel string
-		data       map[string]interface{}
+		issue      *Issue
 		want       bool
 	}{
 		{
-			name:       "has label IDs (assumes pilot label present)",
+			name:       "nil labels",
 			pilotLabel: "pilot",
-			data: map[string]interface{}{
-				"labelIds": []interface{}{"label-1", "label-2"},
-			},
-			want: true,
+			issue:      &Issue{},
+			want:       false,
 		},
 		{
-			name:       "empty label IDs",
+			name:       "empty labels",
 			pilotLabel: "pilot",
-			data: map[string]interface{}{
-				"labelIds": []interface{}{},
+			issue:      &Issue{Labels: []Label{}},
+			want:       false,
+		},
+		{
+			name:       "labels present but none match",
+			pilotLabel: "pilot",
+			issue: &Issue{
+				Labels: []Label{
+					{ID: "label-1", Name: "bug"},
+					{ID: "label-2", Name: "enhancement"},
+				},
 			},
 			want: false,
-		},
-		{
-			name:       "no labels or labelIds",
-			pilotLabel: "pilot",
-			data:       map[string]interface{}{},
-			want:       false,
 		},
 	}
 
@@ -115,52 +118,7 @@ func TestHasPilotLabel_WithLabelIds(t *testing.T) {
 			client := NewClient(testutil.FakeLinearAPIKey)
 			handler := NewWebhookHandler(client, tt.pilotLabel, nil)
 
-			got := handler.hasPilotLabel(tt.data)
-			if got != tt.want {
-				t.Errorf("hasPilotLabel() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestHasPilotLabel_InvalidLabelFormat(t *testing.T) {
-	tests := []struct {
-		name string
-		data map[string]interface{}
-		want bool
-	}{
-		{
-			name: "labels not an array",
-			data: map[string]interface{}{
-				"labels": "invalid",
-			},
-			want: false,
-		},
-		{
-			name: "labels contains non-map elements",
-			data: map[string]interface{}{
-				"labels": []interface{}{
-					"string-label",
-					123,
-				},
-			},
-			want: false,
-		},
-		{
-			name: "labelIds not an array",
-			data: map[string]interface{}{
-				"labelIds": "invalid",
-			},
-			want: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client := NewClient(testutil.FakeLinearAPIKey)
-			handler := NewWebhookHandler(client, "pilot", nil)
-
-			got := handler.hasPilotLabel(tt.data)
+			got := handler.hasPilotLabel(tt.issue)
 			if got != tt.want {
 				t.Errorf("hasPilotLabel() = %v, want %v", got, tt.want)
 			}

@@ -30,6 +30,9 @@ type planeFakeServer struct {
 	itemsByLabel map[string][]WorkItem
 	// states returned by ListStates for every project.
 	states []State
+	// labelsByProject is the ListLabels response keyed by project ID; lets
+	// tests model Plane's per-project label namespaces.
+	labelsByProject map[string][]Label
 
 	// recorded side effects
 	labelPatches []map[string]interface{} // each PATCH body that set "labels"
@@ -38,8 +41,9 @@ type planeFakeServer struct {
 
 func newPlaneFakeServer() *planeFakeServer {
 	return &planeFakeServer{
-		items:        make(map[string]*WorkItem),
-		itemsByLabel: make(map[string][]WorkItem),
+		items:           make(map[string]*WorkItem),
+		itemsByLabel:    make(map[string][]WorkItem),
+		labelsByProject: make(map[string][]Label),
 	}
 }
 
@@ -52,6 +56,17 @@ func (f *planeFakeServer) handler(t *testing.T) http.HandlerFunc {
 		}
 
 		path := r.URL.Path
+
+		// ListLabels: .../projects/{projectID}/labels/
+		if strings.HasSuffix(path, "/labels/") {
+			projectID := projectIDFromLabelsPath(path)
+			f.mu.Lock()
+			resp := labelsResponse{Results: f.labelsByProject[projectID]}
+			f.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
 
 		// ListStates: .../states/
 		if strings.HasSuffix(path, "/states/") {
@@ -177,6 +192,16 @@ func workItemIDFromPath(path string) string {
 	return parts[len(parts)-1]
 }
 
+func projectIDFromLabelsPath(path string) string {
+	// .../projects/{projectID}/labels/
+	trimmed := strings.TrimSuffix(path, "/labels/")
+	parts := strings.Split(trimmed, "/")
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[len(parts)-1]
+}
+
 // newTestPoller builds a Poller wired to a Client pointing at srv, with the
 // supplied config and options.
 func newTestPoller(srvURL string, cfg *Config, opts ...PollerOption) *Poller {
@@ -222,7 +247,7 @@ func TestRecoverOrphanedIssues(t *testing.T) {
 
 		cfg := &Config{WorkspaceSlug: "ws", ProjectIDs: []string{"proj-1"}}
 		p := newTestPoller(srv.URL, cfg, WithProcessedStore(store))
-		p.inProgressLabelID = "lbl-inprogress"
+		p.inProgressLabelIDs = map[string]string{"proj-1": "lbl-inprogress"}
 		// Mark as processed in-memory to verify it gets cleared.
 		p.markProcessed("wi-orphan")
 
@@ -257,7 +282,7 @@ func TestRecoverOrphanedIssues(t *testing.T) {
 
 		cfg := &Config{WorkspaceSlug: "ws", ProjectIDs: []string{"proj-1"}}
 		p := newTestPoller(srv.URL, cfg)
-		p.inProgressLabelID = "lbl-inprogress"
+		p.inProgressLabelIDs = map[string]string{"proj-1": "lbl-inprogress"}
 
 		p.recoverOrphanedIssues(context.Background())
 
@@ -279,11 +304,77 @@ func TestRecoverOrphanedIssues(t *testing.T) {
 
 		cfg := &Config{WorkspaceSlug: "ws", ProjectIDs: []string{"proj-1", "proj-2"}}
 		p := newTestPoller(srv.URL, cfg)
-		p.inProgressLabelID = "lbl-inprogress"
+		p.inProgressLabelIDs = map[string]string{"proj-1": "lbl-inprogress", "proj-2": "lbl-inprogress"}
 
 		// Must not panic and must return cleanly.
 		p.recoverOrphanedIssues(context.Background())
 	})
+}
+
+// --- cacheLabelIDs per-project resolution ---
+
+func TestCacheLabelIDs_MultiProject(t *testing.T) {
+	// Plane labels are per-project: the same label name has a distinct UUID in
+	// each project. cacheLabelIDs must record every project's UUIDs, not stop at
+	// the first project that has a pilot label.
+	fake := newPlaneFakeServer()
+	fake.labelsByProject["proj-1"] = []Label{
+		{ID: "p1-pilot", Name: LabelPilot},
+		{ID: "p1-inprogress", Name: LabelInProgress},
+		{ID: "p1-done", Name: LabelDone},
+		{ID: "p1-failed", Name: LabelFailed},
+	}
+	fake.labelsByProject["proj-2"] = []Label{
+		{ID: "p2-pilot", Name: LabelPilot},
+		{ID: "p2-inprogress", Name: LabelInProgress},
+		{ID: "p2-done", Name: LabelDone},
+		{ID: "p2-failed", Name: LabelFailed},
+	}
+	srv := httptest.NewServer(fake.handler(t))
+	defer srv.Close()
+
+	cfg := &Config{WorkspaceSlug: "ws", ProjectIDs: []string{"proj-1", "proj-2"}}
+	p := newTestPoller(srv.URL, cfg)
+
+	if err := p.cacheLabelIDs(context.Background()); err != nil {
+		t.Fatalf("cacheLabelIDs failed: %v", err)
+	}
+
+	checks := []struct {
+		name      string
+		got       map[string]string
+		wantProj1 string
+		wantProj2 string
+	}{
+		{"pilot", p.pilotLabelIDs, "p1-pilot", "p2-pilot"},
+		{"in-progress", p.inProgressLabelIDs, "p1-inprogress", "p2-inprogress"},
+		{"done", p.doneLabelIDs, "p1-done", "p2-done"},
+		{"failed", p.failedLabelIDs, "p1-failed", "p2-failed"},
+	}
+	for _, c := range checks {
+		if c.got["proj-1"] != c.wantProj1 {
+			t.Errorf("%s label for proj-1 = %q, want %q", c.name, c.got["proj-1"], c.wantProj1)
+		}
+		if c.got["proj-2"] != c.wantProj2 {
+			t.Errorf("%s label for proj-2 = %q, want %q", c.name, c.got["proj-2"], c.wantProj2)
+		}
+	}
+}
+
+func TestCacheLabelIDs_NoPilotLabel(t *testing.T) {
+	fake := newPlaneFakeServer()
+	fake.labelsByProject["proj-1"] = []Label{
+		{ID: "p1-bug", Name: "bug"},
+	}
+	srv := httptest.NewServer(fake.handler(t))
+	defer srv.Close()
+
+	cfg := &Config{WorkspaceSlug: "ws", ProjectIDs: []string{"proj-1"}}
+	p := newTestPoller(srv.URL, cfg)
+
+	if err := p.cacheLabelIDs(context.Background()); err == nil {
+		t.Fatal("expected error when no project has the pilot label")
+	}
 }
 
 // --- Gap 2: cacheStateIDs + UpdateIssueState transition ---
@@ -406,8 +497,8 @@ func TestProcessIssueAsyncErrorPath(t *testing.T) {
 		p := newTestPoller(srv.URL, cfg, WithOnIssue(func(_ context.Context, _ *WorkItem) (*IssueResult, error) {
 			return nil, errors.New("execution blew up")
 		}))
-		p.inProgressLabelID = "lbl-inprogress"
-		p.failedLabelID = "lbl-failed"
+		p.inProgressLabelIDs = map[string]string{"proj-1": "lbl-inprogress"}
+		p.failedLabelIDs = map[string]string{"proj-1": "lbl-failed"}
 
 		p.activeWg.Add(1)
 		p.semaphore <- struct{}{}
@@ -446,8 +537,8 @@ func TestProcessIssueAsyncErrorPath(t *testing.T) {
 
 		cfg := &Config{WorkspaceSlug: "ws", ProjectIDs: []string{"proj-1"}}
 		p := newTestPoller(srv.URL, cfg) // no WithOnIssue
-		p.inProgressLabelID = "lbl-inprogress"
-		p.failedLabelID = "lbl-failed"
+		p.inProgressLabelIDs = map[string]string{"proj-1": "lbl-inprogress"}
+		p.failedLabelIDs = map[string]string{"proj-1": "lbl-failed"}
 
 		p.activeWg.Add(1)
 		p.semaphore <- struct{}{}

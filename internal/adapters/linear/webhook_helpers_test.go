@@ -2,6 +2,7 @@ package linear
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/ylcn91/pilot/internal/testutil"
 )
@@ -29,14 +30,22 @@ func (h *testWebhookHandler) Handle(ctx context.Context, payload map[string]inte
 		return nil
 	}
 
+	rawData, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	var payloadIssue Issue
+	if err := json.Unmarshal(rawData, &payloadIssue); err != nil {
+		return err
+	}
+
 	// Check if issue has pilot label
-	if !h.hasPilotLabel(data) {
+	if !h.hasPilotLabel(&payloadIssue) {
 		return nil
 	}
 
 	// Fetch full issue details from mock server
-	issueID, _ := data["id"].(string)
-	issue, err := h.getIssue(ctx, issueID)
+	issue, err := h.getIssue(ctx, payloadIssue.ID)
 	if err != nil {
 		return err
 	}
@@ -54,23 +63,9 @@ func (h *testWebhookHandler) Handle(ctx context.Context, payload map[string]inte
 	return nil
 }
 
-func (h *testWebhookHandler) hasPilotLabel(data map[string]interface{}) bool {
-	labels, ok := data["labels"].([]interface{})
-	if !ok {
-		labelIDs, ok := data["labelIds"].([]interface{})
-		if !ok {
-			return false
-		}
-		return len(labelIDs) > 0
-	}
-
-	for _, label := range labels {
-		labelMap, ok := label.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		name, _ := labelMap["name"].(string)
-		if name == h.pilotLabel {
+func (h *testWebhookHandler) hasPilotLabel(issue *Issue) bool {
+	for _, label := range issue.Labels {
+		if label.Name == h.pilotLabel {
 			return true
 		}
 	}
