@@ -46,27 +46,34 @@ func (r *Recorder) parseEvent(rawJSON string) *ParsedEvent {
 	if parsed.Type == "assistant" {
 		if msg, ok := raw["message"].(map[string]any); ok {
 			if content, ok := msg["content"].([]any); ok {
+				var textParts []string
 				for _, block := range content {
 					if b, ok := block.(map[string]any); ok {
 						blockType, _ := b["type"].(string)
 						switch blockType {
 						case "tool_use":
-							parsed.ToolName, _ = b["name"].(string)
-							if input, ok := b["input"].(map[string]any); ok {
-								parsed.ToolInput = input
-								// Extract file path for file operations
-								if fp, ok := input["file_path"].(string); ok {
-									parsed.FilePath = fp
-									parsed.FileOperation = r.detectFileOp(parsed.ToolName)
+							// Keep the first tool_use; do not let a later block clobber it.
+							if parsed.ToolName == "" {
+								parsed.ToolName, _ = b["name"].(string)
+								if input, ok := b["input"].(map[string]any); ok {
+									parsed.ToolInput = input
+									// Extract file path for file operations
+									if fp, ok := input["file_path"].(string); ok {
+										parsed.FilePath = fp
+										parsed.FileOperation = r.detectFileOp(parsed.ToolName)
+									}
 								}
 							}
 						case "text":
-							if text, ok := b["text"].(string); ok {
-								parsed.Text = text
+							// Accumulate text across blocks so a turn with both a
+							// text block and a tool_use block preserves both.
+							if text, ok := b["text"].(string); ok && text != "" {
+								textParts = append(textParts, text)
 							}
 						}
 					}
 				}
+				parsed.Text = strings.Join(textParts, "\n")
 			}
 		}
 	}
