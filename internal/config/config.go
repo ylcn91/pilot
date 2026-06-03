@@ -53,6 +53,7 @@ type Config struct {
 	Webhooks       *webhooks.Config        `yaml:"webhooks"`
 	TeamID         string                  `yaml:"team_id"` // Optional team ID for scoping execution
 	Team           *TeamConfig             `yaml:"team"`
+	Architect      *ArchitectConfig        `yaml:"architect,omitempty"` // Proactive Architect pipeline (SCAN/PROPOSE/EMIT)
 }
 
 // DefaultConfig returns a new Config instance with sensible default values.
