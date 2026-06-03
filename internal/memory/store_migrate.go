@@ -237,16 +237,61 @@ func (s *Store) migrate() error {
 		`ALTER TABLE executions ADD COLUMN final_rss_mb INTEGER DEFAULT 0`,
 	}
 
-	for _, migration := range migrations {
+	// Track applied migrations by their index in the slice so we don't blindly
+	// re-execute every statement on every startup. The slice is append-only:
+	// new migrations are added at the end, so a positional index is a stable key.
+	//
+	// Backwards compatibility for live DBs created before this table existed: the
+	// first startup after upgrading finds an empty schema_migrations table and so
+	// re-runs every migration. That stays safe because each statement is already
+	// idempotent (CREATE ... IF NOT EXISTS, and duplicate-column ALTERs are
+	// swallowed below), and each index is recorded afterward so subsequent
+	// startups skip them.
+	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+		idx INTEGER PRIMARY KEY,
+		applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`); err != nil {
+		return fmt.Errorf("create schema_migrations: %w", err)
+	}
+
+	applied := make(map[int]struct{})
+	rows, err := s.db.Query(`SELECT idx FROM schema_migrations`)
+	if err != nil {
+		return fmt.Errorf("read schema_migrations: %w", err)
+	}
+	for rows.Next() {
+		var idx int
+		if err := rows.Scan(&idx); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("scan schema_migrations: %w", err)
+		}
+		applied[idx] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return fmt.Errorf("iterate schema_migrations: %w", err)
+	}
+	_ = rows.Close()
+
+	for i, migration := range migrations {
+		if _, ok := applied[i]; ok {
+			continue
+		}
 		_, err := s.db.Exec(migration)
 		if err != nil {
 			// Ignore "duplicate column" errors from ALTER TABLE migrations
 			// SQLite returns "duplicate column name" when column already exists
 			errStr := err.Error()
 			if strings.Contains(errStr, "duplicate column") {
+				if _, recErr := s.db.Exec(`INSERT OR IGNORE INTO schema_migrations(idx) VALUES (?)`, i); recErr != nil {
+					return fmt.Errorf("record migration %d: %w", i, recErr)
+				}
 				continue
 			}
 			return fmt.Errorf("migration failed: %w", err)
+		}
+		if _, err := s.db.Exec(`INSERT OR IGNORE INTO schema_migrations(idx) VALUES (?)`, i); err != nil {
+			return fmt.Errorf("record migration %d: %w", i, err)
 		}
 	}
 
