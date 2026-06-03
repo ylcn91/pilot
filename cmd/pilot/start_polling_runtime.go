@@ -23,6 +23,7 @@ import (
 	"github.com/ylcn91/pilot/internal/logging"
 	"github.com/ylcn91/pilot/internal/memory"
 	"github.com/ylcn91/pilot/internal/quality"
+	"github.com/ylcn91/pilot/internal/teams"
 )
 
 // pollingRuntime holds the locals shared across the phases of runPollingMode.
@@ -52,6 +53,8 @@ type pollingRuntime struct {
 	store               *memory.Store
 	autopilotStateStore *autopilot.StateStore
 	knowledgeStore      *memory.KnowledgeStore
+
+	teamAdapter *teams.ServiceAdapter // GH-634: RBAC lookups, threaded instead of a package global
 
 	gwServer *gateway.Server
 

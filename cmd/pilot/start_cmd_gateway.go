@@ -41,6 +41,7 @@ type gatewayInfra struct {
 	AlertsEngine        *alerts.Engine
 	TgApprovalHandler   *approval.TelegramHandler
 	Enforcer            *budget.Enforcer
+	TeamAdapter         *teams.ServiceAdapter // GH-634: RBAC lookups, threaded instead of a package global
 }
 
 // buildGatewayInfra constructs the shared runner, store, dispatcher, monitor,
@@ -116,8 +117,8 @@ func buildGatewayInfra(cfg *config.Config, cmd *cobra.Command, projectPath strin
 			logging.WithComponent("teams").Warn("Failed to initialize team store for gateway", slog.Any("error", teamErr))
 		} else {
 			teamSvc := teams.NewService(teamStore)
-			teamAdapter = teams.NewServiceAdapter(teamSvc)
-			gw.Runner.SetTeamChecker(teamAdapter)
+			gw.TeamAdapter = teams.NewServiceAdapter(teamSvc)
+			gw.Runner.SetTeamChecker(gw.TeamAdapter)
 			logging.WithComponent("teams").Info("team RBAC enforcement enabled for gateway mode")
 		}
 	}

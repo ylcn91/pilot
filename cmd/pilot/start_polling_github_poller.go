@@ -35,6 +35,7 @@ func (p *pollingRuntime) createRepoPoller(
 	dispatcher := p.dispatcher
 	alertsEngine := p.alertsEngine
 	enforcer := p.enforcer
+	teamAdapter := p.teamAdapter
 	autopilotControllers := p.autopilotControllers
 	autopilotStateStore := p.autopilotStateStore
 
@@ -125,7 +126,7 @@ func (p *pollingRuntime) createRepoPoller(
 			slog.Int("attempt", pendingTask.Attempts),
 		)
 
-		result, err := handleGitHubIssueWithResult(retryCtx, cfg, client, issue, projPathCapture, sourceRepo, dispatcher, runner, monitor, program, alertsEngine, enforcer)
+		result, err := handleGitHubIssueWithResult(retryCtx, cfg, client, issue, projPathCapture, sourceRepo, dispatcher, runner, monitor, program, alertsEngine, enforcer, teamAdapter)
 
 		if result != nil && result.PRNumber > 0 && controllerCapture != nil {
 			controllerCapture.OnPRCreated(result.PRNumber, result.PRURL, issue.Number, result.HeadSHA, result.BranchName, issue.NodeID)
@@ -163,7 +164,7 @@ func (p *pollingRuntime) createRepoPoller(
 			github.WithSequentialConfig(waitForMerge, pollInterval, prTimeout),
 			github.WithScheduler(rateLimitScheduler),
 			github.WithOnIssueWithResult(func(issueCtx context.Context, issue *github.Issue) (*github.IssueResult, error) {
-				return handleGitHubIssueWithResult(issueCtx, cfg, client, issue, projPathCapture, sourceRepo, dispatcher, runner, monitor, program, alertsEngine, enforcer)
+				return handleGitHubIssueWithResult(issueCtx, cfg, client, issue, projPathCapture, sourceRepo, dispatcher, runner, monitor, program, alertsEngine, enforcer, teamAdapter)
 			}),
 		)
 	} else {
@@ -172,7 +173,7 @@ func (p *pollingRuntime) createRepoPoller(
 			github.WithScheduler(rateLimitScheduler),
 			github.WithMaxConcurrent(cfg.Orchestrator.MaxConcurrent),
 			github.WithOnIssueWithResult(func(issueCtx context.Context, issue *github.Issue) (*github.IssueResult, error) {
-				return handleGitHubIssueWithResult(issueCtx, cfg, client, issue, projPathCapture, sourceRepo, dispatcher, runner, monitor, program, alertsEngine, enforcer)
+				return handleGitHubIssueWithResult(issueCtx, cfg, client, issue, projPathCapture, sourceRepo, dispatcher, runner, monitor, program, alertsEngine, enforcer, teamAdapter)
 			}),
 		)
 	}

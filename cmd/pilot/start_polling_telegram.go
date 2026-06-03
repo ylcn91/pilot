@@ -62,8 +62,8 @@ func (p *pollingRuntime) setupTelegram() error {
 
 		// Build comms.MemberResolver wrapper (GH-634)
 		var tgMemberResolver comms.MemberResolver
-		if teamAdapter != nil {
-			tgMemberResolver = &telegram.MemberResolverAdapter{Inner: teamAdapter}
+		if p.teamAdapter != nil {
+			tgMemberResolver = &telegram.MemberResolverAdapter{Inner: p.teamAdapter}
 		}
 
 		tgCommsHandler := comms.NewHandler(&comms.HandlerConfig{

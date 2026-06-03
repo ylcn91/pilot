@@ -158,9 +158,9 @@ func wireGatewayGitHubPolling(gw *gatewayInfra, cfg *config.Config, projectPath 
 
 		var result *github.IssueResult
 		if execMode == github.ExecutionModeSequential {
-			result, err = handleGitHubIssueWithResult(retryCtx, cfg, client, issue, projectPath, gwSourceRepo, gw.Dispatcher, gw.Runner, gw.Monitor, gw.Program, gw.AlertsEngine, gw.Enforcer)
+			result, err = handleGitHubIssueWithResult(retryCtx, cfg, client, issue, projectPath, gwSourceRepo, gw.Dispatcher, gw.Runner, gw.Monitor, gw.Program, gw.AlertsEngine, gw.Enforcer, gw.TeamAdapter)
 		} else {
-			result, err = handleGitHubIssueWithResult(retryCtx, cfg, client, issue, projectPath, gwSourceRepo, gw.Dispatcher, gw.Runner, gw.Monitor, gw.Program, gw.AlertsEngine, gw.Enforcer)
+			result, err = handleGitHubIssueWithResult(retryCtx, cfg, client, issue, projectPath, gwSourceRepo, gw.Dispatcher, gw.Runner, gw.Monitor, gw.Program, gw.AlertsEngine, gw.Enforcer, gw.TeamAdapter)
 		}
 
 		// GH-797: Call OnPRCreated for retried issues so autopilot tracks their PRs
@@ -197,7 +197,7 @@ func wireGatewayGitHubPolling(gw *gatewayInfra, cfg *config.Config, projectPath 
 			github.WithSequentialConfig(waitForMerge, pollInterval, prTimeout),
 			github.WithScheduler(rateLimitScheduler),
 			github.WithOnIssueWithResult(func(issueCtx context.Context, issue *github.Issue) (*github.IssueResult, error) {
-				return handleGitHubIssueWithResult(issueCtx, cfg, client, issue, projectPath, gwSourceRepo, gw.Dispatcher, gw.Runner, gw.Monitor, gw.Program, gw.AlertsEngine, gw.Enforcer)
+				return handleGitHubIssueWithResult(issueCtx, cfg, client, issue, projectPath, gwSourceRepo, gw.Dispatcher, gw.Runner, gw.Monitor, gw.Program, gw.AlertsEngine, gw.Enforcer, gw.TeamAdapter)
 			}),
 		)
 	} else {
@@ -205,7 +205,7 @@ func wireGatewayGitHubPolling(gw *gatewayInfra, cfg *config.Config, projectPath 
 			github.WithScheduler(rateLimitScheduler),
 			github.WithMaxConcurrent(cfg.Orchestrator.MaxConcurrent),
 			github.WithOnIssueWithResult(func(issueCtx context.Context, issue *github.Issue) (*github.IssueResult, error) {
-				return handleGitHubIssueWithResult(issueCtx, cfg, client, issue, projectPath, gwSourceRepo, gw.Dispatcher, gw.Runner, gw.Monitor, gw.Program, gw.AlertsEngine, gw.Enforcer)
+				return handleGitHubIssueWithResult(issueCtx, cfg, client, issue, projectPath, gwSourceRepo, gw.Dispatcher, gw.Runner, gw.Monitor, gw.Program, gw.AlertsEngine, gw.Enforcer, gw.TeamAdapter)
 			}),
 		)
 	}

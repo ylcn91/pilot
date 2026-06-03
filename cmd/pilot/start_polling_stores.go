@@ -84,8 +84,8 @@ func (p *pollingRuntime) setupStores() func() {
 			logging.WithComponent("teams").Warn("Failed to initialize team store", slog.Any("error", teamErr))
 		} else {
 			teamSvc := teams.NewService(teamStore)
-			teamAdapter = teams.NewServiceAdapter(teamSvc)
-			runner.SetTeamChecker(teamAdapter)
+			p.teamAdapter = teams.NewServiceAdapter(teamSvc)
+			runner.SetTeamChecker(p.teamAdapter)
 			logging.WithComponent("teams").Info("team RBAC enforcement enabled for polling mode")
 		}
 	}

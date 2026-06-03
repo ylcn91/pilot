@@ -239,8 +239,8 @@ Examples:
 			if telegramFlagSet && hasTelegram && cfg.Adapters.Telegram.Polling {
 				pilotOpts = append(pilotOpts, pilot.WithTelegramHandler(gw.Runner, projectPath))
 				// GH-634: Wire team member resolver for Telegram RBAC in gateway mode
-				if teamAdapter != nil {
-					pilotOpts = append(pilotOpts, pilot.WithTelegramMemberResolver(teamAdapter))
+				if gw.TeamAdapter != nil {
+					pilotOpts = append(pilotOpts, pilot.WithTelegramMemberResolver(gw.TeamAdapter))
 				}
 				// GH-2651: Wire approval handler so approve:/reject: button taps are dispatched
 				if gw.TgApprovalHandler != nil {
@@ -253,8 +253,8 @@ Examples:
 			if slackFlagSet && hasSlack {
 				pilotOpts = append(pilotOpts, pilot.WithSlackHandler(gw.Runner, projectPath))
 				// GH-786: Wire team member resolver for Slack RBAC in gateway mode
-				if teamAdapter != nil {
-					pilotOpts = append(pilotOpts, pilot.WithSlackMemberResolver(teamAdapter))
+				if gw.TeamAdapter != nil {
+					pilotOpts = append(pilotOpts, pilot.WithSlackMemberResolver(gw.TeamAdapter))
 				}
 				logging.WithComponent("start").Info("Slack Socket Mode enabled in gateway mode")
 			}

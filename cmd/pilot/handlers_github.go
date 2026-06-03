@@ -14,12 +14,13 @@ import (
 	"github.com/ylcn91/pilot/internal/config"
 	"github.com/ylcn91/pilot/internal/executor"
 	"github.com/ylcn91/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/teams"
 )
 
 // handleGitHubIssueWithResult processes a GitHub issue and returns result with PR info
 // Used in sequential mode to enable PR merge waiting
 // sourceRepo is the "owner/repo" string that the issue came from (GH-929)
-func handleGitHubIssueWithResult(ctx context.Context, cfg *config.Config, client *github.Client, issue *github.Issue, projectPath string, sourceRepo string, dispatcher *executor.Dispatcher, runner *executor.Runner, monitor *executor.Monitor, program *tea.Program, alertsEngine *alerts.Engine, enforcer *budget.Enforcer) (*github.IssueResult, error) {
+func handleGitHubIssueWithResult(ctx context.Context, cfg *config.Config, client *github.Client, issue *github.Issue, projectPath string, sourceRepo string, dispatcher *executor.Dispatcher, runner *executor.Runner, monitor *executor.Monitor, program *tea.Program, alertsEngine *alerts.Engine, enforcer *budget.Enforcer, teamAdapter *teams.ServiceAdapter) (*github.IssueResult, error) {
 	taskID := fmt.Sprintf("GH-%d", issue.Number)
 
 	// GH-1853: Construct board sync for GitHub Projects V2 status transitions.
@@ -97,7 +98,7 @@ func handleGitHubIssueWithResult(ctx context.Context, cfg *config.Config, client
 		Branch:             branchName,
 		CreatePR:           true,
 		SourceRepo:         sourceRepo,
-		MemberID:           resolveGitHubMemberID(issue),                 // GH-634: RBAC lookup
+		MemberID:           resolveGitHubMemberID(teamAdapter, issue),    // GH-634: RBAC lookup
 		Labels:             labels,                                       // GH-727: flow labels for complexity classifier
 		AcceptanceCriteria: github.ExtractAcceptanceCriteria(issue.Body), // GH-920: acceptance criteria in prompts
 		FromPR:             fromPR,                                       // GH-1267: session resumption from PR context

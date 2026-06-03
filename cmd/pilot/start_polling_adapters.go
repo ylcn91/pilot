@@ -57,8 +57,8 @@ func (p *pollingRuntime) startSlackSocketMode() {
 		slackMessenger := slack.NewMessenger(slackClient)
 
 		var slackMemberResolver comms.MemberResolver
-		if teamAdapter != nil {
-			slackMemberResolver = &slack.MemberResolverAdapter{Inner: teamAdapter}
+		if p.teamAdapter != nil {
+			slackMemberResolver = &slack.MemberResolverAdapter{Inner: p.teamAdapter}
 		}
 
 		slackCommsHandler := comms.NewHandler(&comms.HandlerConfig{

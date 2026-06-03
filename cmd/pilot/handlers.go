@@ -13,6 +13,7 @@ import (
 	"github.com/ylcn91/pilot/internal/config"
 	"github.com/ylcn91/pilot/internal/executor"
 	"github.com/ylcn91/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/teams"
 )
 
 // syncBoardStatus updates a GitHub Projects V2 board column for an issue.
@@ -155,9 +156,10 @@ func parseAutopilotIteration(body string) int {
 }
 
 // resolveGitHubMemberID maps a GitHub issue author to a team member ID (GH-634).
-// Uses the global teamAdapter (set at startup). Returns "" if no adapter is configured
-// or no matching member is found — callers treat "" as "skip RBAC".
-func resolveGitHubMemberID(issue *github.Issue) string {
+// The team adapter is threaded in from the gateway/polling runtime (nil when RBAC
+// is not configured). Returns "" if no adapter is configured or no matching member
+// is found — callers treat "" as "skip RBAC".
+func resolveGitHubMemberID(teamAdapter *teams.ServiceAdapter, issue *github.Issue) string {
 	if teamAdapter == nil {
 		return ""
 	}

@@ -6,15 +6,12 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-
-	"github.com/ylcn91/pilot/internal/teams"
 )
 
 var (
-	version     = "1.0.0"
-	buildTime   = "unknown"
-	cfgFile     string
-	teamAdapter *teams.ServiceAdapter // Global team adapter for RBAC lookups (GH-634)
+	version   = "1.0.0"
+	buildTime = "unknown"
+	cfgFile   string
 )
 
 var quietMode bool
