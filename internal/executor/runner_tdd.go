@@ -298,56 +298,62 @@ func (r *Runner) rerunTDDTestAuthor(s *executeState, base, feedback string) erro
 	return err
 }
 
+// runRoleWithCommitProbe runs a single role backend between two commit-count
+// probes against the resolved TDD base branch and reports whether the role
+// landed a fresh commit. It centralizes the before/after commit accounting
+// shared by the TEST-AUTHOR and IMPLEMENTER invocations. On a probe error it
+// returns the (possibly non-nil) role result alongside the error so callers can
+// preserve their result-on-error semantics.
+func (r *Runner) runRoleWithCommitProbe(s *executeState, backend Backend, stage *StageConfig, prompt string) (res *BackendResult, committed bool, err error) {
+	before, err := r.tddCommitCount(s)
+	if err != nil {
+		return nil, false, err
+	}
+	res, err = r.runTDDRole(s, backend, stage, prompt, false)
+	if err != nil {
+		return nil, false, err
+	}
+	after, err := r.tddCommitCount(s)
+	if err != nil {
+		return res, false, err
+	}
+	return res, after > before, nil
+}
+
 // runTDDTestAuthorOnce runs one TEST-AUTHOR invocation, parses TESTS_ADDED into
 // s.tddTestNames, and reports whether a new commit landed (via CountNewCommits
 // against the resolved base branch).
 func (r *Runner) runTDDTestAuthorOnce(s *executeState, base, feedback string) (committed bool, err error) {
-	before, err := r.tddCommitCount(s)
-	if err != nil {
-		return false, err
-	}
 	appendix := buildTestAuthorAppendix(tddArtifactByRole(s.tddArtifacts, pilotapi.RoleArchitect), s.tddArchitectDesign)
 	if feedback != "" {
 		appendix += "\n\n## RED gate feedback (fix this)\n\n" + feedback
 	}
-	res, err := r.runTDDRole(s, r.testAuthorBackend, r.tddRoleStage("test_author"), buildTDDRolePrompt(base, appendix), false)
-	if err != nil {
-		return false, err
-	}
+	res, committed, err := r.runRoleWithCommitProbe(s, r.testAuthorBackend, r.tddRoleStage("test_author"), buildTDDRolePrompt(base, appendix))
 	if res != nil {
 		if names := extractTestsAdded(res.Output); len(names) > 0 {
 			s.tddTestNames = names
 		}
 	}
-	after, err := r.tddCommitCount(s)
 	if err != nil {
 		return false, err
 	}
-	return after > before, nil
+	return committed, nil
 }
 
 // runTDDImplementer runs one IMPLEMENTER invocation (with optional GREEN gate
 // feedback) and requires a fresh commit.
 func (r *Runner) runTDDImplementer(s *executeState, base, feedback string) (*BackendResult, error) {
-	before, err := r.tddCommitCount(s)
-	if err != nil {
-		return nil, err
-	}
 	appendix := buildImplementerAppendix(
 		tddArtifactByRole(s.tddArtifacts, pilotapi.RoleArchitect),
 		tddArtifactByRole(s.tddArtifacts, pilotapi.RoleTestAuthor),
 		s.tddTestNames,
 		feedback,
 	)
-	res, err := r.runTDDRole(s, r.implementerBackend, r.tddRoleStage("implementer"), buildTDDRolePrompt(base, appendix), false)
-	if err != nil {
-		return nil, err
-	}
-	after, err := r.tddCommitCount(s)
+	res, committed, err := r.runRoleWithCommitProbe(s, r.implementerBackend, r.tddRoleStage("implementer"), buildTDDRolePrompt(base, appendix))
 	if err != nil {
 		return res, err
 	}
-	if after <= before {
+	if !committed {
 		// Not fatal here: the GREEN gate still judges the working tree, and the
 		// post-GREEN enforceTDDImplementerCommit guard re-prompts for a commit and
 		// fails the run with reasonTDDImplementerNoCommit if none ever lands.

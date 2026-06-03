@@ -3,6 +3,8 @@ package executor
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -230,6 +232,33 @@ func TestEffortClassifier_TaskWithoutID(t *testing.T) {
 	// Without ID, should call subprocess twice (no caching)
 	if callCount != 2 {
 		t.Errorf("expected 2 subprocess calls (no cache without ID), got %d", callCount)
+	}
+}
+
+func TestEffortClassifier_ClassifyViaAPI_Seam(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"{\"effort\":\"high\",\"reason\":\"security sensitive\"}"}]}`))
+	}))
+	defer srv.Close()
+
+	c := NewEffortClassifier()
+	c.apiKey = "fake-api-key"
+	c.apiURL = srv.URL
+	c.httpClient = srv.Client()
+
+	task := &Task{
+		ID:          "GH-901",
+		Title:       "Fix auth bypass",
+		Description: "Investigate and fix a subtle session validation bug.",
+	}
+
+	result, err := c.classifyViaAPI(context.Background(), task)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "high" {
+		t.Errorf("expected 'high', got %q", result)
 	}
 }
 

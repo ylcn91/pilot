@@ -39,6 +39,10 @@ type EffortClassifier struct {
 	// Can be overridden for testing.
 	cmdRunner func(ctx context.Context, args ...string) ([]byte, error)
 
+	// httpClient executes the direct API request (api mode). Defaults to
+	// http.DefaultClient; can be overridden for testing.
+	httpClient *http.Client
+
 	mu    sync.Mutex
 	cache map[string]string // task ID → cached effort level
 }
@@ -75,11 +79,12 @@ Respond with ONLY a JSON object (no markdown, no explanation):
 // Uses the user's existing Claude Code subscription - no separate API key needed.
 func NewEffortClassifier() *EffortClassifier {
 	c := &EffortClassifier{
-		model:   "claude-haiku-4-5-20251001",
-		apiURL:  "https://api.anthropic.com/v1/messages",
-		timeout: 30 * time.Second,
-		log:     logging.WithComponent("effort-classifier"),
-		cache:   make(map[string]string),
+		model:      "claude-haiku-4-5-20251001",
+		apiURL:     "https://api.anthropic.com/v1/messages",
+		timeout:    30 * time.Second,
+		log:        logging.WithComponent("effort-classifier"),
+		cache:      make(map[string]string),
+		httpClient: http.DefaultClient,
 	}
 	c.cmdRunner = c.defaultCmdRunner
 
@@ -246,7 +251,7 @@ func (c *EffortClassifier) classifyViaAPI(ctx context.Context, task *Task) (stri
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("API request failed: %w", err)
 	}
@@ -337,16 +342,9 @@ func (c *EffortClassifier) classifyViaSubprocess(ctx context.Context, task *Task
 
 // parseEffortResponse extracts effort level from the LLM's JSON response.
 func parseEffortResponse(text string) (string, error) {
-	// Strip any markdown code fence wrapper
-	text = strings.TrimSpace(text)
-	text = strings.TrimPrefix(text, "```json")
-	text = strings.TrimPrefix(text, "```")
-	text = strings.TrimSuffix(text, "```")
-	text = strings.TrimSpace(text)
-
-	var resp effortClassificationResponse
-	if err := json.Unmarshal([]byte(text), &resp); err != nil {
-		return "", fmt.Errorf("parse effort JSON: %w (raw: %s)", err, text)
+	resp, stripped, err := unmarshalJSONFence[effortClassificationResponse](text)
+	if err != nil {
+		return "", fmt.Errorf("parse effort JSON: %w (raw: %s)", err, stripped)
 	}
 
 	effort := strings.ToLower(resp.Effort)

@@ -182,16 +182,9 @@ func (c *ComplexityClassifier) classify(ctx context.Context, task *Task) (Comple
 
 // parseClassificationResponse extracts complexity from the LLM's JSON response.
 func parseClassificationResponse(text string) (Complexity, error) {
-	// Strip any markdown code fence wrapper
-	text = strings.TrimSpace(text)
-	text = strings.TrimPrefix(text, "```json")
-	text = strings.TrimPrefix(text, "```")
-	text = strings.TrimSuffix(text, "```")
-	text = strings.TrimSpace(text)
-
-	var resp classificationResponse
-	if err := json.Unmarshal([]byte(text), &resp); err != nil {
-		return "", fmt.Errorf("parse classification JSON: %w (raw: %s)", err, text)
+	resp, stripped, err := unmarshalJSONFence[classificationResponse](text)
+	if err != nil {
+		return "", fmt.Errorf("parse classification JSON: %w (raw: %s)", err, stripped)
 	}
 
 	switch strings.ToLower(resp.Complexity) {

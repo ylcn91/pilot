@@ -3,6 +3,7 @@ package executor
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // JSON Schema constants for Claude Code --json-schema structured output
@@ -38,4 +39,21 @@ func extractStructuredOutput(jsonResponse []byte) (json.RawMessage, error) {
 	}
 
 	return wrapper.StructuredOutput, nil
+}
+
+// unmarshalJSONFence strips an optional markdown code-fence wrapper from text and
+// unmarshals the result into a value of type T. It returns the parsed value, the
+// stripped text (so callers can include the raw payload in their own error
+// message), and the unmarshal error (nil on success). Callers wrap the returned
+// error with their domain-specific message to keep error output unchanged.
+func unmarshalJSONFence[T any](text string) (T, string, error) {
+	var v T
+	text = strings.TrimSpace(text)
+	text = strings.TrimPrefix(text, "```json")
+	text = strings.TrimPrefix(text, "```")
+	text = strings.TrimSuffix(text, "```")
+	text = strings.TrimSpace(text)
+
+	err := json.Unmarshal([]byte(text), &v)
+	return v, text, err
 }
