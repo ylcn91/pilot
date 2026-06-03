@@ -192,11 +192,27 @@ func (h *WebhookHandler) extractIssueAndRepo(payload map[string]interface{}) (*I
 	}
 
 	// Parse issue
+	number, ok := issueData["number"].(float64)
+	if !ok {
+		return nil, nil, fmt.Errorf("issue.number missing or not a number")
+	}
+	title, ok := issueData["title"].(string)
+	if !ok {
+		return nil, nil, fmt.Errorf("issue.title missing or not a string")
+	}
+	state, ok := issueData["state"].(string)
+	if !ok {
+		return nil, nil, fmt.Errorf("issue.state missing or not a string")
+	}
+	htmlURL, ok := issueData["html_url"].(string)
+	if !ok {
+		return nil, nil, fmt.Errorf("issue.html_url missing or not a string")
+	}
 	issue := &Issue{
-		Number:  int(issueData["number"].(float64)),
-		Title:   issueData["title"].(string),
-		State:   issueData["state"].(string),
-		HTMLURL: issueData["html_url"].(string),
+		Number:  int(number),
+		Title:   title,
+		State:   state,
+		HTMLURL: htmlURL,
 	}
 	if body, ok := issueData["body"].(string); ok {
 		issue.Body = body
@@ -206,7 +222,11 @@ func (h *WebhookHandler) extractIssueAndRepo(payload map[string]interface{}) (*I
 	if labelsData, ok := issueData["labels"].([]interface{}); ok {
 		for _, l := range labelsData {
 			if labelMap, ok := l.(map[string]interface{}); ok {
-				label := Label{Name: labelMap["name"].(string)}
+				name, ok := labelMap["name"].(string)
+				if !ok {
+					return nil, nil, fmt.Errorf("issue.label.name missing or not a string")
+				}
+				label := Label{Name: name}
 				if id, ok := labelMap["id"].(float64); ok {
 					label.ID = int64(id)
 				}
@@ -216,13 +236,32 @@ func (h *WebhookHandler) extractIssueAndRepo(payload map[string]interface{}) (*I
 	}
 
 	// Parse repository
-	ownerData, _ := repoData["owner"].(map[string]interface{})
+	repoName, ok := repoData["name"].(string)
+	if !ok {
+		return nil, nil, fmt.Errorf("repository.name missing or not a string")
+	}
+	fullName, ok := repoData["full_name"].(string)
+	if !ok {
+		return nil, nil, fmt.Errorf("repository.full_name missing or not a string")
+	}
+	repoHTMLURL, ok := repoData["html_url"].(string)
+	if !ok {
+		return nil, nil, fmt.Errorf("repository.html_url missing or not a string")
+	}
+	ownerData, ok := repoData["owner"].(map[string]interface{})
+	if !ok {
+		return nil, nil, fmt.Errorf("repository.owner missing or not an object")
+	}
+	ownerLogin, ok := ownerData["login"].(string)
+	if !ok {
+		return nil, nil, fmt.Errorf("repository.owner.login missing or not a string")
+	}
 	repo := &Repository{
-		Name:     repoData["name"].(string),
-		FullName: repoData["full_name"].(string),
-		HTMLURL:  repoData["html_url"].(string),
+		Name:     repoName,
+		FullName: fullName,
+		HTMLURL:  repoHTMLURL,
 		Owner: User{
-			Login: ownerData["login"].(string),
+			Login: ownerLogin,
 		},
 	}
 	if cloneURL, ok := repoData["clone_url"].(string); ok {
@@ -256,7 +295,11 @@ func (h *WebhookHandler) handlePRReview(ctx context.Context, payload map[string]
 	if !ok {
 		return nil
 	}
-	prNumber := int(prData["number"].(float64))
+	number, ok := prData["number"].(float64)
+	if !ok {
+		return fmt.Errorf("pull_request.number missing or not a number")
+	}
+	prNumber := int(number)
 
 	// Extract review state
 	reviewData, ok := payload["review"].(map[string]interface{})
@@ -276,12 +319,27 @@ func (h *WebhookHandler) handlePRReview(ctx context.Context, payload map[string]
 	if !ok {
 		return nil
 	}
-	ownerData, _ := repoData["owner"].(map[string]interface{})
+	repoName, ok := repoData["name"].(string)
+	if !ok {
+		return fmt.Errorf("repository.name missing or not a string")
+	}
+	fullName, ok := repoData["full_name"].(string)
+	if !ok {
+		return fmt.Errorf("repository.full_name missing or not a string")
+	}
+	ownerData, ok := repoData["owner"].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("repository.owner missing or not an object")
+	}
+	ownerLogin, ok := ownerData["login"].(string)
+	if !ok {
+		return fmt.Errorf("repository.owner.login missing or not a string")
+	}
 	repo := &Repository{
-		Name:     repoData["name"].(string),
-		FullName: repoData["full_name"].(string),
+		Name:     repoName,
+		FullName: fullName,
 		Owner: User{
-			Login: ownerData["login"].(string),
+			Login: ownerLogin,
 		},
 	}
 
