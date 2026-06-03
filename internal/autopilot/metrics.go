@@ -39,10 +39,9 @@ type Metrics struct {
 	ApprovalPersistMisses map[string]int64 // kind → count (request_id, decision)
 	// TokensConsumed, ExecutionCostUSD, and ExecutionsByResult are persisted per
 	// snapshot to SQLite (GH-2856) so historical data survives across runs.
-	// However, on daemon restart the in-memory counters reset to zero and
-	// re-accumulate from new executions — they are NOT restored from the latest
-	// snapshot yet. Prometheus rate() queries tolerate this via reset detection.
-	// TODO(GH-2836): call Metrics.RestoreFromRow on startup to resume from last snapshot.
+	// On daemon restart MetricsPersister seeds these counters from the latest
+	// snapshot via RestoreFromRow (GH-2836) so they resume rather than reset to
+	// zero; new executions then accumulate on top.
 	TokensConsumed     map[tokenKey]int64 // {model,direction} → token count
 	ExecutionCostUSD   map[string]float64 // model → cumulative USD cost
 	ExecutionsByResult map[execKey]int64  // {model,result} → execution count

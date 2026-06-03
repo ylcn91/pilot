@@ -36,6 +36,11 @@ func (mp *MetricsPersister) Run(ctx context.Context) {
 		return
 	}
 
+	// GH-2836: Resume token/cost/execution counters from the last snapshot so a
+	// daemon restart continues accumulating instead of resetting to zero. Runs
+	// once before the first new execution is recorded.
+	mp.restore()
+
 	ticker := time.NewTicker(mp.interval)
 	defer ticker.Stop()
 
@@ -50,6 +55,22 @@ func (mp *MetricsPersister) Run(ctx context.Context) {
 			mp.prune()
 		}
 	}
+}
+
+// restore seeds the in-memory token/cost/execution counters from the most
+// recent persisted snapshot. A missing snapshot or load error is non-fatal:
+// the counters simply start from zero, matching pre-GH-2836 behavior.
+func (mp *MetricsPersister) restore() {
+	row, err := mp.store.LatestAutopilotMetrics()
+	if err != nil {
+		mp.log.Warn("failed to load latest autopilot metrics for restore", slog.Any("error", err))
+		return
+	}
+	if row == nil {
+		return
+	}
+	mp.controller.Metrics().RestoreFromRow(row)
+	mp.log.Debug("restored autopilot counters from last snapshot", slog.Time("snapshot_at", row.SnapshotAt))
 }
 
 func (mp *MetricsPersister) persist() {

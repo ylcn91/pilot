@@ -18,22 +18,14 @@ func (c *Controller) checkExternalMergeOrClose(ctx context.Context, prState *PRS
 
 		// GH-1486: Close associated issue and add pilot-done label on external merge
 		if prState.IssueNumber > 0 {
-			// Add pilot-done label
-			if err := c.ghClient.AddLabels(ctx, c.owner, c.repo, prState.IssueNumber, []string{github.LabelDone}); err != nil {
-				c.log.Warn("failed to add pilot-done label after external merge", "issue", prState.IssueNumber, "error", err)
-			}
-			// Remove pilot-in-progress label
-			if err := c.ghClient.RemoveLabel(ctx, c.owner, c.repo, prState.IssueNumber, github.LabelInProgress); err != nil {
-				c.log.Debug("pilot-in-progress label cleanup on external merge", "issue", prState.IssueNumber, "error", err)
-			}
-			// Remove pilot-failed label (cleanup from prior failed attempt)
-			if err := c.ghClient.RemoveLabel(ctx, c.owner, c.repo, prState.IssueNumber, github.LabelFailed); err != nil {
-				c.log.Debug("pilot-failed label cleanup on external merge", "issue", prState.IssueNumber, "error", err)
-			}
-			// Close the issue
-			if err := c.ghClient.UpdateIssueState(ctx, c.owner, c.repo, prState.IssueNumber, "closed"); err != nil {
-				c.log.Warn("failed to close issue after external merge", "issue", prState.IssueNumber, "error", err)
-			} else {
+			closed := c.applyMergeLabels(ctx, prState.IssueNumber, mergeLabelLogging{
+				addDoneFailMsg:     "failed to add pilot-done label after external merge",
+				inProgressFailWarn: false,
+				inProgressFailMsg:  "pilot-in-progress label cleanup on external merge",
+				failedCleanupMsg:   "pilot-failed label cleanup on external merge",
+				closeFailMsg:       "failed to close issue after external merge",
+			})
+			if closed {
 				c.log.Info("closed issue after external merge", "issue", prState.IssueNumber, "pr", prState.PRNumber)
 
 				// GH-2297: Post success comment so last comment isn't stale failure

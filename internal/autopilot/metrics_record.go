@@ -1,8 +1,49 @@
 package autopilot
 
 import (
+	"strings"
 	"time"
+
+	"github.com/ylcn91/pilot/internal/memory"
 )
+
+// RestoreFromRow seeds the token/cost/execution counters from the latest
+// persisted snapshot so they resume across daemon restarts (GH-2836) instead of
+// resetting to zero. It replaces the in-memory values for those three counters
+// (callers invoke it once at startup, before any new executions are recorded);
+// all other counters and gauges are left untouched. A nil row is a no-op.
+//
+// Storage keys are the same composite form SaveAutopilotMetrics writes:
+// "model|direction" for tokens, plain model for cost, "model|result" for
+// executions. Malformed keys missing the separator are skipped.
+func (m *Metrics) RestoreFromRow(row *memory.AutopilotMetricsRow) {
+	if row == nil {
+		return
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for key, v := range row.TokensConsumed {
+		model, direction, ok := strings.Cut(key, "|")
+		if !ok {
+			continue
+		}
+		m.TokensConsumed[tokenKey{Model: model, Direction: direction}] = v
+	}
+
+	for model, cost := range row.ExecutionCostUSD {
+		m.ExecutionCostUSD[model] = cost
+	}
+
+	for key, v := range row.ExecutionsByResult {
+		model, result, ok := strings.Cut(key, "|")
+		if !ok {
+			continue
+		}
+		m.ExecutionsByResult[execKey{Model: model, Result: result}] = v
+	}
+}
 
 // --- Counter increments ---
 

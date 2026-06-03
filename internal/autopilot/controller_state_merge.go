@@ -8,6 +8,45 @@ import (
 	"github.com/ylcn91/pilot/internal/adapters/github"
 )
 
+// mergeLabelLogging captures the per-call-site log-level/message differences for
+// applyMergeLabels. handleMerging warns on a failed pilot-in-progress removal
+// (it expects the label to be present), while the external-merge path treats the
+// same removal as best-effort cleanup (Debug). The remaining messages differ only
+// in wording ("after merge" vs "after external merge").
+type mergeLabelLogging struct {
+	addDoneFailMsg     string
+	inProgressFailWarn bool // true: Warn on removal failure; false: Debug
+	inProgressFailMsg  string
+	failedCleanupMsg   string
+	closeFailMsg       string
+}
+
+// applyMergeLabels performs the issue label/state cleanup shared by the
+// autopilot merge path (handleMerging) and the external-merge path
+// (checkExternalMergeOrClose): add pilot-done, remove pilot-in-progress, remove
+// stale pilot-failed, then close the issue. Returns true when UpdateIssueState
+// succeeded so the caller can run its (divergent) comment/notification logic.
+func (c *Controller) applyMergeLabels(ctx context.Context, issueNumber int, lg mergeLabelLogging) bool {
+	if err := c.ghClient.AddLabels(ctx, c.owner, c.repo, issueNumber, []string{github.LabelDone}); err != nil {
+		c.log.Warn(lg.addDoneFailMsg, "issue", issueNumber, "error", err)
+	}
+	if err := c.ghClient.RemoveLabel(ctx, c.owner, c.repo, issueNumber, github.LabelInProgress); err != nil {
+		if lg.inProgressFailWarn {
+			c.log.Warn(lg.inProgressFailMsg, "issue", issueNumber, "error", err)
+		} else {
+			c.log.Debug(lg.inProgressFailMsg, "issue", issueNumber, "error", err)
+		}
+	}
+	if err := c.ghClient.RemoveLabel(ctx, c.owner, c.repo, issueNumber, github.LabelFailed); err != nil {
+		c.log.Debug(lg.failedCleanupMsg, "issue", issueNumber, "error", err)
+	}
+	if err := c.ghClient.UpdateIssueState(ctx, c.owner, c.repo, issueNumber, "closed"); err != nil {
+		c.log.Warn(lg.closeFailMsg, "issue", issueNumber, "error", err)
+		return false
+	}
+	return true
+}
+
 // handleMerging merges the PR.
 func (c *Controller) handleMerging(ctx context.Context, prState *PRState) error {
 	prState.MergeAttempts++
@@ -69,69 +108,80 @@ func (c *Controller) handleMerging(ctx context.Context, prState *PRState) error 
 	prState.Stage = StageMerged
 	c.recordMergeSuccess(prState)
 
+	c.postMergeIssueCleanup(ctx, prState)
+	c.postMergeNotifications(ctx, prState)
+
+	return nil
+}
+
+// postMergeIssueCleanup runs the issue-side bookkeeping after a successful
+// autopilot merge: poller hand-off, label/state cleanup, success comment,
+// monitor/board sync, execution-record self-heal, and pattern reinforcement.
+// No-op when the PR has no associated issue.
+func (c *Controller) postMergeIssueCleanup(ctx context.Context, prState *PRState) {
 	// GH-1015: Add pilot-done label after successful merge (not at PR creation)
 	// This prevents false positives where PRs are closed without merging
-	if prState.IssueNumber > 0 {
-		// GH-3271: mark issue processed in all pollers before any label updates so
-		// a poll tick that fires during the merge→pilot-done propagation window
-		// cannot re-dispatch the issue (phantom pilot-blocked).
-		if c.onIssueDone != nil {
-			c.onIssueDone(prState.IssueNumber)
-		}
-		if err := c.ghClient.AddLabels(ctx, c.owner, c.repo, prState.IssueNumber, []string{github.LabelDone}); err != nil {
-			c.log.Warn("failed to add pilot-done label after merge", "issue", prState.IssueNumber, "error", err)
-		}
-		if err := c.ghClient.RemoveLabel(ctx, c.owner, c.repo, prState.IssueNumber, github.LabelInProgress); err != nil {
-			c.log.Warn("failed to remove pilot-in-progress label after merge", "issue", prState.IssueNumber, "error", err)
-		}
-		// GH-1302: Clean up stale pilot-failed label from prior failed attempt
-		if err := c.ghClient.RemoveLabel(ctx, c.owner, c.repo, prState.IssueNumber, github.LabelFailed); err != nil {
-			// 404 is expected if label doesn't exist - silently ignore
-			c.log.Debug("pilot-failed label cleanup", "issue", prState.IssueNumber, "error", err)
-		}
-		// Close the issue after successful merge
-		if err := c.ghClient.UpdateIssueState(ctx, c.owner, c.repo, prState.IssueNumber, "closed"); err != nil {
-			c.log.Warn("failed to close issue after merge", "issue", prState.IssueNumber, "error", err)
-		}
-		c.log.Info("closed issue after merge", "issue", prState.IssueNumber, "pr", prState.PRNumber)
+	if prState.IssueNumber == 0 {
+		return
+	}
 
-		// GH-2297: Post success comment so last comment isn't stale failure.
-		// GH-2345: Guard against re-entry producing duplicate comments.
-		if !prState.MergeNotificationPosted {
-			comment := buildMergeCompletionComment(prState)
-			if _, err := c.ghClient.AddComment(ctx, c.owner, c.repo, prState.IssueNumber, comment); err != nil {
-				c.log.Warn("failed to post merge completion comment", "issue", prState.IssueNumber, "error", err)
-			} else {
-				prState.MergeNotificationPosted = true
-			}
-		}
+	// GH-3271: mark issue processed in all pollers before any label updates so
+	// a poll tick that fires during the merge→pilot-done propagation window
+	// cannot re-dispatch the issue (phantom pilot-blocked).
+	if c.onIssueDone != nil {
+		c.onIssueDone(prState.IssueNumber)
+	}
+	// GH-1302: pilot-failed cleanup removes a stale label from a prior failed
+	// attempt; 404 (label absent) is expected and logged at Debug.
+	c.applyMergeLabels(ctx, prState.IssueNumber, mergeLabelLogging{
+		addDoneFailMsg:     "failed to add pilot-done label after merge",
+		inProgressFailWarn: true,
+		inProgressFailMsg:  "failed to remove pilot-in-progress label after merge",
+		failedCleanupMsg:   "pilot-failed label cleanup",
+		closeFailMsg:       "failed to close issue after merge",
+	})
+	c.log.Info("closed issue after merge", "issue", prState.IssueNumber, "pr", prState.PRNumber)
 
-		// GH-1336: Sync monitor state so dashboard shows "done" instead of stale "failed"
-		if c.monitor != nil {
-			taskID := fmt.Sprintf("GH-%d", prState.IssueNumber)
-			c.monitor.Complete(taskID, prState.PRURL)
-			c.log.Debug("updated monitor state to completed", "task", taskID, "pr", prState.PRNumber)
-		}
-
-		// GH-2279/GH-2402 + TASK-352: Self-heal execution records on merge.
-		// Promotes prior "failed" rows (for the issue AND its parent epic) to
-		// "completed" and stamps the PR URL so the dashboard reflects the merged
-		// outcome (handles user-pushed commits, sub-issues merged via parent, etc.).
-		c.selfHealForPR(ctx, prState.IssueNumber, prState.PRURL)
-
-		// A4: Reinforce the project's patterns on merge — the strongest success
-		// signal available (work shipped and passed review/CI). Guarded so each
-		// merge reinforces exactly once.
-		c.reinforceMergedPatterns(prState)
-
-		// GH-1870: Sync board card to "Done" column on merge
-		if c.boardSync != nil && prState.IssueNodeID != "" {
-			if err := c.boardSync.UpdateProjectItemStatus(ctx, prState.IssueNodeID, c.doneStatus); err != nil {
-				c.log.Warn("board sync on merge failed", "pr", prState.PRNumber, "error", err)
-			}
+	// GH-2297: Post success comment so last comment isn't stale failure.
+	// GH-2345: Guard against re-entry producing duplicate comments.
+	if !prState.MergeNotificationPosted {
+		comment := buildMergeCompletionComment(prState)
+		if _, err := c.ghClient.AddComment(ctx, c.owner, c.repo, prState.IssueNumber, comment); err != nil {
+			c.log.Warn("failed to post merge completion comment", "issue", prState.IssueNumber, "error", err)
+		} else {
+			prState.MergeNotificationPosted = true
 		}
 	}
 
+	// GH-1336: Sync monitor state so dashboard shows "done" instead of stale "failed"
+	if c.monitor != nil {
+		taskID := fmt.Sprintf("GH-%d", prState.IssueNumber)
+		c.monitor.Complete(taskID, prState.PRURL)
+		c.log.Debug("updated monitor state to completed", "task", taskID, "pr", prState.PRNumber)
+	}
+
+	// GH-2279/GH-2402 + TASK-352: Self-heal execution records on merge.
+	// Promotes prior "failed" rows (for the issue AND its parent epic) to
+	// "completed" and stamps the PR URL so the dashboard reflects the merged
+	// outcome (handles user-pushed commits, sub-issues merged via parent, etc.).
+	c.selfHealForPR(ctx, prState.IssueNumber, prState.PRURL)
+
+	// A4: Reinforce the project's patterns on merge — the strongest success
+	// signal available (work shipped and passed review/CI). Guarded so each
+	// merge reinforces exactly once.
+	c.reinforceMergedPatterns(prState)
+
+	// GH-1870: Sync board card to "Done" column on merge
+	if c.boardSync != nil && prState.IssueNodeID != "" {
+		if err := c.boardSync.UpdateProjectItemStatus(ctx, prState.IssueNodeID, c.doneStatus); err != nil {
+			c.log.Warn("board sync on merge failed", "pr", prState.PRNumber, "error", err)
+		}
+	}
+}
+
+// postMergeNotifications cleans up the merged remote branch and sends the
+// merge-success notification after a successful autopilot merge.
+func (c *Controller) postMergeNotifications(ctx context.Context, prState *PRState) {
 	// GH-1383: Delete remote branch after successful merge
 	// Branch is safe to delete — it's fully merged. If GitHub already deleted it
 	// (delete_branch_on_merge setting), the API returns 404/422 which we ignore.
@@ -149,8 +199,6 @@ func (c *Controller) handleMerging(ctx context.Context, prState *PRState) error 
 			c.log.Warn("failed to send merge notification", "error", err)
 		}
 	}
-
-	return nil
 }
 
 // maybeCloseParentIssue checks whether the merged PR's issue is a sub-issue
