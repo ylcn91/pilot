@@ -2,6 +2,7 @@ package executor
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -118,11 +119,27 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func (b *CodexExecBackend) Execute(ctx context.Context, opts ExecuteOptions) (*BackendResult, error) {
+// buildCmd constructs the codex-exec command for the given options.
+//
+// Stdin is set to an explicit zero-length reader so codex reads instant EOF
+// in every launch context (direct CLI, daemon, app-server, bench). Without
+// this, codex can block on an open (non-EOF) stdin inherited from the parent
+// process, printing "Reading additional input from stdin..." and hanging
+// headless. Setting it explicitly (rather than relying on the nil-implicit
+// behaviour) prevents a future parent that holds stdin open from re-triggering
+// the hang.
+func (b *CodexExecBackend) buildCmd(ctx context.Context, opts ExecuteOptions) *exec.Cmd {
 	args := b.buildArgs(opts)
 
 	cmd := exec.CommandContext(ctx, b.config.Command, args...)
 	cmd.Dir = opts.ProjectPath
+	cmd.Stdin = bytes.NewReader(nil)
+
+	return cmd
+}
+
+func (b *CodexExecBackend) Execute(ctx context.Context, opts ExecuteOptions) (*BackendResult, error) {
+	cmd := b.buildCmd(ctx, opts)
 
 	b.log.Debug("Starting Codex exec",
 		slog.String("command", b.config.Command),

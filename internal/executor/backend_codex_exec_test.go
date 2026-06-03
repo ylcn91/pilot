@@ -1,8 +1,14 @@
 package executor
 
 import (
+	"context"
+	"io"
+	"os"
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
+	"time"
 )
 
 func TestNewCodexExecBackend(t *testing.T) {
@@ -144,6 +150,87 @@ func TestCodexExecBackendBuildArgsResume(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("buildArgs() = %#v, want %#v", got, want)
+	}
+}
+
+func TestCodexExecBackendBuildCmdSetsEOFStdin(t *testing.T) {
+	backend := NewCodexExecBackend(&CodexExecConfig{Command: "codex"})
+
+	cmd := backend.buildCmd(context.Background(), ExecuteOptions{
+		Prompt:      "Task",
+		ProjectPath: "/repo",
+	})
+
+	if cmd.Stdin == nil {
+		t.Fatal("buildCmd() left cmd.Stdin nil; codex can hang on an inherited open stdin")
+	}
+	if cmd.Dir != "/repo" {
+		t.Errorf("cmd.Dir = %q, want %q", cmd.Dir, "/repo")
+	}
+
+	buf, err := io.ReadAll(cmd.Stdin)
+	if err != nil {
+		t.Fatalf("reading cmd.Stdin: %v", err)
+	}
+	if len(buf) != 0 {
+		t.Errorf("cmd.Stdin = %q, want empty (instant EOF)", buf)
+	}
+}
+
+func TestCodexExecBackendExecuteDoesNotBlockOnStdin(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script fake codex is POSIX-only")
+	}
+
+	dir := t.TempDir()
+	script := filepath.Join(dir, "codex")
+	// The fake codex reports whether its stdin is at EOF by attempting a
+	// non-blocking read. If Execute leaves stdin open, the read here would
+	// block and the test's context deadline would fire.
+	body := `#!/bin/sh
+if IFS= read -r _line; then
+  echo '{"type":"thread.started","thread_id":"sess-1"}'
+  echo '{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"stdin-not-eof"}}'
+else
+  echo '{"type":"thread.started","thread_id":"sess-1"}'
+  echo '{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"stdin-eof"}}'
+fi
+echo '{"type":"turn.completed","usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1}}'
+`
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatalf("writing fake codex: %v", err)
+	}
+
+	backend := NewCodexExecBackend(&CodexExecConfig{Command: script})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	done := make(chan struct{})
+	var result *BackendResult
+	var execErr error
+	go func() {
+		result, execErr = backend.Execute(ctx, ExecuteOptions{
+			Prompt:      "Task",
+			ProjectPath: dir,
+		})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Execute blocked: codex did not read EOF on stdin")
+	}
+
+	if execErr != nil {
+		t.Fatalf("Execute() error = %v", execErr)
+	}
+	if !result.Success {
+		t.Fatalf("Execute() success = false, error = %q", result.Error)
+	}
+	if result.LastAssistantText != "stdin-eof" {
+		t.Errorf("fake codex saw stdin = %q, want EOF (assistant text %q)", result.LastAssistantText, "stdin-eof")
 	}
 }
 
