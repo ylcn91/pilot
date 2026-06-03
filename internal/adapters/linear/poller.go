@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ylcn91/pilot/internal/adapters"
 	"github.com/ylcn91/pilot/internal/logging"
 )
 
@@ -21,13 +22,10 @@ type IssueResult struct {
 	Error      error
 }
 
-// ProcessedStore persists which Linear issues have been processed across restarts.
-type ProcessedStore interface {
-	Mark(source, repo, issueID string) error
-	Unmark(source, repo, issueID string) error
-	IsProcessed(source, repo, issueID string) (bool, error)
-	Load(source, repo string) (map[string]time.Time, error)
-}
+// ProcessedStore persists which Linear issues have been processed across
+// restarts. It aliases the canonical adapters.ProcessedStore so a method
+// addition there propagates to every adapter without per-package edits.
+type ProcessedStore = adapters.ProcessedStore
 
 // Poller polls Linear for issues with a specific label
 type Poller struct {

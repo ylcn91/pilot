@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/ylcn91/pilot/internal/alerts"
@@ -324,35 +325,44 @@ func formatLabels(pairs []string) string {
 	if len(pairs) == 0 {
 		return ""
 	}
-	result := ""
+	var b strings.Builder
 	for i := 0; i < len(pairs); i += 2 {
 		if i > 0 {
-			result += ","
+			b.WriteByte(',')
 		}
 		key := pairs[i]
 		value := ""
 		if i+1 < len(pairs) {
 			value = pairs[i+1]
 		}
-		result += fmt.Sprintf("%s=\"%s\"", key, escapeLabel(value))
+		b.WriteString(key)
+		b.WriteString(`="`)
+		writeEscapedLabel(&b, value)
+		b.WriteByte('"')
 	}
-	return result
+	return b.String()
 }
 
 // escapeLabel escapes special characters in label values.
 func escapeLabel(s string) string {
-	result := ""
+	var b strings.Builder
+	writeEscapedLabel(&b, s)
+	return b.String()
+}
+
+// writeEscapedLabel writes s to b with Prometheus label-value escaping applied,
+// avoiding the O(n²) string concatenation of the previous rune-loop approach.
+func writeEscapedLabel(b *strings.Builder, s string) {
 	for _, c := range s {
 		switch c {
 		case '\\':
-			result += "\\\\"
+			b.WriteString(`\\`)
 		case '"':
-			result += "\\\""
+			b.WriteString(`\"`)
 		case '\n':
-			result += "\\n"
+			b.WriteString(`\n`)
 		default:
-			result += string(c)
+			b.WriteRune(c)
 		}
 	}
-	return result
 }

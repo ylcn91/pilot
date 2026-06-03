@@ -18,6 +18,7 @@ const whisperAPIURL = "https://api.openai.com/v1/audio/transcriptions"
 // WhisperAPI implements transcription using OpenAI's Whisper API
 type WhisperAPI struct {
 	apiKey     string
+	apiURL     string
 	httpClient *http.Client
 }
 
@@ -25,6 +26,7 @@ type WhisperAPI struct {
 func NewWhisperAPI(apiKey string) *WhisperAPI {
 	return &WhisperAPI{
 		apiKey: apiKey,
+		apiURL: whisperAPIURL,
 		httpClient: &http.Client{
 			Timeout: 60 * time.Second,
 		},
@@ -89,7 +91,11 @@ func (w *WhisperAPI) Transcribe(ctx context.Context, audioPath string) (*Result,
 	}
 
 	// Create HTTP request
-	req, err := http.NewRequestWithContext(ctx, "POST", whisperAPIURL, &requestBody)
+	endpoint := w.apiURL
+	if endpoint == "" {
+		endpoint = whisperAPIURL
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, &requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
