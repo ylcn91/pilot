@@ -237,30 +237,33 @@ DO NOT make any changes. Research only.`, desc),
 	return tasks
 }
 
+// buildSubagentArgs builds the claude CLI argv for a research subagent.
+// --model and its value MUST be two separate argv elements; passing
+// "--model haiku" as a single string makes the claude CLI ignore the flag and
+// silently fall back to the default model.
+func buildSubagentArgs(model, prompt string) []string {
+	args := []string{"-p", prompt, "--output-format", "text"}
+	if model != "" {
+		args = append([]string{"--model", model}, args...)
+	}
+	return args
+}
+
 // executeSubagent runs a single subagent and returns results
 func (p *ParallelRunner) executeSubagent(ctx context.Context, projectPath string, task researchTask) *SubagentResult {
 	start := time.Now()
 
-	// Determine model flag
-	modelFlag := ""
-	if p.defaultModel != "" {
-		modelFlag = "--model " + p.defaultModel
-	} else {
+	// Determine model
+	model := p.defaultModel
+	if model == "" {
 		switch task.Model {
-		case "haiku":
-			modelFlag = "--model haiku"
-		case "sonnet":
-			modelFlag = "--model sonnet"
-		case "opus":
-			modelFlag = "--model opus"
+		case "haiku", "sonnet", "opus":
+			model = task.Model
 		}
 	}
 
-	// Build command - use haiku for fast research
-	args := []string{"-p", task.Prompt, "--output-format", "text"}
-	if modelFlag != "" {
-		args = append([]string{modelFlag}, args...)
-	}
+	// Build command - use haiku for fast research.
+	args := buildSubagentArgs(model, task.Prompt)
 
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	cmd.Dir = projectPath
