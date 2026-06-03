@@ -18,10 +18,50 @@ func TestNewArchitectCmd_Constructs(t *testing.T) {
 	if cmd.RunE == nil {
 		t.Error("architect command must have a RunE")
 	}
-	for _, name := range []string{"dry-run", "create-issues", "limit", "backend", "json"} {
+	for _, name := range []string{"dry-run", "create-issues", "limit", "backend", "json", "lens"} {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Errorf("missing --%s flag", name)
 		}
+	}
+}
+
+func TestArchitectCmd_LensDefaultsEmpty(t *testing.T) {
+	cmd := newArchitectCmd()
+	got, err := cmd.Flags().GetString("lens")
+	if err != nil {
+		t.Fatalf("GetString(lens): %v", err)
+	}
+	if got != "" {
+		t.Errorf("--lens must default to empty (= core lens), got %q", got)
+	}
+}
+
+// TestBuildArchitectRunConfig_DepDoctorLens proves the --lens selector reaches
+// the scanner: selecting depdoctor wires the dependency_doctor collector.
+func TestBuildArchitectRunConfig_DepDoctorLens(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Architect = &config.ArchitectConfig{Enabled: true}
+	cfg.Adapters.GitHub.Repo = "octocat/hello-world"
+
+	f := &architectFlags{dryRun: true, lens: "depdoctor"}
+	rc, err := buildArchitectRunConfig(cfg, t.TempDir(), f)
+	if err != nil {
+		t.Fatalf("build with depdoctor lens: %v", err)
+	}
+	cols := rc.Scanner.Collectors()
+	if len(cols) != 1 || cols[0].Name() != "dependency_doctor" {
+		t.Fatalf("depdoctor lens must wire the dependency_doctor collector, got %d collectors", len(cols))
+	}
+}
+
+func TestBuildArchitectRunConfig_UnknownLensErrors(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Architect = &config.ArchitectConfig{Enabled: true}
+	cfg.Adapters.GitHub.Repo = "octocat/hello-world"
+
+	f := &architectFlags{dryRun: true, lens: "ghost-lens"}
+	if _, err := buildArchitectRunConfig(cfg, t.TempDir(), f); err == nil {
+		t.Fatal("unknown --lens must error")
 	}
 }
 

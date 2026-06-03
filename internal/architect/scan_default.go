@@ -41,6 +41,16 @@ func gateRunnerFromQuality(r *quality.Runner) gateRunner {
 // by opts.Signals when non-empty. The result is always a usable Scanner — an
 // empty roster simply produces no Signals.
 func BuildDefaultScanner(opts ScanOptions) *Scanner {
+	selected := filterCollectors(coreCollectors(opts), opts.Signals)
+	return NewScanner(selected...)
+}
+
+// coreCollectors builds the deterministic core roster from opts: the file-walk
+// collectors (oversized files, TODO/FIXME) plus the optional quality-gate
+// collectors (lint, coverage). It is the single source of truth shared by
+// BuildDefaultScanner and the registered "core" lens, so the legacy default
+// path and the lens path never drift.
+func coreCollectors(opts ScanOptions) []Collector {
 	runner := gateRunnerFromQuality(opts.QualityRunner)
 
 	candidates := []Collector{
@@ -51,9 +61,7 @@ func BuildDefaultScanner(opts ScanOptions) *Scanner {
 	if opts.MinCoverage > 0 {
 		candidates = append(candidates, NewCoverageCollector(runner, "coverage", opts.MinCoverage))
 	}
-
-	selected := filterCollectors(candidates, opts.Signals)
-	return NewScanner(selected...)
+	return candidates
 }
 
 // filterCollectors keeps only collectors whose Name appears in want. An empty

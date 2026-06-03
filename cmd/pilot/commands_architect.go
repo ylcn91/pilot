@@ -24,6 +24,7 @@ type architectFlags struct {
 	limit        int
 	backend      string
 	jsonOut      bool
+	lens         string
 }
 
 // newArchitectCmd builds the `pilot architect` command: it runs the proactive
@@ -62,6 +63,7 @@ Examples:
 	cmd.Flags().IntVar(&f.limit, "limit", 0, "Max proposals to emit (0 uses architect.max_tickets or 10)")
 	cmd.Flags().StringVar(&f.backend, "backend", "", "Override the PROPOSE backend type (e.g. claude-code, codex-exec)")
 	cmd.Flags().BoolVar(&f.jsonOut, "json", false, "Emit findings as JSON")
+	cmd.Flags().StringVar(&f.lens, "lens", "", fmt.Sprintf("Collector lens to run (default %q; e.g. depdoctor). Available: %s", architect.CoreLensName, strings.Join(architect.LensNames(), ", ")))
 
 	return cmd
 }
@@ -112,11 +114,14 @@ func runArchitect(ctx context.Context, f *architectFlags) error {
 func buildArchitectRunConfig(cfg *config.Config, agentDir string, f *architectFlags) (architect.RunConfig, error) {
 	ac := cfg.Architect
 
-	scanner := architect.BuildDefaultScanner(architect.ScanOptions{
+	scanner, err := architect.BuildLensScanner(f.lens, agentDir, architect.ScanOptions{
 		QualityRunner: architectQualityRunner(cfg, agentDir),
 		MinCoverage:   ac.Thresholds.MinCoverage,
 		Signals:       ac.Signals,
 	})
+	if err != nil {
+		return architect.RunConfig{}, err
+	}
 
 	analyzer := architect.NewAnalyzer(
 		architectBackendStage(ac, f.backend),
