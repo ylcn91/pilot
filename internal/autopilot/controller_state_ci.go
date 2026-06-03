@@ -200,6 +200,14 @@ func (c *Controller) handleCIPassed(ctx context.Context, prState *PRState) error
 		escalateReason = reason
 	}
 
+	// Architectural guardrails gate (report-only by default): evaluate repo
+	// rules over this PR's changed files and surface them as a commit status +
+	// PR comment. Reuses the files already fetched above when available. This is
+	// FAIL-OPEN and NEVER blocks the merge — blocking, when configured, is
+	// expressed solely via the pilot/guardrails commit status, so the merge path
+	// below is unaffected. A nil/disabled gate is a no-op.
+	c.runGuardrailsGate(ctx, prState, files)
+
 	if escalateReason == "" && prState.IssueNumber > 0 {
 		issue, issueErr := c.ghClient.GetIssue(ctx, c.owner, c.repo, prState.IssueNumber)
 		if issueErr != nil {

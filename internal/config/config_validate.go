@@ -66,6 +66,12 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	// Validate optional per-PR guardrails (fail fast on an unknown mode).
+	// Inert and always valid when nil or disabled.
+	if err := c.Guardrails.Validate(); err != nil {
+		return err
+	}
+
 	// Validate default project exists if specified
 	if c.DefaultProject != "" && len(c.Projects) > 0 {
 		found := false
