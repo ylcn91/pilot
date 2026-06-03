@@ -97,6 +97,14 @@ func runArchitect(ctx context.Context, f *architectFlags) error {
 		return runArchitectRFC(ctx, cfg, agentDir, f)
 	}
 
+	// The refactor lens's dry-run headline is the ordered, blast-radius-driven
+	// tiny-PR sequence (not the generic flat finding list), so the dry-run path
+	// renders the offline RefactorPlan directly. --create-issues keeps the
+	// SCAN->PROPOSE->EMIT pipeline below so the same plan can be filed as issues.
+	if architect.IsRefactorLens(f.lens) && f.dryRun {
+		return runArchitectRefactor(ctx, cfg, agentDir, f)
+	}
+
 	runCfg, err := buildArchitectRunConfig(cfg, agentDir, f)
 	if err != nil {
 		return err

@@ -1,7 +1,20 @@
 package architect
 
+import (
+	"fmt"
+	"strings"
+)
+
 // RefactorLensName is the selector for the refactor-planner lens.
 const RefactorLensName = "refactor"
+
+// IsRefactorLens reports whether name selects the refactor-planner lens, using
+// the same case-insensitive, whitespace-tolerant matching as the --lens flag.
+// The CLI uses it to route the refactor lens's dry-run onto the ordered PR-
+// sequence renderer instead of the generic finding printer.
+func IsRefactorLens(name string) bool {
+	return normalizeLensName(name) == RefactorLensName
+}
 
 // refactorTaskDescription is the .agent guidance hint for the refactor lens so
 // the overlay machinery surfaces refactor SOPs/conventions when the backend path
@@ -78,4 +91,28 @@ func init() {
 func PlanRefactorOffline(signals []Signal, graph *PackageGraph, owners map[string]string) RefactorPlan {
 	findings := SynthesizeFindings(signals)
 	return ProjectToEpic(findings, graph, owners)
+}
+
+// RenderRefactorPlan renders a RefactorPlan as a deterministic, human-readable
+// ordered PR sequence: a header summarising the PR count and the pilot-safe vs
+// manual-review split, then one numbered line per PR carrying its class, blast
+// radius, pilot-safe verdict, dependencies, and (when known) suggested reviewer.
+// It reuses the exact per-PR rendering the RFC's Tiny-PR Sequence uses, so the
+// `--lens refactor` dry-run and the rfc lens stay in lock-step by construction.
+// An empty plan yields an honest "no refactor units" line rather than a bare
+// header, so the output is never silently empty.
+func RenderRefactorPlan(plan RefactorPlan) string {
+	var b strings.Builder
+	if len(plan.PRs) == 0 {
+		b.WriteString("No refactor units were surfaced; the scan produced no tiny-PR sequence.\n")
+		return b.String()
+	}
+	safe := len(plan.PRs) - plan.Manual
+	fmt.Fprintf(&b, "Refactor plan: %d ordered PR(s) — %d pilot-safe, %d manual-review "+
+		"(blast-radius ordered, leaves first).\n\n", len(plan.PRs), safe, plan.Manual)
+	for _, pr := range plan.PRs {
+		fmt.Fprintf(&b, "%d. %s — class=%s, blast=%d, %s%s%s\n",
+			pr.Order, pr.Title, pr.Class, pr.BlastRadius, pilotVerdict(pr), dependsClause(pr), ownerClause(pr))
+	}
+	return b.String()
 }
