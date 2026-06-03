@@ -127,6 +127,27 @@ func TestRuleSuggester_IgnoresNonPackageProse(t *testing.T) {
 	}
 }
 
+func TestRuleSuggester_DuplicateTriggersDoNotInflateWeight(t *testing.T) {
+	s := NewRuleSuggester(true, defaultLayerRules)
+	// Two identical pitfalls (same mined origin) plus one violation on the same
+	// edge: only two DISTINCT triggers, so Weight must be 2 — not 3 — and the
+	// reason text must report 2 recorded signals.
+	got := s.Suggest([]Signal{
+		pitfallSig("internal/gateway must not import internal/executor"),
+		pitfallSig("internal/gateway must not import internal/executor"),
+		violationSig("internal/gateway", "internal/executor"),
+	})
+	if len(got) != 1 {
+		t.Fatalf("expected 1 suggestion, got %d: %+v", len(got), got)
+	}
+	if got[0].Weight != 2 {
+		t.Errorf("Weight = %v, want 2 (distinct triggers, duplicates collapsed)", got[0].Weight)
+	}
+	if !strings.Contains(got[0].Detail, "suggested from 2 recorded signal(s)") {
+		t.Errorf("reason must report 2 distinct triggers; got: %s", got[0].Detail)
+	}
+}
+
 func TestRuleSuggester_Deterministic(t *testing.T) {
 	in := []Signal{
 		pitfallSig("internal/gateway must not import internal/executor"),

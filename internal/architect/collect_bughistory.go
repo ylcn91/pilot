@@ -22,48 +22,31 @@ const bugHistoryThreshold = 2
 // pulls from memory when the caller does not specify one.
 const defaultBugHistoryLimit = 20
 
-// BugHistoryCollector surfaces recurring execution failures as bug_hotspot
-// Signals for the test-gap lens. It reads the memory store's failure-reason
-// breakdown (a proxy for "what keeps breaking") and weights each reason by how
-// often it has recurred, so the PROPOSE stage can prioritise tests for the most
-// frequently-broken areas first.
-//
-// It is best-effort by construction: a nil source or a query error yields zero
-// Signals and no error, so a project with no memory store (or an unreachable
-// one) still scans cleanly.
-type BugHistoryCollector struct {
+// genericChurnCollector is the shared body behind ChurnCollector and
+// BugHistoryCollector: both surface recurring failure reasons from the memory
+// store as Signals, differing only in the emitted Kind and how each reason is
+// rendered/weighted/risk-classified. It is best-effort by construction — a nil
+// source or a query error yields zero Signals and no error.
+type genericChurnCollector struct {
 	source    failureSource
 	query     memory.MetricsQuery
 	limit     int
 	threshold int
 	projectID string
-}
 
-// NewBugHistoryCollector builds a BugHistoryCollector over source, scoped by
-// query (time window + projects) and capped at limit reasons. projectID is
-// recorded on emitted Signals for traceability. A nil source makes the
-// collector inert; a non-positive limit falls back to the package default.
-func NewBugHistoryCollector(source failureSource, query memory.MetricsQuery, limit int, projectID string) *BugHistoryCollector {
-	if limit <= 0 {
-		limit = defaultBugHistoryLimit
-	}
-	return &BugHistoryCollector{
-		source:    source,
-		query:     query,
-		limit:     limit,
-		threshold: bugHistoryThreshold,
-		projectID: projectID,
-	}
+	kind   string
+	detail func(r *memory.FailureReason) string
+	weight func(count int) float64
+	risk   func(count int) pilotapi.RiskLevel
 }
 
 // Name implements Collector.
-func (c *BugHistoryCollector) Name() string { return kindBugHotspot }
+func (c *genericChurnCollector) Name() string { return c.kind }
 
-// Collect queries recent failure reasons and emits one bug_hotspot Signal for
-// each reason whose recurrence count meets the threshold. Weight scales with
-// the count; risk escalates with it. A nil source or a query error yields zero
-// Signals and a nil error.
-func (c *BugHistoryCollector) Collect(ctx context.Context, projectPath string) ([]Signal, error) {
+// Collect queries recent failure reasons and emits one Signal for each reason
+// whose recurrence count meets the threshold. A nil source or a query error
+// yields zero Signals and a nil error.
+func (c *genericChurnCollector) Collect(ctx context.Context, projectPath string) ([]Signal, error) {
 	if c.source == nil {
 		return nil, nil
 	}
@@ -78,15 +61,52 @@ func (c *BugHistoryCollector) Collect(ctx context.Context, projectPath string) (
 			continue
 		}
 		signals = append(signals, Signal{
-			Kind:   kindBugHotspot,
+			Kind:   c.kind,
 			File:   "",
 			Line:   0,
-			Detail: fmt.Sprintf("%d recurring failures, likely under-tested: %s", r.Count, truncate(r.Reason, 100)),
-			Weight: bugHistoryWeight(r.Count, c.threshold),
-			Risk:   bugHistoryRisk(r.Count, c.threshold),
+			Detail: c.detail(r),
+			Weight: c.weight(r.Count),
+			Risk:   c.risk(r.Count),
 		})
 	}
 	return signals, nil
+}
+
+// BugHistoryCollector surfaces recurring execution failures as bug_hotspot
+// Signals for the test-gap lens. It reads the memory store's failure-reason
+// breakdown (a proxy for "what keeps breaking") and weights each reason by how
+// often it has recurred, so the PROPOSE stage can prioritise tests for the most
+// frequently-broken areas first.
+//
+// It is best-effort by construction: a nil source or a query error yields zero
+// Signals and no error, so a project with no memory store (or an unreachable
+// one) still scans cleanly.
+type BugHistoryCollector struct {
+	genericChurnCollector
+}
+
+// NewBugHistoryCollector builds a BugHistoryCollector over source, scoped by
+// query (time window + projects) and capped at limit reasons. projectID is
+// recorded on emitted Signals for traceability. A nil source makes the
+// collector inert; a non-positive limit falls back to the package default.
+func NewBugHistoryCollector(source failureSource, query memory.MetricsQuery, limit int, projectID string) *BugHistoryCollector {
+	if limit <= 0 {
+		limit = defaultBugHistoryLimit
+	}
+	threshold := bugHistoryThreshold
+	return &BugHistoryCollector{genericChurnCollector{
+		source:    source,
+		query:     query,
+		limit:     limit,
+		threshold: threshold,
+		projectID: projectID,
+		kind:      kindBugHotspot,
+		detail: func(r *memory.FailureReason) string {
+			return fmt.Sprintf("%d recurring failures, likely under-tested: %s", r.Count, truncate(r.Reason, 100))
+		},
+		weight: func(count int) float64 { return bugHistoryWeight(count, threshold) },
+		risk:   func(count int) pilotapi.RiskLevel { return bugHistoryRisk(count, threshold) },
+	}}
 }
 
 // bugHistoryWeight scales linearly with the failure count, normalised so a

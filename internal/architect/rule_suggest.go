@@ -56,11 +56,14 @@ var forbiddenImportArrowPattern = regexp.MustCompile(
 var packagePathToken = regexp.MustCompile(`[/.]`)
 
 // ruleEdge is a candidate forbidden import direction From->To accumulated by
-// the suggester, with the Signals that triggered it for traceability.
+// the suggester, with the Signals that triggered it for traceability. The
+// raw triggers slice may contain duplicate origins (e.g. the same forbidden
+// import reported by two scans); the trigger threshold counts those repeats,
+// but the drafted Weight and rendered list are computed from the deduped set.
 type ruleEdge struct {
 	from     string
 	to       string
-	triggers []string // human-readable origin of each trigger, sorted
+	triggers []string // human-readable origin of each trigger
 }
 
 // RuleSuggester mines DRAFT guardrail rules from pitfall/decision memory
@@ -172,14 +175,15 @@ func (s *RuleSuggester) edgeAlreadyCovered(from, to string) bool {
 // draft is text only: it is never parsed back into a live Rule.
 func (s *RuleSuggester) draftSignal(e *ruleEdge) Signal {
 	name := suggestedRuleName(e.from, e.to)
-	reason := fmt.Sprintf(
-		"suggested from %d recorded signal(s); review before promoting to a live guardrail",
-		len(e.triggers),
-	)
 
 	triggers := append([]string(nil), e.triggers...)
 	sort.Strings(triggers)
 	triggers = dedupStrings(triggers)
+
+	reason := fmt.Sprintf(
+		"suggested from %d recorded signal(s); review before promoting to a live guardrail",
+		len(triggers),
+	)
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "DRAFT guardrail rule (NOT enforced — review and add to defaultLayerRules to promote):\n")
@@ -193,7 +197,7 @@ func (s *RuleSuggester) draftSignal(e *ruleEdge) Signal {
 		Kind:   KindRuleSuggestion,
 		File:   e.from,
 		Detail: strings.TrimRight(b.String(), "\n"),
-		Weight: float64(len(e.triggers)),
+		Weight: float64(len(triggers)),
 		Risk:   pilotapi.RiskLow,
 	}
 }

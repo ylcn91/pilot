@@ -30,10 +30,7 @@ const churnThreshold = 2
 // unstable, frequently-touched areas. It is best-effort: a nil source or a
 // query error yields zero Signals and no error.
 type ChurnCollector struct {
-	source    failureSource
-	query     memory.MetricsQuery
-	limit     int
-	projectID string
+	genericChurnCollector
 }
 
 // NewChurnCollector builds a ChurnCollector over source, scoped by query
@@ -44,38 +41,19 @@ func NewChurnCollector(source failureSource, query memory.MetricsQuery, limit in
 	if limit <= 0 {
 		limit = 10
 	}
-	return &ChurnCollector{source: source, query: query, limit: limit, projectID: projectID}
-}
-
-// Name implements Collector.
-func (c *ChurnCollector) Name() string { return "churn_hotspot" }
-
-// Collect queries recent failure reasons and emits a churn_hotspot Signal for
-// each reason whose count meets churnThreshold. A nil source or a query error
-// yields zero Signals and a nil error.
-func (c *ChurnCollector) Collect(ctx context.Context, projectPath string) ([]Signal, error) {
-	if c.source == nil {
-		return nil, nil
-	}
-	reasons, err := c.source.GetFailureReasons(c.query, c.limit)
-	if err != nil {
-		return nil, nil
-	}
-	var signals []Signal
-	for _, r := range reasons {
-		if r == nil || r.Count < churnThreshold {
-			continue
-		}
-		signals = append(signals, Signal{
-			Kind:   c.Name(),
-			File:   "",
-			Line:   0,
-			Detail: fmt.Sprintf("%d recent failures: %s", r.Count, truncate(r.Reason, 100)),
-			Weight: churnWeight(r.Count),
-			Risk:   churnRisk(r.Count),
-		})
-	}
-	return signals, nil
+	return &ChurnCollector{genericChurnCollector{
+		source:    source,
+		query:     query,
+		limit:     limit,
+		threshold: churnThreshold,
+		projectID: projectID,
+		kind:      "churn_hotspot",
+		detail: func(r *memory.FailureReason) string {
+			return fmt.Sprintf("%d recent failures: %s", r.Count, truncate(r.Reason, 100))
+		},
+		weight: churnWeight,
+		risk:   churnRisk,
+	}}
 }
 
 // churnWeight scales with the failure count, normalised so a count equal to
