@@ -18,6 +18,7 @@ func (r *Runner) executeSelfReviewIntent(s *executeState) (*ExecutionResult, err
 	git := s.git
 	result := s.result
 	state := s.state
+	executionPath := s.executionPath
 	selectedModel := s.selectedModel
 	selectedEffort := s.selectedEffort
 	agentPath := s.agentPath
@@ -176,7 +177,7 @@ func (r *Runner) executeSelfReviewIntent(s *executeState) (*ExecutionResult, err
 				intentAllowed, intentMCP := r.executionToolOptions()
 				_, retryErr := r.execBackend.Execute(ctx, ExecuteOptions{
 					Prompt:        retryPrompt,
-					ProjectPath:   task.ProjectPath,
+					ProjectPath:   executionPath, // retry in the worktree, not the original repo path (matches no-commit retry, GH-936)
 					Verbose:       task.Verbose,
 					Model:         selectedModel,
 					Effort:        selectedEffort,

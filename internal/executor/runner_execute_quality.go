@@ -188,7 +188,7 @@ func (r *Runner) executeQualityGates(s *executeState) (*ExecutionResult, error) 
 				feedbackAllowed, feedbackMCP := r.executionToolOptions()
 				retryResult, retryErr := r.execBackend.Execute(ctx, ExecuteOptions{
 					Prompt:        retryPrompt,
-					ProjectPath:   task.ProjectPath,
+					ProjectPath:   executionPath, // retry in the worktree, not the original repo path (matches no-commit retry, GH-936)
 					Verbose:       task.Verbose,
 					Model:         selectedModel,
 					Effort:        selectedEffort,
