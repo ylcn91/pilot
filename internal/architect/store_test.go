@@ -151,8 +151,8 @@ func TestRadarLens_RegisteredAndSelectable(t *testing.T) {
 func TestRadarLens_BundlesExpectedCollectors(t *testing.T) {
 	l, _ := LensByName(RadarLensName)
 	got := names(l.Collectors("/proj", ScanOptions{}))
-	// Core (loc, todo, lint) + dependency_doctor + stale_test, no coverage.
-	want := []string{"loc_over_400", "todo_fixme", "lint", "dependency_doctor", "stale_test"}
+	// Core (loc, todo, duplicate, lint) + dependency_doctor + stale_test + churn, no coverage.
+	want := []string{"loc_over_400", "todo_fixme", kindDuplicateBlock, "lint", "dependency_doctor", "stale_test", "churn_hotspot"}
 	for _, w := range want {
 		if !contains(got, w) {
 			t.Errorf("radar roster missing %q; got %v", w, got)
@@ -251,6 +251,26 @@ func TestRunRadar_PopulatesStoreFromFixture(t *testing.T) {
 	if !sawSplit {
 		t.Fatalf("expected a finding referencing big.go, got %+v", got)
 	}
+}
+
+// TestRunRadar_DuplicateBlockPopulatesStore proves the scheduler/default radar
+// path surfaces the duplicate_block collector into the shared findings store.
+func TestRunRadar_DuplicateBlockPopulatesStore(t *testing.T) {
+	root := t.TempDir()
+	writeDupFile(t, root, "dup_a.go", dupBlock)
+	writeDupFile(t, root, "dup_b.go", dupBlock)
+
+	store := NewFindingsStore()
+	if err := RunRadar(context.Background(), RadarConfig{ProjectPath: root}, store); err != nil {
+		t.Fatalf("RunRadar: %v", err)
+	}
+
+	for _, f := range store.Findings() {
+		if strings.Contains(f.Title, "duplicated code block") {
+			return
+		}
+	}
+	t.Fatalf("radar must surface duplicate_block findings, got %+v", store.Findings())
 }
 
 // TestRunRadar_StaleTestFlaggedViaRealGit drives the full radar lens over a real

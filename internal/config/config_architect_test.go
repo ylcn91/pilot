@@ -54,6 +54,17 @@ func TestArchitectConfig_EnabledNilBackendValid(t *testing.T) {
 	}
 }
 
+func TestArchitectConfig_CodexExecBackendAccepted(t *testing.T) {
+	c := baseValidConfig()
+	c.Architect = &ArchitectConfig{
+		Enabled: true,
+		Backend: &executor.StageConfig{Type: executor.BackendTypeCodexExec},
+	}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("codex-exec must be valid for architect backend: %v", err)
+	}
+}
+
 func TestArchitectConfig_RejectsCodexAppServerBackend(t *testing.T) {
 	c := baseValidConfig()
 	c.Architect = &ArchitectConfig{
@@ -66,6 +77,9 @@ func TestArchitectConfig_RejectsCodexAppServerBackend(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "architect.backend") {
 		t.Errorf("error should be scoped to architect.backend, got %q", err)
+	}
+	if !strings.Contains(err.Error(), "not a runnable Backend") || !strings.Contains(err.Error(), "use codex-exec") {
+		t.Errorf("error should explain runnable backend path, got %q", err)
 	}
 }
 

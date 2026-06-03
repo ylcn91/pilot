@@ -198,6 +198,24 @@ func TestRecordHandoffLineageWriteErrorNonFatal(t *testing.T) {
 	}
 }
 
+// TestRecordHandoffLineageSkipsInvalidChain verifies chain validation is an
+// explicit consumer-side guard: a broken parent hash is not persisted as an
+// auditable lineage.
+func TestRecordHandoffLineageSkipsInvalidChain(t *testing.T) {
+	r := NewRunner()
+	sink := &lineageRecorderStub{}
+	r.SetKnowledgeGraph(sink)
+
+	s := chainState("GH-invalid", true)
+	s.tddArtifacts[0].ParentHash = "not-the-plan-hash"
+
+	r.recordHandoffLineage(s)
+
+	if len(sink.learnings) != 0 {
+		t.Fatalf("wrote %d nodes, want 0 for invalid chain", len(sink.learnings))
+	}
+}
+
 // TestRecordHandoffLineageTruncatesContent verifies the ~500-char truncation
 // idiom is applied to artifact content before it is written to the graph.
 func TestRecordHandoffLineageTruncatesContent(t *testing.T) {

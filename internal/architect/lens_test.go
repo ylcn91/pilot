@@ -49,8 +49,13 @@ func TestLensNames_CoreFirst(t *testing.T) {
 func TestCoreLens_BundlesCoreCollectors(t *testing.T) {
 	l, _ := LensByName(CoreLensName)
 	got := l.Collectors("/proj", ScanOptions{})
-	// Core roster (no coverage): loc, todo, lint.
-	wantNames := map[string]bool{"loc_over_400": true, "todo_fixme": true, "lint": true}
+	// Core roster (no coverage): loc, todo, duplicate_block, lint.
+	wantNames := map[string]bool{
+		"loc_over_400":     true,
+		"todo_fixme":       true,
+		kindDuplicateBlock: true,
+		"lint":             true,
+	}
 	if len(got) != len(wantNames) {
 		t.Fatalf("core lens collectors = %d, want %d: %v", len(got), len(wantNames), names(got))
 	}
@@ -126,8 +131,8 @@ func TestBuildLensScanner_Core(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build core scanner: %v", err)
 	}
-	if len(s.Collectors()) != 3 {
-		t.Fatalf("core scanner should have 3 collectors, got %d", len(s.Collectors()))
+	if len(s.Collectors()) != 4 {
+		t.Fatalf("core scanner should have 4 collectors, got %d", len(s.Collectors()))
 	}
 }
 

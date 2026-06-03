@@ -11,6 +11,7 @@ package pilotapi
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"strings"
 )
 
@@ -101,6 +102,30 @@ func NewHandoffArtifact(role, taskID, content, parentHash string) HandoffArtifac
 		ParentHash:    parentHash,
 		TaskID:        taskID,
 	}
+}
+
+// ValidateHandoffChain verifies that a sequence of artifacts is a contiguous,
+// content-addressed chain. The first artifact must be the root (empty
+// ParentHash); every later artifact must point at the prior artifact's TraceHash,
+// and every TraceHash must match the artifact's current fields.
+func ValidateHandoffChain(chain []HandoffArtifact) error {
+	for i, art := range chain {
+		if art.SchemaVersion != SchemaVersion {
+			return fmt.Errorf("artifact[%d] schema_version %d != %d", i, art.SchemaVersion, SchemaVersion)
+		}
+		wantTrace := TraceHash(art.Role, art.TaskID, art.Content, art.ParentHash)
+		if art.TraceHash != wantTrace {
+			return fmt.Errorf("artifact[%d] trace_hash %q != %q", i, art.TraceHash, wantTrace)
+		}
+		wantParent := ""
+		if i > 0 {
+			wantParent = chain[i-1].TraceHash
+		}
+		if art.ParentHash != wantParent {
+			return fmt.Errorf("artifact[%d] parent_hash %q != %q", i, art.ParentHash, wantParent)
+		}
+	}
+	return nil
 }
 
 // traceHashSep separates parts before hashing. Using a separator that is

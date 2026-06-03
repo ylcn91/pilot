@@ -107,6 +107,46 @@ func TestHandoffArtifactJSONFieldNames(t *testing.T) {
 	}
 }
 
+func TestValidateHandoffChainAcceptsContiguousChain(t *testing.T) {
+	taskID := "TASK-chain"
+	plan := NewHandoffArtifact(RolePlan, taskID, "plan", "")
+	architect := NewHandoffArtifact(RoleArchitect, taskID, "design", plan.TraceHash)
+	testAuthor := NewHandoffArtifact(RoleTestAuthor, taskID, "tests", architect.TraceHash)
+	implementer := NewHandoffArtifact(RoleImplementer, taskID, "impl", testAuthor.TraceHash)
+
+	if err := ValidateHandoffChain([]HandoffArtifact{plan, architect, testAuthor, implementer}); err != nil {
+		t.Fatalf("ValidateHandoffChain: %v", err)
+	}
+}
+
+func TestValidateHandoffChainRejectsBrokenParent(t *testing.T) {
+	taskID := "TASK-broken-parent"
+	plan := NewHandoffArtifact(RolePlan, taskID, "plan", "")
+	architect := NewHandoffArtifact(RoleArchitect, taskID, "design", "wrong-parent")
+
+	if err := ValidateHandoffChain([]HandoffArtifact{plan, architect}); err == nil {
+		t.Fatal("expected broken parent hash error")
+	}
+}
+
+func TestValidateHandoffChainRejectsMutatedTrace(t *testing.T) {
+	art := NewHandoffArtifact(RolePlan, "TASK-mutated", "plan", "")
+	art.Content = "mutated after hashing"
+
+	if err := ValidateHandoffChain([]HandoffArtifact{art}); err == nil {
+		t.Fatal("expected trace hash mismatch")
+	}
+}
+
+func TestValidateHandoffChainRejectsSchemaMismatch(t *testing.T) {
+	art := NewHandoffArtifact(RolePlan, "TASK-schema", "plan", "")
+	art.SchemaVersion = SchemaVersion + 1
+
+	if err := ValidateHandoffChain([]HandoffArtifact{art}); err == nil {
+		t.Fatal("expected schema mismatch")
+	}
+}
+
 func TestFindingJSONRoundTrip(t *testing.T) {
 	orig := Finding{
 		Title:             "Race in queue drain",

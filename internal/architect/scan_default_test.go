@@ -28,7 +28,7 @@ func TestBuildDefaultScanner_DefaultRoster(t *testing.T) {
 	s := BuildDefaultScanner(ScanOptions{})
 	names := collectorNames(s)
 	// Coverage is gated behind MinCoverage > 0, so the default roster excludes it.
-	for _, want := range []string{"loc_over_400", "todo_fixme", "lint"} {
+	for _, want := range []string{"loc_over_400", "todo_fixme", kindDuplicateBlock, "lint"} {
 		if !containsName(names, want) {
 			t.Errorf("default roster missing %q; got %v", want, names)
 		}
@@ -62,6 +62,14 @@ func TestBuildDefaultScanner_SignalsFilterIncludesCoverage(t *testing.T) {
 	}
 }
 
+func TestBuildDefaultScanner_SignalsFilterIncludesDuplicateBlock(t *testing.T) {
+	s := BuildDefaultScanner(ScanOptions{Signals: []string{kindDuplicateBlock}})
+	names := collectorNames(s)
+	if len(names) != 1 || names[0] != kindDuplicateBlock {
+		t.Fatalf("filter should keep only duplicate_block; got %v", names)
+	}
+}
+
 func TestBuildDefaultScanner_UnknownSignalYieldsEmptyRoster(t *testing.T) {
 	s := BuildDefaultScanner(ScanOptions{Signals: []string{"does-not-exist"}})
 	if got := collectorNames(s); len(got) != 0 {
@@ -76,6 +84,8 @@ func TestBuildDefaultScanner_ScansFixture(t *testing.T) {
 	dir := t.TempDir()
 	writeGoFile(t, dir, "big.go", 500)
 	writeFile(t, dir, filepath.Join("svc.go"), "package svc\n// TODO fix\n")
+	writeDupFile(t, dir, "dup_a.go", dupBlock)
+	writeDupFile(t, dir, "dup_b.go", dupBlock)
 
 	s := BuildDefaultScanner(ScanOptions{})
 	signals, err := s.Scan(context.Background(), dir)
@@ -83,13 +93,15 @@ func TestBuildDefaultScanner_ScansFixture(t *testing.T) {
 		t.Fatalf("Scan: %v", err)
 	}
 
-	var loc, todo int
+	var loc, todo, duplicate int
 	for _, sig := range signals {
 		switch sig.Kind {
 		case "loc_over_400":
 			loc++
 		case "todo_fixme":
 			todo++
+		case kindDuplicateBlock:
+			duplicate++
 		}
 	}
 	if loc != 1 {
@@ -97,6 +109,9 @@ func TestBuildDefaultScanner_ScansFixture(t *testing.T) {
 	}
 	if todo != 1 {
 		t.Errorf("expected 1 TODO signal, got %d", todo)
+	}
+	if duplicate == 0 {
+		t.Errorf("expected duplicate_block signal, got none in %+v", signals)
 	}
 }
 

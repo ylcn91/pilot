@@ -42,7 +42,13 @@ func TestRefactorLens_SelectableCaseInsensitive(t *testing.T) {
 func TestRefactorLens_BundlesRefactorCollectors(t *testing.T) {
 	l, _ := LensByName(RefactorLensName)
 	got := names(l.Collectors("/proj", ScanOptions{}))
-	want := map[string]bool{"loc_over_400": true, "todo_fixme": true, "lint": true, "dependency_doctor": true}
+	want := map[string]bool{
+		"loc_over_400":      true,
+		"todo_fixme":        true,
+		kindDuplicateBlock:  true,
+		"lint":              true,
+		"dependency_doctor": true,
+	}
 	if len(got) != len(want) {
 		t.Fatalf("refactor collectors = %v, want %d", got, len(want))
 	}
@@ -58,8 +64,8 @@ func TestRefactorLens_BuildLensScanner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build refactor scanner: %v", err)
 	}
-	if len(s.Collectors()) != 4 {
-		t.Fatalf("refactor scanner collectors = %d, want 4: %v", len(s.Collectors()), names(s.Collectors()))
+	if len(s.Collectors()) != 5 {
+		t.Fatalf("refactor scanner collectors = %d, want 5: %v", len(s.Collectors()), names(s.Collectors()))
 	}
 }
 

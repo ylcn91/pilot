@@ -30,13 +30,28 @@ func runArchitectRFC(ctx context.Context, cfg *config.Config, agentDir string, f
 	// The blast-radius graph drives PR ordering; a missing `go` toolchain yields
 	// a nil graph, which every planner tolerates (every change becomes a leaf).
 	graph, _ := architect.LoadProjectGraph(ctx, agentDir)
+	owners := refactorOwners(ctx, agentDir, signals)
+	findings := architect.SynthesizeFindings(signals)
+	plan := architect.ProjectToEpic(findings, graph, owners)
 
-	doc := architect.GenerateRFCOffline(rfcTitleDefault, signals, graph, nil)
+	doc := architect.BuildRFCDoc(rfcTitleDefault, findings, plan, architect.RFCProse{})
+
+	export, err := architectExportTarget(cfg.Architect, f.export)
+	if err != nil {
+		return err
+	}
+	if export == config.ArchitectExportLinear {
+		if f.dryRun {
+			printRFCDryRun(doc, "Linear parent "+f.linearParent)
+			return nil
+		}
+		return emitRefactorPlanToLinear(ctx, cfg, f, plan)
+	}
 
 	// On the write path, try to enrich the narrative sections with the
 	// configured backend; any failure falls back silently to the offline doc.
 	if !f.dryRun {
-		if enriched, ok := enrichRFCWithBackend(ctx, cfg, agentDir, f, signals, graph); ok {
+		if enriched, ok := enrichRFCWithBackend(ctx, cfg, agentDir, f, signals, graph, owners); ok {
 			doc = enriched
 		}
 	}
@@ -81,7 +96,7 @@ func scanRFCSignals(ctx context.Context, cfg *config.Config, agentDir string, f 
 // narrative sections and folds them into the RFC. It returns ok=false on any
 // error or empty response so the caller keeps the offline document; the
 // deterministic tiny-PR sequence is always preserved.
-func enrichRFCWithBackend(ctx context.Context, cfg *config.Config, agentDir string, f *architectFlags, signals []architect.Signal, graph *architect.PackageGraph) (architect.RFCDoc, bool) {
+func enrichRFCWithBackend(ctx context.Context, cfg *config.Config, agentDir string, f *architectFlags, signals []architect.Signal, graph *architect.PackageGraph, owners map[string]string) (architect.RFCDoc, bool) {
 	lens, err := architect.LensByName(f.lens)
 	if err != nil {
 		return architect.RFCDoc{}, false
@@ -97,7 +112,7 @@ func enrichRFCWithBackend(ctx context.Context, cfg *config.Config, agentDir stri
 		return architect.RFCDoc{}, false
 	}
 	prose := architect.ProseFromFindings(findings)
-	plan := architect.ProjectToEpic(architect.SynthesizeFindings(signals), graph, nil)
+	plan := architect.ProjectToEpic(architect.SynthesizeFindings(signals), graph, owners)
 	return architect.BuildRFCDoc(rfcTitleDefault, architect.SynthesizeFindings(signals), plan, prose), true
 }
 
@@ -105,6 +120,9 @@ func enrichRFCWithBackend(ctx context.Context, cfg *config.Config, agentDir stri
 // without touching disk — the dry-run contract.
 func printRFCDryRun(doc architect.RFCDoc, wantPath string) {
 	fmt.Fprintln(os.Stdout, doc.Body)
-	fmt.Printf("\n(dry-run) would write the above RFC to %s\n", wantPath)
-	fmt.Printf("(dry-run) pass --create-issues to write it.\n")
+	if wantPath == "" {
+		return
+	}
+	fmt.Printf("\n(dry-run) would write/export the above RFC to %s\n", wantPath)
+	fmt.Printf("(dry-run) pass --create-issues to write/export it.\n")
 }

@@ -94,3 +94,49 @@ func TestResolveTDDBackends(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveTDDBackendsCodexExecRoles(t *testing.T) {
+	r, err := NewRunnerWithConfig(&BackendConfig{
+		Type:       BackendTypeClaudeCode,
+		ClaudeCode: &ClaudeCodeConfig{Command: "claude"},
+		TDD: &TDDConfig{
+			Enabled: true,
+			Architect: &StageConfig{
+				Type:   BackendTypeCodexExec,
+				Model:  "gpt-5-codex",
+				Effort: "high",
+			},
+			TestAuthor:  &StageConfig{Type: BackendTypeCodexExec},
+			Implementer: &StageConfig{Type: BackendTypeCodexExec},
+			QA:          &StageConfig{Type: BackendTypeCodexExec},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRunnerWithConfig: %v", err)
+	}
+
+	for name, backend := range map[string]Backend{
+		"architect":   r.architectBackend,
+		"test-author": r.testAuthorBackend,
+		"implementer": r.implementerBackend,
+		"qa":          r.qaBackend,
+	} {
+		if backend.Name() != BackendTypeCodexExec {
+			t.Errorf("%s backend = %q, want %q", name, backend.Name(), BackendTypeCodexExec)
+		}
+		if backend == r.backend {
+			t.Errorf("%s backend reused primary backend; want distinct codex-exec stage backend", name)
+		}
+	}
+
+	architect, ok := r.architectBackend.(*CodexExecBackend)
+	if !ok {
+		t.Fatalf("architect backend type = %T, want *CodexExecBackend", r.architectBackend)
+	}
+	if architect.config.Model != "gpt-5-codex" {
+		t.Errorf("architect codex model = %q, want gpt-5-codex", architect.config.Model)
+	}
+	if architect.config.Effort != "high" {
+		t.Errorf("architect codex effort = %q, want high", architect.config.Effort)
+	}
+}

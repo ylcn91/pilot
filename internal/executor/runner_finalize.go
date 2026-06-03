@@ -139,12 +139,12 @@ func (r *Runner) recordHandoffLineage(s *executeState) {
 		return
 	}
 
-	chain := make([]pilotapi.HandoffArtifact, 0, len(s.tddArtifacts)+1)
-	if s.planArtifact.TraceHash != "" {
-		chain = append(chain, s.planArtifact)
-	}
-	chain = append(chain, s.tddArtifacts...)
+	chain := tddArtifactChain(s)
 	if len(chain) == 0 {
+		return
+	}
+	if err := pilotapi.ValidateHandoffChain(chain); err != nil {
+		r.log.Warn("Invalid handoff lineage; skipping graph write", slog.Any("error", err))
 		return
 	}
 

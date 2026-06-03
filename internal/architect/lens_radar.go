@@ -4,11 +4,11 @@ package architect
 const RadarLensName = "radar"
 
 // radarCollectors builds the radar lens roster: the deterministic core
-// collectors (oversized files, TODO/FIXME, lint, optional coverage) plus the
-// dependency-doctor collector (import-cycle / layer-drift signals), the
-// stale-test collector (tests that have fallen behind their source), the
-// duplication collector (copy-pasted code blocks), and the churn collector
-// (recurring execution failures as churn hotspots). It is the widest
+// collectors (oversized files, TODO/FIXME, duplicated blocks, lint, optional
+// coverage) plus the dependency-doctor collector (import-cycle / layer-drift
+// signals), the stale-test collector (tests that have fallen behind their
+// source), and the churn collector (recurring execution failures as churn
+// hotspots). It is the widest
 // deterministic roster — the radar's job is to surface architectural drift and
 // tech-debt from every angle in a single periodic scan.
 //
@@ -20,7 +20,6 @@ func radarCollectors(_ string, opts ScanOptions) []Collector {
 	collectors := coreCollectors(opts)
 	collectors = append(collectors, NewDepsCollector())
 	collectors = append(collectors, NewStaleTestsCollector())
-	collectors = append(collectors, NewDuplicationCollector())
 	collectors = append(collectors, NewChurnCollector(opts.FailureSource, opts.FailureQuery, 0, opts.ProjectID))
 	return collectors
 }
@@ -29,7 +28,7 @@ func radarCollectors(_ string, opts ScanOptions) []Collector {
 // radar` and is the roster the scheduler drives to keep the dashboard's
 // findings sink fresh: a periodic, deterministic sweep for architectural drift
 // (cycles, layer violations, heavy/unused deps), oversized files, TODO/FIXME
-// debt, stale tests, and churn hotspots, all ranked onto the shared
+// debt, duplicated blocks, stale tests, and churn hotspots, all ranked onto the shared
 // pilotapi.Finding scale.
 func init() {
 	RegisterLens(Lens{

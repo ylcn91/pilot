@@ -144,6 +144,20 @@ func NewEmitter(creator IssueCreator, searcher IssueSearcher, owner, repo string
 // itself. The returned created count is the number that WOULD have been created.
 func (e *Emitter) Emit(ctx context.Context, findings []pilotapi.Finding, dryRun bool, limit int) (created int, skipped int, err error) {
 	ranked := rankFindings(findings)
+	return e.emit(ctx, ranked, dryRun, limit)
+}
+
+// EmitOrdered files findings in caller-provided order. It keeps the same dedup,
+// dry-run, and limit semantics as Emit, but deliberately bypasses risk ranking so
+// precomputed handoff sequences (for example a blast-radius-ordered refactor
+// plan) retain their lineage order in the target tracker.
+func (e *Emitter) EmitOrdered(ctx context.Context, findings []pilotapi.Finding, dryRun bool, limit int) (created int, skipped int, err error) {
+	ordered := make([]pilotapi.Finding, len(findings))
+	copy(ordered, findings)
+	return e.emit(ctx, ordered, dryRun, limit)
+}
+
+func (e *Emitter) emit(ctx context.Context, ranked []pilotapi.Finding, dryRun bool, limit int) (created int, skipped int, err error) {
 	if limit > 0 && len(ranked) > limit {
 		ranked = ranked[:limit]
 	}

@@ -2,7 +2,10 @@ package executor
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
+
+	"github.com/ylcn91/pilot/internal/pilotapi"
 )
 
 // TDD role prompt appendices. Each appendix is appended to the shared base prompt
@@ -35,8 +38,10 @@ concrete — it will be handed to a TEST-AUTHOR and an IMPLEMENTER.
 
 // buildTestAuthorAppendix instructs the TEST-AUTHOR role to write FAILING tests
 // and commit them, then emit the TESTS_ADDED contract so the RED/GREEN gates can
-// scope to exactly those test names. The optional design is the ARCHITECT output.
-func buildTestAuthorAppendix(design string) string {
+// scope to exactly those test names. architect is the typed handoff from the
+// ARCHITECT role; fallbackDesign is only used for legacy/direct helper callers
+// that have prose but no artifact.
+func buildTestAuthorAppendix(architect pilotapi.HandoffArtifact, fallbackDesign string) string {
 	var sb strings.Builder
 	sb.WriteString(strings.TrimSpace(`
 ## TDD Role: TEST-AUTHOR (write FAILING tests, then commit)
@@ -57,18 +62,15 @@ When done, emit a single line listing the test function names you added, exactly
 Use the real function names. The pipeline scopes the RED/GREEN gates to exactly
 these names, so an accurate list is required.
 `))
-	if d := strings.TrimSpace(design); d != "" {
-		sb.WriteString("\n\n## Design (from ARCHITECT, advisory)\n\n")
-		sb.WriteString(d)
-	}
+	appendHandoffArtifactBlock(&sb, "architect", architect, fallbackDesign)
 	return sb.String()
 }
 
 // buildImplementerAppendix instructs the IMPLEMENTER role to make the authored
-// tests pass and commit. design is the ARCHITECT output (advisory); testNames are
-// the tests the GREEN gate will assert; feedback is the prior gate's failure text
-// on a retry (empty on the first attempt).
-func buildImplementerAppendix(design string, testNames []string, feedback string) string {
+// tests pass and commit. architect and testAuthor are the typed upstream
+// artifacts; testNames are the tests the GREEN gate will assert; feedback is the
+// prior gate's failure text on a retry (empty on the first attempt).
+func buildImplementerAppendix(architect, testAuthor pilotapi.HandoffArtifact, testNames []string, feedback string) string {
 	var sb strings.Builder
 	sb.WriteString(strings.TrimSpace(`
 ## TDD Role: IMPLEMENTER (make the failing tests pass, then commit)
@@ -85,15 +87,41 @@ tests pass:
 		sb.WriteString(strings.Join(testNames, ", "))
 		sb.WriteString(".")
 	}
-	if d := strings.TrimSpace(design); d != "" {
-		sb.WriteString("\n\n## Design (from ARCHITECT, advisory)\n\n")
-		sb.WriteString(d)
-	}
+	appendHandoffArtifactBlock(&sb, "architect", architect, "")
+	appendHandoffArtifactBlock(&sb, "test-author", testAuthor, strings.Join(testNames, "\n"))
 	if f := strings.TrimSpace(feedback); f != "" {
 		sb.WriteString("\n\n## Previous GREEN gate failure (fix this)\n\n")
 		sb.WriteString(f)
 	}
 	return sb.String()
+}
+
+// appendHandoffArtifactBlock renders the typed artifact that a downstream role
+// consumes. The prose fallback exists only for direct unit/helper paths that
+// carry legacy content without a typed artifact; the normal TDD sequence records
+// artifacts before building downstream prompts.
+func appendHandoffArtifactBlock(sb *strings.Builder, label string, art pilotapi.HandoffArtifact, fallback string) {
+	if art.TraceHash != "" {
+		sb.WriteString("\n\n## Handoff Artifact: ")
+		sb.WriteString(label)
+		sb.WriteString("\n\nRole: ")
+		sb.WriteString(art.Role)
+		sb.WriteString("\nTraceHash: ")
+		sb.WriteString(art.TraceHash)
+		sb.WriteString("\nParentHash: ")
+		sb.WriteString(art.ParentHash)
+		sb.WriteString("\nSchemaVersion: ")
+		sb.WriteString(strconv.Itoa(art.SchemaVersion))
+		sb.WriteString("\n\n")
+		sb.WriteString(art.Content)
+		return
+	}
+	if f := strings.TrimSpace(fallback); f != "" {
+		sb.WriteString("\n\n## Handoff Artifact Fallback: ")
+		sb.WriteString(label)
+		sb.WriteString("\n\n")
+		sb.WriteString(f)
+	}
 }
 
 // buildTDDRolePrompt joins the shared base prompt with a role appendix.

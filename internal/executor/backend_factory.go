@@ -65,13 +65,20 @@ func NewStageBackend(stage *StageConfig, base BackendConfig) (Backend, error) {
 			// regardless of which backend type it targets.
 			cfg.DefaultModel = stage.Model
 		}
-		if stage.Effort != "" && cfg.Type == BackendTypeCodexExec {
-			// codex-exec is the only backend with a config-level effort knob.
+		if cfg.Type == BackendTypeCodexExec && (stage.Model != "" || stage.Effort != "") {
+			// codex-exec has config-level model/effort knobs. Role execution
+			// still passes ExecuteOptions overrides, but setting these keeps a
+			// stage backend self-contained when invoked directly.
 			ce := CodexExecConfig{}
 			if cfg.CodexExec != nil {
 				ce = *cfg.CodexExec
 			}
-			ce.Effort = stage.Effort
+			if stage.Model != "" {
+				ce.Model = stage.Model
+			}
+			if stage.Effort != "" {
+				ce.Effort = stage.Effort
+			}
 			cfg.CodexExec = &ce
 		}
 	}

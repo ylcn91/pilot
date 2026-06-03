@@ -2,21 +2,14 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/ylcn91/pilot/internal/adapters/github"
-	"github.com/ylcn91/pilot/internal/adapters/linear"
 	"github.com/ylcn91/pilot/internal/architect"
 	"github.com/ylcn91/pilot/internal/config"
-	"github.com/ylcn91/pilot/internal/executor"
-	"github.com/ylcn91/pilot/internal/memory"
-	"github.com/ylcn91/pilot/internal/pilotapi"
-	"github.com/ylcn91/pilot/internal/quality"
 )
 
 // architectFlags are the parsed CLI knobs for `pilot architect`.
@@ -91,6 +84,9 @@ func runArchitect(ctx context.Context, f *architectFlags) error {
 	if ac == nil || !ac.Enabled {
 		return fmt.Errorf("architect is not enabled; set architect.enabled: true in %s", configPathOrDefault())
 	}
+	if err := validateArchitectBackendStage(architectBackendStage(ac, f.backend), architectBackendLabel(f)); err != nil {
+		return err
+	}
 
 	agentDir, err := os.Getwd()
 	if err != nil {
@@ -122,6 +118,9 @@ func runArchitect(ctx context.Context, f *architectFlags) error {
 	// SCAN->PROPOSE->EMIT pipeline below so the same plan can be filed as issues.
 	if architect.IsRefactorLens(f.lens) && f.dryRun {
 		return runArchitectRefactor(ctx, cfg, agentDir, f)
+	}
+	if architect.IsRefactorLens(f.lens) && export == config.ArchitectExportLinear {
+		return runArchitectRefactorLinear(ctx, cfg, agentDir, f)
 	}
 
 	runCfg, err := buildArchitectRunConfig(cfg, agentDir, f)
@@ -169,11 +168,16 @@ func buildArchitectRunConfig(cfg *config.Config, agentDir string, f *architectFl
 		return architect.RunConfig{}, err
 	}
 
+	stage := architectBackendStage(ac, f.backend)
+	if err := validateArchitectBackendStage(stage, architectBackendLabel(f)); err != nil {
+		return architect.RunConfig{}, err
+	}
+
 	// Dry-run uses the deterministic, network-free PROPOSE path so a scan yields
 	// real graph-derived findings without spawning an LLM subprocess. Issue
 	// creation (--create-issues) keeps the backend-driven analysis.
 	analyzer := architect.NewAnalyzer(
-		architectBackendStage(ac, f.backend),
+		stage,
 		architectBaseBackend(cfg),
 		agentDir,
 		architect.WithSlant(lens.Slant),
@@ -244,228 +248,4 @@ func architectExportTarget(ac *config.ArchitectConfig, flag string) (string, err
 	default:
 		return "", fmt.Errorf("invalid export target %q; expected one of %s", target, strings.Join(config.ValidArchitectExports, ", "))
 	}
-}
-
-// architectLinearClients builds the Linear issue creator (sub-issues under
-// parentID) and dedup searcher. It requires a non-empty parentID — Linear's
-// CreateIssue derives team/project from an existing parent — and an API key from
-// config or LINEAR_API_KEY. *linear.Client satisfies both the SubIssueCreator
-// and IssueSearcher seams.
-func architectLinearClients(cfg *config.Config, parentID string) (architect.IssueCreator, architect.IssueSearcher, error) {
-	if strings.TrimSpace(parentID) == "" {
-		return nil, nil, fmt.Errorf("--linear-parent is required when --export linear; pass an existing Linear issue ID to file sub-issues under")
-	}
-	client := architectLinearClient(cfg)
-	if client == nil {
-		return nil, nil, fmt.Errorf("Linear API key not configured; set adapters.linear.api_key or LINEAR_API_KEY to export to Linear")
-	}
-	creator := architect.NewLinearIssueCreator(client, parentID)
-	return creator, client, nil
-}
-
-// architectLinearClient resolves the Linear client from the LINEAR_API_KEY
-// source (config adapters.linear.api_key, then the env var), returning nil when
-// no key is available so callers can fail with an actionable error.
-func architectLinearClient(cfg *config.Config) *linear.Client {
-	key := architectLinearAPIKey(cfg)
-	if key == "" {
-		return nil
-	}
-	return linear.NewClient(key)
-}
-
-// architectLinearAPIKey resolves the Linear API key from config, falling back to
-// the LINEAR_API_KEY environment variable.
-func architectLinearAPIKey(cfg *config.Config) string {
-	if cfg.Adapters != nil && cfg.Adapters.Linear != nil && cfg.Adapters.Linear.APIKey != "" {
-		return cfg.Adapters.Linear.APIKey
-	}
-	return os.Getenv("LINEAR_API_KEY")
-}
-
-// architectBackendStage resolves the PROPOSE backend stage: an explicit
-// --backend override wins, then the config's architect.backend, else nil
-// (fall back to the primary executor backend).
-func architectBackendStage(ac *config.ArchitectConfig, override string) *executor.StageConfig {
-	if override != "" {
-		return &executor.StageConfig{Type: override}
-	}
-	return ac.Backend
-}
-
-// architectBaseBackend returns the run's primary backend config, defaulting when
-// the executor block is absent.
-func architectBaseBackend(cfg *config.Config) executor.BackendConfig {
-	if cfg.Executor != nil {
-		return *cfg.Executor
-	}
-	return *executor.DefaultBackendConfig()
-}
-
-// architectQualityRunner builds a quality.Runner for the lint/coverage
-// collectors, or nil when no quality config is present (leaving those
-// collectors inert).
-func architectQualityRunner(cfg *config.Config, projectDir string) *quality.Runner {
-	if cfg.Quality == nil {
-		return nil
-	}
-	return quality.NewRunner(cfg.Quality, projectDir)
-}
-
-// architectFailureSource opens the memory store backing the test-gap lens's
-// bug-history collector. It is best-effort: a missing memory config or an
-// unopenable store yields a nil source, leaving that collector inert rather
-// than failing the scan. The concrete *memory.Store is returned as the
-// failureSource interface; a nil store is returned as an untyped nil so the
-// collector's nil check fires correctly.
-func architectFailureSource(cfg *config.Config) architect.FailureSource {
-	if cfg.Memory == nil || cfg.Memory.Path == "" {
-		return nil
-	}
-	store, err := memory.NewStore(cfg.Memory.Path)
-	if err != nil || store == nil {
-		return nil
-	}
-	return store
-}
-
-// architectKnowledgeSource opens the memory knowledge store backing the
-// guardrail rule-suggester's pitfall/decision collectors. It mirrors
-// architectFailureSource: a missing memory config or an unopenable store yields
-// a nil source (fail-open), leaving those collectors out of the roster rather
-// than failing the scan. QueryByType lives on *memory.KnowledgeStore, which
-// wraps the shared *memory.Store DB handle, so the source is built from the same
-// store rather than opening a second connection.
-func architectKnowledgeSource(cfg *config.Config) architect.PitfallSource {
-	if cfg.Memory == nil || cfg.Memory.Path == "" {
-		return nil
-	}
-	store, err := memory.NewStore(cfg.Memory.Path)
-	if err != nil || store == nil {
-		return nil
-	}
-	ks := memory.NewKnowledgeStore(store.DB())
-	// The memories table is owned by the knowledge store's own schema, not the
-	// base Store migrations, so ensure it exists before the suggester queries it
-	// (idempotent; mirrors the start-command wiring). Fail open on error.
-	if err := ks.InitSchema(); err != nil {
-		return nil
-	}
-	return ks
-}
-
-// architectIssueClients builds the issue creator and dedup searcher from the
-// GitHub adapter config, enabling issue creation on the client.
-func architectIssueClients(cfg *config.Config) (architect.IssueCreator, architect.IssueSearcher, error) {
-	token := architectGitHubToken(cfg)
-	if token == "" {
-		return nil, nil, fmt.Errorf("GitHub token not configured; set adapters.github.token or GITHUB_TOKEN to create issues")
-	}
-	client := github.NewClient(token)
-	creator := architect.NewClientIssueCreator(client)
-	return creator, client, nil
-}
-
-// architectGitHubToken resolves the GitHub token from config, falling back to
-// the GITHUB_TOKEN environment variable.
-func architectGitHubToken(cfg *config.Config) string {
-	if cfg.Adapters != nil && cfg.Adapters.GitHub != nil && cfg.Adapters.GitHub.Token != "" {
-		return cfg.Adapters.GitHub.Token
-	}
-	return os.Getenv("GITHUB_TOKEN")
-}
-
-// architectOwnerRepo parses owner/repo from the GitHub adapter's "owner/repo"
-// Repo field.
-func architectOwnerRepo(cfg *config.Config) (owner, repo string, err error) {
-	if cfg.Adapters == nil || cfg.Adapters.GitHub == nil || cfg.Adapters.GitHub.Repo == "" {
-		return "", "", fmt.Errorf("no repository configured; set adapters.github.repo to owner/repo")
-	}
-	parts := strings.SplitN(cfg.Adapters.GitHub.Repo, "/", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("invalid adapters.github.repo %q; expected owner/repo", cfg.Adapters.GitHub.Repo)
-	}
-	return parts[0], parts[1], nil
-}
-
-// resolveArchitectLimit maps the --limit flag onto the emit cap: an explicit
-// positive flag wins; 0 falls back to architect.max_tickets (or the package
-// default when that is unset).
-func resolveArchitectLimit(flag int, ac *config.ArchitectConfig) int {
-	if flag > 0 {
-		return flag
-	}
-	if ac.MaxTickets > 0 {
-		return ac.MaxTickets
-	}
-	return config.DefaultArchitectMaxTickets
-}
-
-// loadConfigForArchitect loads config from the resolved path.
-func loadConfigForArchitect() (*config.Config, error) {
-	cfg, err := config.Load(configPathOrDefault())
-	if err != nil {
-		return nil, fmt.Errorf("failed to load config: %w", err)
-	}
-	return cfg, nil
-}
-
-// configPathOrDefault returns the active config path, defaulting when the
-// global --config flag is unset.
-func configPathOrDefault() string {
-	if cfgFile != "" {
-		return cfgFile
-	}
-	return config.DefaultConfigPath()
-}
-
-// printArchitectResult renders the run outcome as human-readable text or JSON.
-func printArchitectResult(result architect.RunResult, f *architectFlags) error {
-	if f.jsonOut {
-		return printArchitectJSON(result, f.dryRun)
-	}
-	printArchitectHuman(result, f.dryRun)
-	return nil
-}
-
-// architectJSONReport is the stable shape emitted by --json.
-type architectJSONReport struct {
-	DryRun   bool               `json:"dry_run"`
-	Created  int                `json:"created"`
-	Skipped  int                `json:"skipped"`
-	Findings []pilotapi.Finding `json:"findings"`
-}
-
-func printArchitectJSON(result architect.RunResult, dryRun bool) error {
-	report := architectJSONReport{
-		DryRun:   dryRun,
-		Created:  result.Created,
-		Skipped:  result.Skipped,
-		Findings: result.Findings,
-	}
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	return enc.Encode(report)
-}
-
-func printArchitectHuman(result architect.RunResult, dryRun bool) {
-	mode := "created"
-	if dryRun {
-		mode = "would create"
-	}
-	fmt.Printf("Architect found %d proposal(s).\n", len(result.Findings))
-	for i, f := range result.Findings {
-		risk := f.Risk
-		if risk == "" {
-			risk = pilotapi.RiskMedium
-		}
-		fmt.Printf("\n%d. [%s] %s\n", i+1, risk, f.Title)
-		if f.WhyItMatters != "" {
-			fmt.Printf("   why: %s\n", f.WhyItMatters)
-		}
-		if len(f.Files) > 0 {
-			fmt.Printf("   files: %s\n", strings.Join(f.Files, ", "))
-		}
-	}
-	fmt.Printf("\n%s %d issue(s), skipped %d (dedup).\n", mode, result.Created, result.Skipped)
 }

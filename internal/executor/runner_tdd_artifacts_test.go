@@ -161,7 +161,7 @@ func TestTDDArtifactsEmptyWhenDisabled(t *testing.T) {
 	if s.tddArtifacts != nil {
 		t.Fatalf("tddArtifacts = %+v, want nil before any TDD run", s.tddArtifacts)
 	}
-	if got := tddChainParent(s.tddArtifacts); got != "" {
+	if got := tddChainParent(s); got != "" {
 		t.Errorf("tddChainParent(nil) = %q, want empty", got)
 	}
 }
@@ -191,6 +191,27 @@ func TestRecordTDDArtifactChainsSelfLinking(t *testing.T) {
 	}
 	if s.tddArtifacts[2].ParentHash != h2 {
 		t.Errorf("third ParentHash = %q, want %q", s.tddArtifacts[2].ParentHash, h2)
+	}
+}
+
+// TestRecordTDDArtifactChainsAfterPlanArtifact covers the full plan -> TDD
+// lineage: when the pipeline plan stage produced a typed artifact, the
+// architect must point to the plan TraceHash instead of becoming a second root.
+func TestRecordTDDArtifactChainsAfterPlanArtifact(t *testing.T) {
+	r := NewRunner()
+	s := &executeState{task: &Task{ID: "GH-plan-tdd"}}
+	s.planArtifact = pilotapi.NewHandoffArtifact(pilotapi.RolePlan, s.task.ID, "plan", "")
+
+	r.recordTDDArtifact(s, pilotapi.RoleArchitect, "design")
+	r.recordTDDArtifact(s, pilotapi.RoleTestAuthor, "tests")
+	r.recordTDDArtifact(s, pilotapi.RoleImplementer, "impl")
+
+	if s.tddArtifacts[0].ParentHash != s.planArtifact.TraceHash {
+		t.Fatalf("architect ParentHash = %q, want plan TraceHash %q",
+			s.tddArtifacts[0].ParentHash, s.planArtifact.TraceHash)
+	}
+	if err := pilotapi.ValidateHandoffChain(tddArtifactChain(s)); err != nil {
+		t.Fatalf("combined plan/TDD chain invalid: %v", err)
 	}
 }
 

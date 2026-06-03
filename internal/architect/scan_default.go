@@ -67,26 +67,27 @@ func gateRunnerFromQuality(r *quality.Runner) gateRunner {
 }
 
 // BuildDefaultScanner assembles the deterministic SCAN roster the CLI and
-// scheduler use: the file-walk collectors (oversized files, TODO/FIXME) plus
-// the optional quality-gate collectors (lint, coverage). The roster is filtered
-// by opts.Signals when non-empty. The result is always a usable Scanner — an
-// empty roster simply produces no Signals.
+// scheduler use: the file-walk collectors (oversized files, TODO/FIXME,
+// duplicate blocks) plus the optional quality-gate collectors (lint, coverage).
+// The roster is filtered by opts.Signals when non-empty. The result is always a
+// usable Scanner — an empty roster simply produces no Signals.
 func BuildDefaultScanner(opts ScanOptions) *Scanner {
 	selected := filterCollectors(coreCollectors(opts), opts.Signals)
 	return NewScanner(selected...)
 }
 
 // coreCollectors builds the deterministic core roster from opts: the file-walk
-// collectors (oversized files, TODO/FIXME) plus the optional quality-gate
-// collectors (lint, coverage). It is the single source of truth shared by
-// BuildDefaultScanner and the registered "core" lens, so the legacy default
-// path and the lens path never drift.
+// collectors (oversized files, TODO/FIXME, duplicate blocks) plus the optional
+// quality-gate collectors (lint, coverage). It is the single source of truth
+// shared by BuildDefaultScanner and the registered "core" lens, so the legacy
+// default path and the lens path never drift.
 func coreCollectors(opts ScanOptions) []Collector {
 	runner := gateRunnerFromQuality(opts.QualityRunner)
 
 	candidates := []Collector{
 		NewLOCCollector(),
 		NewTODOCollector(),
+		NewDuplicationCollector(),
 		NewLintCollector(runner, "lint"),
 	}
 	if opts.MinCoverage > 0 {

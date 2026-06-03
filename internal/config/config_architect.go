@@ -85,19 +85,16 @@ type ArchitectConfig struct {
 // target a runnable backend, MaxTickets must be >= 1 when set, and a non-empty
 // Schedule must cron-parse. A nil or disabled config is always valid.
 //
-// Backend validation reuses the exact path used by the executor pipeline/TDD
-// blocks: the StageConfig is wrapped in a one-stage PipelineConfig{Execute:...}
-// and that block's Validate is run, so codex-app-server and unknown backends are
-// rejected identically here.
+// codex-app-server is rejected explicitly: it is a long-lived app runtime, not a
+// runnable Backend for the Architect PROPOSE stage. Use codex-exec instead.
 func (a *ArchitectConfig) Validate() error {
 	if a == nil || !a.Enabled {
 		return nil
 	}
 
 	if a.Backend != nil {
-		pipeline := &executor.PipelineConfig{Execute: a.Backend}
-		if err := pipeline.Validate(); err != nil {
-			return fmt.Errorf("architect.backend: %w", err)
+		if err := validateArchitectBackend(a.Backend); err != nil {
+			return err
 		}
 	}
 
@@ -116,6 +113,25 @@ func (a *ArchitectConfig) Validate() error {
 	}
 
 	return nil
+}
+
+func validateArchitectBackend(stage *executor.StageConfig) error {
+	if stage.Type == "" {
+		return fmt.Errorf("architect.backend.type is required when architect.backend is present")
+	}
+	switch stage.Type {
+	case executor.BackendTypeCodexExec,
+		executor.BackendTypeClaudeCode,
+		executor.BackendTypeQwenCode,
+		executor.BackendTypeAnthropicAPI,
+		executor.BackendTypeOpenAIAPI,
+		executor.BackendTypeOpenCode:
+		return nil
+	case "codex-app-server":
+		return fmt.Errorf("architect.backend.type %q is not a runnable Backend for architect mode; use codex-exec", stage.Type)
+	default:
+		return fmt.Errorf("architect.backend.type %q is not a known backend (use one of: claude-code, codex-exec, qwen-code, anthropic-api, openai-api, opencode)", stage.Type)
+	}
 }
 
 // isValidArchitectExport reports whether target names a supported export.

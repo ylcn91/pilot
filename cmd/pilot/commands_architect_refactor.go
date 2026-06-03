@@ -18,20 +18,55 @@ import (
 // touches the network or files disk — the dry-run contract — so --create-issues
 // is routed back through the SCAN->PROPOSE->EMIT pipeline by the caller instead.
 func runArchitectRefactor(ctx context.Context, cfg *config.Config, agentDir string, f *architectFlags) error {
-	signals, err := scanRFCSignals(ctx, cfg, agentDir, f)
+	plan, err := buildOfflineRefactorPlan(ctx, cfg, agentDir, f)
 	if err != nil {
 		return err
+	}
+	printRefactorPlan(plan)
+	return nil
+}
+
+// runArchitectRefactorLinear files the ordered refactor plan as Linear sub-issues
+// under the existing --linear-parent issue. It uses the offline plan so Linear
+// export preserves the same blast-radius order the dry-run and RFC surfaces show.
+func runArchitectRefactorLinear(ctx context.Context, cfg *config.Config, agentDir string, f *architectFlags) error {
+	plan, err := buildOfflineRefactorPlan(ctx, cfg, agentDir, f)
+	if err != nil {
+		return err
+	}
+	return emitRefactorPlanToLinear(ctx, cfg, f, plan)
+}
+
+func buildOfflineRefactorPlan(ctx context.Context, cfg *config.Config, agentDir string, f *architectFlags) (architect.RefactorPlan, error) {
+	signals, err := scanRFCSignals(ctx, cfg, agentDir, f)
+	if err != nil {
+		return architect.RefactorPlan{}, err
 	}
 
 	// The blast-radius graph drives PR ordering; a missing `go` toolchain yields
 	// a nil graph, which the planner tolerates (every change becomes a leaf).
 	graph, _ := architect.LoadProjectGraph(ctx, agentDir)
-
 	owners := refactorOwners(ctx, agentDir, signals)
+	return architect.PlanRefactorOffline(signals, graph, owners), nil
+}
 
-	plan := architect.PlanRefactorOffline(signals, graph, owners)
-	printRefactorPlan(plan)
+func emitRefactorPlanToLinear(ctx context.Context, cfg *config.Config, f *architectFlags, plan architect.RefactorPlan) error {
+	creator, searcher, err := architectLinearClients(cfg, f.linearParent)
+	if err != nil {
+		return err
+	}
+	created, skipped, err := emitRefactorPlan(ctx, plan, creator, searcher, cfg.Architect.Labels, resolveArchitectLimit(f.limit, cfg.Architect))
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Filed %d Linear sub-issue(s), skipped %d (dedup).\n", created, skipped)
 	return nil
+}
+
+func emitRefactorPlan(ctx context.Context, plan architect.RefactorPlan, creator architect.IssueCreator, searcher architect.IssueSearcher, labels []string, limit int) (int, int, error) {
+	emitter := architect.NewEmitter(creator, searcher, "", "", labels)
+	findings := architect.FindingsFromRefactorPlan(plan)
+	return emitter.EmitOrdered(ctx, findings, false, limit)
 }
 
 // refactorOwners resolves a best-effort top-author-per-file map for the files

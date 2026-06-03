@@ -306,7 +306,7 @@ func (r *Runner) runTDDTestAuthorOnce(s *executeState, base, feedback string) (c
 	if err != nil {
 		return false, err
 	}
-	appendix := buildTestAuthorAppendix(s.tddArchitectDesign)
+	appendix := buildTestAuthorAppendix(tddArtifactByRole(s.tddArtifacts, pilotapi.RoleArchitect), s.tddArchitectDesign)
 	if feedback != "" {
 		appendix += "\n\n## RED gate feedback (fix this)\n\n" + feedback
 	}
@@ -333,7 +333,12 @@ func (r *Runner) runTDDImplementer(s *executeState, base, feedback string) (*Bac
 	if err != nil {
 		return nil, err
 	}
-	appendix := buildImplementerAppendix(s.tddArchitectDesign, s.tddTestNames, feedback)
+	appendix := buildImplementerAppendix(
+		tddArtifactByRole(s.tddArtifacts, pilotapi.RoleArchitect),
+		tddArtifactByRole(s.tddArtifacts, pilotapi.RoleTestAuthor),
+		s.tddTestNames,
+		feedback,
+	)
 	res, err := r.runTDDRole(s, r.implementerBackend, r.tddRoleStage("implementer"), buildTDDRolePrompt(base, appendix), false)
 	if err != nil {
 		return nil, err
