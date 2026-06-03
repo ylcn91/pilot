@@ -12,15 +12,9 @@ import (
 	"github.com/ylcn91/pilot/internal/logging"
 )
 
-// IssueResult is returned by the issue handler
-type IssueResult struct {
-	Success    bool
-	PRNumber   int
-	PRURL      string
-	HeadSHA    string // Head commit SHA of the PR (GH-1361: for autopilot wiring)
-	BranchName string // Head branch name e.g. "pilot/APP-123" (GH-1361: for autopilot wiring)
-	Error      error
-}
+// IssueResult is returned by the issue handler. It aliases the canonical
+// adapters.IssueResult so the result shape stays in sync across adapters.
+type IssueResult = adapters.IssueResult
 
 // ProcessedStore persists which Linear issues have been processed across
 // restarts. It aliases the canonical adapters.ProcessedStore so a method

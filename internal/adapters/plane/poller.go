@@ -20,15 +20,9 @@ const (
 	LabelFailed     = "pilot-failed"
 )
 
-// IssueResult is returned by the work item handler.
-type IssueResult struct {
-	Success    bool
-	PRNumber   int
-	PRURL      string
-	HeadSHA    string // Head commit SHA of the PR (for autopilot wiring)
-	BranchName string // Head branch name e.g. "pilot/PLANE-123"
-	Error      error
-}
+// IssueResult is returned by the work item handler. It aliases the canonical
+// adapters.IssueResult so the result shape stays in sync across adapters.
+type IssueResult = adapters.IssueResult
 
 // ProcessedStore persists which Plane work items have been processed across
 // restarts. It aliases the canonical adapters.ProcessedStore so a method

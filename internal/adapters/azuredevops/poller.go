@@ -23,15 +23,10 @@ const (
 	ExecutionModeParallel ExecutionMode = "parallel"
 )
 
-// WorkItemResult is returned by the work item handler with PR information
-type WorkItemResult struct {
-	Success    bool
-	PRNumber   int    // PR ID if created
-	PRURL      string // PR URL if created
-	HeadSHA    string // Head commit SHA of the PR
-	BranchName string // Head branch name (e.g. "pilot/GH-123")
-	Error      error
-}
+// WorkItemResult is returned by the work item handler with PR information.
+// It aliases the canonical adapters.IssueResult so the result shape stays in
+// sync across adapters.
+type WorkItemResult = adapters.IssueResult
 
 // ProcessedStore persists which Azure DevOps work items have been processed
 // across restarts. It aliases the canonical adapters.ProcessedStore so a method

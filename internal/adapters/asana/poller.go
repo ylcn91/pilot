@@ -19,15 +19,9 @@ const (
 	TagFailed     = "pilot-failed"
 )
 
-// TaskResult is returned by the task handler
-type TaskResult struct {
-	Success    bool
-	PRNumber   int
-	PRURL      string
-	HeadSHA    string // Head commit SHA of the PR (GH-1398: for autopilot wiring)
-	BranchName string // Head branch name e.g. "pilot/TASK-123" (GH-1398: for autopilot wiring)
-	Error      error
-}
+// TaskResult is returned by the task handler. It aliases the canonical
+// adapters.IssueResult so the result shape stays in sync across adapters.
+type TaskResult = adapters.IssueResult
 
 // ProcessedStore persists which Asana tasks have been processed across
 // restarts. It aliases the canonical adapters.ProcessedStore so a method

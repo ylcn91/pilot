@@ -23,15 +23,10 @@ const (
 	ExecutionModeParallel ExecutionMode = "parallel"
 )
 
-// IssueResult is returned by the issue handler with PR information
-type IssueResult struct {
-	Success    bool
-	PRNumber   int    // PR ID if created
-	PRURL      string // PR URL if created
-	HeadSHA    string // Head commit SHA of the PR
-	BranchName string // Head branch name (e.g. "pilot/GH-123")
-	Error      error
-}
+// IssueResult is returned by the issue handler with PR information.
+// It aliases the canonical adapters.IssueResult so the result shape stays in
+// sync across adapters.
+type IssueResult = adapters.IssueResult
 
 // ProcessedStore persists which Bitbucket issues have been processed across
 // restarts. It aliases the canonical adapters.ProcessedStore so a method
