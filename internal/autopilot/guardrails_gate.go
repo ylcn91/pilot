@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/ylcn91/pilot/internal/adapters/github"
@@ -103,27 +106,37 @@ type ruleEvaluator interface {
 //     mode the status is always "success" regardless of findings, so turning the
 //     feature on can only add information, never hold a PR.
 type GuardrailsGate struct {
-	gh           guardrailsGitHub
-	registry     ruleEvaluator
-	cfg          GuardrailsGateConfig
-	worktreePath string
-	owner        string
-	repo         string
-	log          *slog.Logger
+	gh       guardrailsGitHub
+	registry ruleEvaluator
+	cfg      GuardrailsGateConfig
+	// repoPath is the local clone the gate fetches the PR head from. Per run the
+	// gate materialises the PR's changed files at that head SHA into a fresh
+	// tempdir and points the rules at THAT, so they judge PR content (net-new and
+	// changed files included) instead of the clone's currently checked-out
+	// branch. When repoPath is not a git work tree it is passed to the rules
+	// directly, which keeps fixture-backed tests (and an empty repoPath, which
+	// degrades the rules to no findings) working unchanged.
+	repoPath string
+	owner    string
+	repo     string
+	log      *slog.Logger
 }
 
-// NewGuardrailsGate builds a gate. worktreePath is the checkout the rules read
-// (the local clone of the PR's head); when empty the rules degrade to no
-// findings, keeping the gate fail-open.
-func NewGuardrailsGate(gh guardrailsGitHub, registry ruleEvaluator, cfg GuardrailsGateConfig, worktreePath, owner, repo string) *GuardrailsGate {
+// NewGuardrailsGate builds a gate. repoPath is the local clone the rules read
+// from: per run the gate materialises the PR head's content into a tempdir and
+// evaluates the rules against that, so they see the PR's post-change files. When
+// repoPath is empty the rules degrade to no findings, keeping the gate
+// fail-open; when repoPath is a directory that is not a git work tree it is used
+// directly as the content source (fixture-backed tests).
+func NewGuardrailsGate(gh guardrailsGitHub, registry ruleEvaluator, cfg GuardrailsGateConfig, repoPath, owner, repo string) *GuardrailsGate {
 	return &GuardrailsGate{
-		gh:           gh,
-		registry:     registry,
-		cfg:          cfg,
-		worktreePath: worktreePath,
-		owner:        owner,
-		repo:         repo,
-		log:          slog.Default().With("component", "guardrails-gate"),
+		gh:       gh,
+		registry: registry,
+		cfg:      cfg,
+		repoPath: repoPath,
+		owner:    owner,
+		repo:     repo,
+		log:      slog.Default().With("component", "guardrails-gate"),
 	}
 }
 
@@ -193,7 +206,18 @@ func (g *GuardrailsGate) EvaluateWithFiles(ctx context.Context, prNumber int, he
 		}
 	}
 
-	all := g.registry.Evaluate(ctx, changed, g.worktreePath, g.cfg.DisabledRules)
+	// Materialise the PR head's content so the rules judge the PR's post-change
+	// files (net-new and modified) rather than whatever branch repoPath currently
+	// has checked out. This is fail-open: a fetch/show/mkdir failure logs and
+	// returns (nil, nil), exactly like every other error path, so a fetch outage
+	// can never block a PR.
+	worktreePath, cleanup, ok := g.materializeHead(ctx, headSHA, changed)
+	if !ok {
+		return nil, nil
+	}
+	defer cleanup()
+
+	all := g.registry.Evaluate(ctx, changed, worktreePath, g.cfg.DisabledRules)
 
 	// Harvest exception directives from the PR body + comments, then split the
 	// findings. Reading exceptions is best-effort: a fetch error simply means no
@@ -265,6 +289,118 @@ func filterChangedFiles(files []*github.PRFile) []string {
 		out = append(out, f.Filename)
 	}
 	return out
+}
+
+// materializeHead resolves the content source the rules read for this run.
+//
+// When repoPath is a git work tree it fetches the PR head SHA and writes each
+// changed file's content at that SHA into a fresh tempdir, returning that dir so
+// the rules judge the PR's post-change content (net-new files now exist, changed
+// files reflect the PR, deleted files are correctly absent). cleanup removes the
+// tempdir; it is always safe to call.
+//
+// When repoPath is empty or not a git work tree it is returned as-is with a
+// no-op cleanup: an empty path degrades the rules to no findings (fail-open) and
+// a plain directory is used directly as the content source (fixture-backed
+// tests). ok is false only on a hard materialization failure (fetch/show/mkdir),
+// which is the gate's fail-open skip: the caller posts nothing.
+func (g *GuardrailsGate) materializeHead(ctx context.Context, headSHA string, changed []string) (worktreePath string, cleanup func(), ok bool) {
+	noop := func() {}
+	if g.repoPath == "" || !isGitWorkTree(g.repoPath) {
+		return g.repoPath, noop, true
+	}
+
+	if err := g.ensureHead(ctx, headSHA); err != nil {
+		g.log.Warn("guardrails: cannot resolve PR head, skipping", "sha", ShortSHA(headSHA), "error", err)
+		return "", noop, false
+	}
+
+	tmp, err := os.MkdirTemp("", "pilot-guardrails-*")
+	if err != nil {
+		g.log.Warn("guardrails: cannot create temp worktree, skipping", "error", err)
+		return "", noop, false
+	}
+	cleanup = func() {
+		if rmErr := os.RemoveAll(tmp); rmErr != nil {
+			g.log.Warn("guardrails: failed to remove temp worktree", "dir", tmp, "error", rmErr)
+		}
+	}
+
+	for _, rel := range changed {
+		if err := ctx.Err(); err != nil {
+			cleanup()
+			g.log.Warn("guardrails: context cancelled while materializing head, skipping", "error", err)
+			return "", noop, false
+		}
+		// A file deleted in the PR does not exist at the head SHA: git show fails,
+		// so we simply skip writing it. The rules then correctly see it as absent.
+		content, showErr := g.showHeadFile(ctx, headSHA, rel)
+		if showErr != nil {
+			continue
+		}
+		if writeErr := writeMaterializedFile(tmp, rel, content); writeErr != nil {
+			cleanup()
+			g.log.Warn("guardrails: cannot write materialized file, skipping", "file", rel, "error", writeErr)
+			return "", noop, false
+		}
+	}
+	return tmp, cleanup, true
+}
+
+// ensureHead makes the head SHA's commit object available in repoPath so a
+// subsequent git show can read its content. The clone may not have seen the PR
+// head yet, so it fetches from origin — but the fetch is best-effort: if the
+// object is already present (the common case once the clone is up to date, and
+// always true for a local-only test repo with no origin), a fetch failure is
+// irrelevant. It only errors when the object is still unresolvable after the
+// fetch attempt, which is the gate's fail-open skip.
+func (g *GuardrailsGate) ensureHead(ctx context.Context, headSHA string) error {
+	if g.headPresent(ctx, headSHA) {
+		return nil
+	}
+	fetch := exec.CommandContext(ctx, "git", "-C", g.repoPath, "fetch", "--quiet", "origin", headSHA)
+	fetchOut, fetchErr := fetch.CombinedOutput()
+	if g.headPresent(ctx, headSHA) {
+		return nil
+	}
+	if fetchErr != nil {
+		return fmt.Errorf("git fetch %s: %w: %s", ShortSHA(headSHA), fetchErr, strings.TrimSpace(string(fetchOut)))
+	}
+	return fmt.Errorf("commit %s not present after fetch", ShortSHA(headSHA))
+}
+
+// headPresent reports whether the head SHA's commit object exists locally.
+func (g *GuardrailsGate) headPresent(ctx context.Context, headSHA string) bool {
+	cmd := exec.CommandContext(ctx, "git", "-C", g.repoPath, "cat-file", "-e", headSHA+"^{commit}")
+	return cmd.Run() == nil
+}
+
+// showHeadFile returns the content of a project-relative file at the head SHA,
+// or an error when the file does not exist there (e.g. deleted in the PR).
+func (g *GuardrailsGate) showHeadFile(ctx context.Context, headSHA, rel string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "git", "-C", g.repoPath, "show", headSHA+":"+filepath.ToSlash(rel))
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// writeMaterializedFile writes content to dir/rel, creating parent directories.
+func writeMaterializedFile(dir, rel string, content []byte) error {
+	full := filepath.Join(dir, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(full, content, 0o644)
+}
+
+// isGitWorkTree reports whether dir contains a .git entry (directory for a normal
+// clone, file for a linked work tree), i.e. whether the gate should materialise
+// PR-head content from it rather than read it directly.
+func isGitWorkTree(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, ".git"))
+	return err == nil
 }
 
 // blocking reports whether THIS run should post a failure status. Only an
