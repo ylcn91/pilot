@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"sync"
 	"time"
 
@@ -58,6 +59,22 @@ func (m *Manager) RegisterHandler(handler Handler) {
 	defer m.mu.Unlock()
 	m.handlers[handler.Name()] = handler
 	m.log.Debug("Registered approval handler", slog.String("channel", handler.Name()))
+}
+
+// fallbackHandler returns a deterministically-chosen handler when no preferred
+// channel applies. Map iteration order is random, so handler keys are sorted
+// and the first is returned to guarantee the same handler is picked across runs
+// for a given set of registered channels. Callers must hold m.mu (R or W).
+func (m *Manager) fallbackHandler() Handler {
+	if len(m.handlers) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(m.handlers))
+	for name := range m.handlers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return m.handlers[names[0]]
 }
 
 // IsEnabled returns true if approval workflows are enabled
@@ -244,16 +261,10 @@ func (m *Manager) SubmitApprovalRequest(ctx context.Context, req *Request) (stri
 		} else {
 			m.log.Warn("preferred approval channel not registered, falling back",
 				slog.String("preferred_channel", req.PreferredChannel))
-			for _, h := range m.handlers {
-				handler = h
-				break
-			}
+			handler = m.fallbackHandler()
 		}
 	} else {
-		for _, h := range m.handlers {
-			handler = h
-			break
-		}
+		handler = m.fallbackHandler()
 	}
 	m.mu.RUnlock()
 

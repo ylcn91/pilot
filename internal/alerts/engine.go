@@ -14,6 +14,12 @@ type Engine struct {
 	dispatcher *Dispatcher
 	logger     *slog.Logger
 
+	// rulesByType indexes config.Rules by AlertType so per-event handlers can
+	// look up only the rules they care about instead of scanning every rule and
+	// switching on Type. Built in NewEngine and rebuilt in UpdateConfig so it
+	// always mirrors the active config. Per-type slices preserve config order.
+	rulesByType map[AlertType][]AlertRule
+
 	// State tracking
 	mu                  sync.RWMutex
 	lastAlertTimes      map[string]time.Time     // rule name -> last fired time
@@ -161,7 +167,22 @@ func NewEngine(config *AlertConfig, opts ...EngineOption) *Engine {
 		opt(e)
 	}
 
+	if config != nil {
+		e.rulesByType = indexRulesByType(config.Rules)
+	}
+
 	return e
+}
+
+// indexRulesByType groups rules by their AlertType, preserving the original
+// slice order within each group. Disabled rules are kept; handlers still check
+// rule.Enabled, mirroring the previous full-slice scan exactly.
+func indexRulesByType(rules []AlertRule) map[AlertType][]AlertRule {
+	index := make(map[AlertType][]AlertRule)
+	for _, rule := range rules {
+		index[rule.Type] = append(index[rule.Type], rule)
+	}
+	return index
 }
 
 // Start starts the alerting engine
@@ -326,6 +347,11 @@ func (e *Engine) UpdateConfig(config *AlertConfig) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.config = config
+	if config != nil {
+		e.rulesByType = indexRulesByType(config.Rules)
+	} else {
+		e.rulesByType = nil
+	}
 }
 
 // AlertSnapshot returns a point-in-time copy of alert metrics including the current

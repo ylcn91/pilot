@@ -72,6 +72,70 @@ func TestManager_SubmitApprovalRequest_FallbackWhenPreferredChannelAbsent(t *tes
 	}
 }
 
+// TestManager_SubmitApprovalRequest_FallbackIsDeterministic verifies that the
+// fallback handler selection is stable across runs. Each iteration builds a
+// fresh Manager (so Go's per-map iteration-order randomization is re-seeded)
+// and asserts the same handler is chosen every time. With handlers "email" and
+// "slack" registered, the lexicographically-first key ("email") must always win.
+func TestManager_SubmitApprovalRequest_FallbackIsDeterministic(t *testing.T) {
+	const iterations = 50
+	var chosen string
+
+	for i := 0; i < iterations; i++ {
+		config := DefaultConfig()
+		config.Enabled = true
+		config.PreExecution.Enabled = true
+		config.PreExecution.Timeout = 10 * time.Second
+
+		m := NewManager(config)
+		slackH := &mockHandler{name: "slack"}
+		emailH := &mockHandler{name: "email"}
+		m.RegisterHandler(slackH)
+		m.RegisterHandler(emailH)
+
+		req := &Request{
+			ID:               "det-fallback",
+			TaskID:           "TASK-DET",
+			Stage:            StagePreExecution,
+			PreferredChannel: "", // no preference → deterministic fallback
+			CreatedAt:        time.Now(),
+		}
+
+		if _, err := m.SubmitApprovalRequest(context.Background(), req); err != nil {
+			t.Fatalf("iteration %d: unexpected error: %v", i, err)
+		}
+
+		var got string
+		slackH.mu.Lock()
+		if len(slackH.sentReqs) == 1 {
+			got = slackH.name
+		}
+		slackH.mu.Unlock()
+		emailH.mu.Lock()
+		if len(emailH.sentReqs) == 1 {
+			got = emailH.name
+		}
+		emailH.mu.Unlock()
+
+		if got == "" {
+			t.Fatalf("iteration %d: no handler received the request", i)
+		}
+		if i == 0 {
+			chosen = got
+		} else if got != chosen {
+			t.Fatalf("non-deterministic fallback: iteration %d chose %q, first run chose %q", i, got, chosen)
+		}
+
+		if err := m.RecordDecision(context.Background(), req.ID, DecisionApproved, "tester"); err != nil {
+			t.Fatalf("iteration %d: record decision: %v", i, err)
+		}
+	}
+
+	if chosen != "email" {
+		t.Errorf("expected lexicographically-first handler %q to be chosen, got %q", "email", chosen)
+	}
+}
+
 // TestManager_SubmitApprovalRequest_PrefersRegisteredPreferredChannel verifies
 // that when the preferred channel IS registered, the request is dispatched to
 // that specific handler and not the other registered one.

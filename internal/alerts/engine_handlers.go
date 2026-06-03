@@ -98,36 +98,40 @@ func (e *Engine) handleTaskFailed(ctx context.Context, event Event) {
 	retryCount := e.retryTracker[source]
 	e.mu.Unlock()
 
-	// Check task_failed rule
-	for _, rule := range e.config.Rules {
+	// Check task_failed rules
+	for _, rule := range e.rulesByType[AlertTypeTaskFailed] {
 		if !rule.Enabled {
 			continue
 		}
+		if e.shouldFire(rule) {
+			alert := e.createAlert(rule, event, fmt.Sprintf("Task %s failed: %s", event.TaskID, event.Error))
+			e.fireAlert(ctx, rule, alert)
+		}
+	}
 
-		switch rule.Type {
-		case AlertTypeTaskFailed:
-			if e.shouldFire(rule) {
-				alert := e.createAlert(rule, event, fmt.Sprintf("Task %s failed: %s", event.TaskID, event.Error))
-				e.fireAlert(ctx, rule, alert)
-			}
+	for _, rule := range e.rulesByType[AlertTypeConsecutiveFails] {
+		if !rule.Enabled {
+			continue
+		}
+		if failCount >= rule.Condition.ConsecutiveFailures && e.shouldFire(rule) {
+			alert := e.createAlert(rule, event,
+				fmt.Sprintf("%d consecutive task failures in project %s", failCount, event.Project))
+			e.fireAlert(ctx, rule, alert)
+		}
+	}
 
-		case AlertTypeConsecutiveFails:
-			if failCount >= rule.Condition.ConsecutiveFailures && e.shouldFire(rule) {
-				alert := e.createAlert(rule, event,
-					fmt.Sprintf("%d consecutive task failures in project %s", failCount, event.Project))
-				e.fireAlert(ctx, rule, alert)
-			}
-
-		case AlertTypeEscalation:
-			// Escalate to PagerDuty after N consecutive failures for the same source (GH-848)
-			threshold := rule.Condition.EscalationRetries
-			if threshold == 0 {
-				threshold = 3 // Default
-			}
-			if retryCount >= threshold && e.shouldFire(rule) {
-				alert := e.createEscalationAlert(rule, event, source, retryCount)
-				e.fireAlert(ctx, rule, alert)
-			}
+	for _, rule := range e.rulesByType[AlertTypeEscalation] {
+		if !rule.Enabled {
+			continue
+		}
+		// Escalate to PagerDuty after N consecutive failures for the same source (GH-848)
+		threshold := rule.Condition.EscalationRetries
+		if threshold == 0 {
+			threshold = 3 // Default
+		}
+		if retryCount >= threshold && e.shouldFire(rule) {
+			alert := e.createEscalationAlert(rule, event, source, retryCount)
+			e.fireAlert(ctx, rule, alert)
 		}
 	}
 }
@@ -138,31 +142,31 @@ func (e *Engine) handleCostUpdate(ctx context.Context, event Event) {
 		_, _ = fmt.Sscanf(v, "%f", &dailySpend)
 	}
 
-	for _, rule := range e.config.Rules {
+	for _, rule := range e.rulesByType[AlertTypeDailySpend] {
 		if !rule.Enabled {
 			continue
 		}
+		if dailySpend > rule.Condition.DailySpendThreshold && e.shouldFire(rule) {
+			alert := e.createAlert(rule, event,
+				fmt.Sprintf("Daily spend $%.2f exceeds threshold $%.2f",
+					dailySpend, rule.Condition.DailySpendThreshold))
+			e.fireAlert(ctx, rule, alert)
+		}
+	}
 
-		switch rule.Type {
-		case AlertTypeDailySpend:
-			if dailySpend > rule.Condition.DailySpendThreshold && e.shouldFire(rule) {
-				alert := e.createAlert(rule, event,
-					fmt.Sprintf("Daily spend $%.2f exceeds threshold $%.2f",
-						dailySpend, rule.Condition.DailySpendThreshold))
-				e.fireAlert(ctx, rule, alert)
-			}
-
-		case AlertTypeBudgetDepleted:
-			totalSpend := 0.0
-			if v, ok := event.Metadata["total_spend"]; ok {
-				_, _ = fmt.Sscanf(v, "%f", &totalSpend)
-			}
-			if totalSpend > rule.Condition.BudgetLimit && e.shouldFire(rule) {
-				alert := e.createAlert(rule, event,
-					fmt.Sprintf("Budget limit $%.2f exceeded (current: $%.2f)",
-						rule.Condition.BudgetLimit, totalSpend))
-				e.fireAlert(ctx, rule, alert)
-			}
+	for _, rule := range e.rulesByType[AlertTypeBudgetDepleted] {
+		if !rule.Enabled {
+			continue
+		}
+		totalSpend := 0.0
+		if v, ok := event.Metadata["total_spend"]; ok {
+			_, _ = fmt.Sscanf(v, "%f", &totalSpend)
+		}
+		if totalSpend > rule.Condition.BudgetLimit && e.shouldFire(rule) {
+			alert := e.createAlert(rule, event,
+				fmt.Sprintf("Budget limit $%.2f exceeded (current: $%.2f)",
+					rule.Condition.BudgetLimit, totalSpend))
+			e.fireAlert(ctx, rule, alert)
 		}
 	}
 }
@@ -174,24 +178,25 @@ func (e *Engine) handleBudgetEvent(ctx context.Context, event Event) {
 }
 
 func (e *Engine) handleSecurityEvent(ctx context.Context, event Event) {
-	for _, rule := range e.config.Rules {
+	for _, rule := range e.rulesByType[AlertTypeUnauthorizedAccess] {
 		if !rule.Enabled {
 			continue
 		}
+		if e.shouldFire(rule) {
+			alert := e.createAlert(rule, event, "Unauthorized access attempt detected")
+			e.fireAlert(ctx, rule, alert)
+		}
+	}
 
-		switch rule.Type {
-		case AlertTypeUnauthorizedAccess:
-			if e.shouldFire(rule) {
-				alert := e.createAlert(rule, event, "Unauthorized access attempt detected")
-				e.fireAlert(ctx, rule, alert)
-			}
-		case AlertTypeSensitiveFile:
-			if e.shouldFire(rule) {
-				filePath := event.Metadata["file_path"]
-				alert := e.createAlert(rule, event,
-					fmt.Sprintf("Sensitive file modified: %s", filePath))
-				e.fireAlert(ctx, rule, alert)
-			}
+	for _, rule := range e.rulesByType[AlertTypeSensitiveFile] {
+		if !rule.Enabled {
+			continue
+		}
+		if e.shouldFire(rule) {
+			filePath := event.Metadata["file_path"]
+			alert := e.createAlert(rule, event,
+				fmt.Sprintf("Sensitive file modified: %s", filePath))
+			e.fireAlert(ctx, rule, alert)
 		}
 	}
 }
