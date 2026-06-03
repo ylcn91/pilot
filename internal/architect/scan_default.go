@@ -41,6 +41,19 @@ type ScanOptions struct {
 	// ProjectID tags Signals that originate from memory-backed collectors for
 	// traceability. Empty is acceptable.
 	ProjectID string
+
+	// KnowledgeSource backs the pitfall/decision collectors that feed the
+	// guardrail rule-suggester: a typed lookup over the memory knowledge store.
+	// A nil source (the default) leaves those collectors out of the roster, so
+	// the suggester stays inert when no knowledge store is configured.
+	KnowledgeSource PitfallSource
+
+	// SuggestRules enables the guardrail rule-suggester path: when true (and a
+	// KnowledgeSource is present) the pitfall/decision collectors are wired into
+	// the roster so SuggestRulesFromSignals can mine DRAFT layer rules from their
+	// Signals. It is OFF by default because the suggester's output is advisory,
+	// human-review material — never an enforced rule.
+	SuggestRules bool
 }
 
 // gateRunnerFromQuality adapts a *quality.Runner to the gateRunner slice the
@@ -79,7 +92,27 @@ func coreCollectors(opts ScanOptions) []Collector {
 	if opts.MinCoverage > 0 {
 		candidates = append(candidates, NewCoverageCollector(runner, "coverage", opts.MinCoverage))
 	}
+	// The pitfall/decision collectors only join the roster when the rule
+	// suggester is explicitly enabled AND a real knowledge source is wired:
+	// adding them with a nil source would be dead weight on the default path.
+	if opts.SuggestRules && opts.KnowledgeSource != nil {
+		candidates = append(candidates,
+			NewPitfallCollector(opts.KnowledgeSource, opts.ProjectID),
+			NewDecisionCollector(opts.KnowledgeSource, opts.ProjectID),
+		)
+	}
 	return candidates
+}
+
+// SuggestRulesFromSignals runs the guardrail rule-suggester over a scan's
+// aggregated Signals when opts.SuggestRules is set, returning advisory DRAFT
+// rule_suggestion Signals to append. When the flag is off it returns nil. The
+// suggester is deterministic and LLM-free; its output is never promoted into
+// the live registry — promotion is a human editing defaultLayerRules. Dedup is
+// against defaultLayerRules so edges an existing rule already covers are
+// dropped.
+func SuggestRulesFromSignals(opts ScanOptions, signals []Signal) []Signal {
+	return NewRuleSuggester(opts.SuggestRules, defaultLayerRules).Suggest(signals)
 }
 
 // filterCollectors keeps only collectors whose Name appears in want. An empty

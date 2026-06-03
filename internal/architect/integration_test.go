@@ -53,7 +53,6 @@ func TestScan_EmptyProjectAllCollectors(t *testing.T) {
 		NewLintCollector(nil, "lint"),
 		NewCoverageCollector(nil, "coverage", 80),
 		NewChurnCollector(nil, memoryQueryZero(), 10, "proj"),
-		NewPitfallCollector(nil, "proj"),
 	)
 	signals, err := s.Scan(context.Background(), dir)
 	if err != nil {

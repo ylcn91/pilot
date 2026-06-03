@@ -23,7 +23,7 @@ import (
 // by a Collector. Many Signals aggregate into one or more proposals.
 //
 // Kind names the category of observation (e.g. "loc_over_400", "todo_fixme",
-// "lint", "low_coverage", "churn_hotspot", "known_pitfall"). File and Line
+// "lint", "low_coverage", "churn_hotspot", "duplicate_block"). File and Line
 // locate it when applicable (Line is 0 when not line-specific). Detail is a
 // short human-readable description. Weight is a non-negative relevance score
 // the PROPOSE stage uses to rank/cluster Signals; Risk maps the observation
@@ -58,6 +58,13 @@ type Collector interface {
 type Scanner struct {
 	collectors []Collector
 	log        *slog.Logger
+
+	// postPass, when set, runs once over the aggregated Signals after every
+	// collector has finished and appends whatever Signals it returns. It backs
+	// the guardrail rule-suggester, which must mine over the full scan output
+	// (including the pitfall/decision collectors) rather than per-collector. It
+	// is nil on the default path, so the deterministic core scan is unchanged.
+	postPass func([]Signal) []Signal
 }
 
 // NewScanner builds a Scanner over the given collectors, preserving their
@@ -104,6 +111,13 @@ func (s *Scanner) Scan(ctx context.Context, projectPath string) ([]Signal, error
 			continue
 		}
 		signals = append(signals, found...)
+	}
+
+	// The post-pass mines the full, aggregated signal set (e.g. the guardrail
+	// rule-suggester over the pitfall/decision collectors' output). It runs only
+	// once, after every collector, so it sees the complete scan.
+	if s.postPass != nil {
+		signals = append(signals, s.postPass(signals)...)
 	}
 
 	return signals, nil

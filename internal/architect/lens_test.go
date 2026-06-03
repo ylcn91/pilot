@@ -80,6 +80,47 @@ func TestDepDoctorLens_BundlesDepsCollector(t *testing.T) {
 	}
 }
 
+func TestRadarLens_BundlesChurnCollector(t *testing.T) {
+	l, err := LensByName(RadarLensName)
+	if err != nil {
+		t.Fatalf("radar lens missing: %v", err)
+	}
+	src := &mockFailureSource{}
+	got := l.Collectors("/proj", ScanOptions{FailureSource: src})
+	var churn *ChurnCollector
+	for _, c := range got {
+		if ch, ok := c.(*ChurnCollector); ok {
+			churn = ch
+		}
+	}
+	if churn == nil {
+		t.Fatalf("radar lens must include a ChurnCollector, got %v", names(got))
+	}
+	if churn.Name() != "churn_hotspot" {
+		t.Errorf("collector Name = %q, want churn_hotspot", churn.Name())
+	}
+	if churn.source != src {
+		t.Error("ChurnCollector must receive the opts.FailureSource")
+	}
+}
+
+func TestRadarLens_ChurnInertWithoutSource(t *testing.T) {
+	l, _ := LensByName(RadarLensName)
+	got := l.Collectors("/proj", ScanOptions{})
+	var churn *ChurnCollector
+	for _, c := range got {
+		if ch, ok := c.(*ChurnCollector); ok {
+			churn = ch
+		}
+	}
+	if churn == nil {
+		t.Fatalf("radar lens roster must always include a ChurnCollector, got %v", names(got))
+	}
+	if churn.source != nil {
+		t.Error("nil FailureSource must leave the ChurnCollector inert")
+	}
+}
+
 func TestBuildLensScanner_Core(t *testing.T) {
 	s, err := BuildLensScanner("", "/proj", ScanOptions{})
 	if err != nil {

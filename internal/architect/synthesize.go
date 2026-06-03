@@ -94,6 +94,24 @@ var kindCatalog = map[string]kindMeta{
 		why:         "Areas that keep breaking are where regression tests pay off most; pin the failure modes with -race and table-driven tests before the next change reopens them.",
 		pieceTmpl:   "Add a regression test reproducing the recurring failure at %s",
 	},
+	kindDuplicateBlock: {
+		findingKind: "refactor",
+		titleTmpl:   "Consolidate %d duplicated code block(s)",
+		why:         "Copy-pasted blocks drift apart over time: a fix applied to one copy silently misses the others, so the same bug reappears and behaviour diverges across call sites. Extracting the shared block into one helper makes each future change land in a single place.",
+		pieceTmpl:   "Extract the duplicated block at %s into a shared helper and replace the copies",
+	},
+	KindRuleSuggestion: {
+		findingKind: "hardening",
+		titleTmpl:   "Review %d candidate guardrail rule(s)",
+		why:         "The deterministic scan mined recurring forbidden-import boundaries from recorded pitfalls/decisions and repeated violations. Each is an ADVISORY draft, never an enforced rule: a human reviews the draft and, if sound, promotes it by adding it to defaultLayerRules.",
+		pieceTmpl:   "Review the draft guardrail rule at %s and promote it to defaultLayerRules if the boundary is real",
+	},
+	KnownDecisionKind: {
+		findingKind: "hardening",
+		titleTmpl:   "Reconcile %d recorded architectural decision(s)",
+		why:         "Recorded architectural decisions capture boundaries the codebase committed to; surfacing them keeps current work from silently drifting away from a deliberate choice.",
+		pieceTmpl:   "Confirm the code at %s still honours the recorded architectural decision",
+	},
 }
 
 // metaFor returns the framing for a Signal kind, falling back to a generic but

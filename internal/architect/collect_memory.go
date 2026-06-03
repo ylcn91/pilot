@@ -3,6 +3,7 @@ package architect
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ylcn91/pilot/internal/memory"
 	"github.com/ylcn91/pilot/internal/pilotapi"
@@ -19,12 +20,6 @@ type FailureSource interface {
 
 // failureSource is the internal alias used across the package's collectors.
 type failureSource = FailureSource
-
-// pitfallSource is the small slice of *memory.KnowledgeStore the pitfall
-// collector needs: experiential pitfalls recorded for the project.
-type pitfallSource interface {
-	QueryByType(memType memory.MemoryType, projectID string) ([]*memory.Memory, error)
-}
 
 // churnThreshold is the failure count at or above which a recurring failure
 // reason is treated as a churn hotspot worth surfacing.
@@ -101,9 +96,38 @@ func churnRisk(count int) pilotapi.RiskLevel {
 	return pilotapi.RiskMedium
 }
 
-// PitfallCollector surfaces recorded pitfalls for the project as known_pitfall
-// Signals. It is best-effort: a nil source or a query error yields zero
-// Signals and no error.
+// KnownPitfallKind is the Signal kind the PitfallCollector emits: a recorded
+// pitfall memory replayed as a deterministic Signal so the guardrail
+// rule-suggester can mine recurring "X must not import Y" knowledge.
+const KnownPitfallKind = "known_pitfall"
+
+// KnownDecisionKind is the Signal kind the DecisionCollector emits: a recorded
+// architectural decision replayed as a deterministic Signal, mined alongside
+// pitfalls for guardrail rule suggestions.
+const KnownDecisionKind = "known_decision"
+
+// memoryPitfallSnippet caps how much of a memory's content is carried in a
+// Signal Detail so a verbose memory body does not bloat downstream findings.
+const memoryPitfallSnippet = 200
+
+// pitfallSource is the small slice of *memory.KnowledgeStore the memory-backed
+// collectors need: a typed lookup of recorded memories. Declaring it locally
+// lets tests inject a fake and keeps architect from hard-depending on the full
+// store surface. It is exported so the CLI can name it when wiring a knowledge
+// store into ScanOptions.
+type PitfallSource interface {
+	QueryByType(memType memory.MemoryType, projectID string) ([]*memory.Memory, error)
+}
+
+// pitfallSource is the internal alias used across the package's memory-backed
+// collectors.
+type pitfallSource = PitfallSource
+
+// PitfallCollector replays recorded pitfall memories as known_pitfall Signals.
+// The Signal Detail carries the memory's content so a downstream consumer (the
+// guardrail rule-suggester) can mine recurring architectural pitfalls without
+// re-querying the store. It is best-effort: a nil source or a query error
+// yields zero Signals and no error.
 type PitfallCollector struct {
 	source    pitfallSource
 	projectID string
@@ -116,29 +140,64 @@ func NewPitfallCollector(source pitfallSource, projectID string) *PitfallCollect
 }
 
 // Name implements Collector.
-func (c *PitfallCollector) Name() string { return "known_pitfall" }
+func (c *PitfallCollector) Name() string { return KnownPitfallKind }
 
-// Collect queries pitfall memories for the project and emits one known_pitfall
-// Signal per recorded pitfall. Higher-confidence pitfalls carry more weight. A
-// nil source or a query error yields zero Signals and a nil error.
+// Collect queries recorded pitfall memories and emits one known_pitfall Signal
+// per memory. A nil source or a query error yields zero Signals and a nil
+// error.
 func (c *PitfallCollector) Collect(ctx context.Context, projectPath string) ([]Signal, error) {
-	if c.source == nil {
+	return collectMemorySignals(c.source, memory.MemoryTypePitfall, c.projectID, KnownPitfallKind)
+}
+
+// DecisionCollector replays recorded architectural-decision memories as
+// known_decision Signals, mirroring PitfallCollector. It is best-effort: a nil
+// source or a query error yields zero Signals and no error.
+type DecisionCollector struct {
+	source    pitfallSource
+	projectID string
+}
+
+// NewDecisionCollector builds a DecisionCollector over source, scoped to
+// projectID. If source is nil the collector is inert.
+func NewDecisionCollector(source pitfallSource, projectID string) *DecisionCollector {
+	return &DecisionCollector{source: source, projectID: projectID}
+}
+
+// Name implements Collector.
+func (c *DecisionCollector) Name() string { return KnownDecisionKind }
+
+// Collect queries recorded decision memories and emits one known_decision
+// Signal per memory. A nil source or a query error yields zero Signals and a
+// nil error.
+func (c *DecisionCollector) Collect(ctx context.Context, projectPath string) ([]Signal, error) {
+	return collectMemorySignals(c.source, memory.MemoryTypeDecision, c.projectID, KnownDecisionKind)
+}
+
+// collectMemorySignals is the shared body of the pitfall/decision collectors:
+// it queries the source for memType memories and renders each into a Signal of
+// the given kind. A nil source or query error yields zero Signals and a nil
+// error, keeping the collectors fail-open. Empty-content memories are skipped.
+func collectMemorySignals(source pitfallSource, memType memory.MemoryType, projectID, kind string) ([]Signal, error) {
+	if source == nil {
 		return nil, nil
 	}
-	mems, err := c.source.QueryByType(memory.MemoryTypePitfall, c.projectID)
+	memories, err := source.QueryByType(memType, projectID)
 	if err != nil {
 		return nil, nil
 	}
 	var signals []Signal
-	for _, m := range mems {
+	for _, m := range memories {
 		if m == nil {
 			continue
 		}
+		content := strings.TrimSpace(m.Content)
+		if content == "" {
+			continue
+		}
 		signals = append(signals, Signal{
-			Kind:   c.Name(),
-			File:   m.Context,
-			Line:   0,
-			Detail: truncate(m.Content, 120),
+			Kind:   kind,
+			File:   strings.TrimSpace(m.Context),
+			Detail: truncate(content, memoryPitfallSnippet),
 			Weight: m.Confidence,
 			Risk:   pilotapi.RiskMedium,
 		})
