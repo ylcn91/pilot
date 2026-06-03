@@ -23,11 +23,46 @@ type CommandHandler struct {
 	briefGeneratorFunc func(ctx context.Context, contextID string) error // Platform-specific brief generation
 }
 
+// CommandHandlerConfig groups the platform-specific callbacks a CommandHandler
+// needs. Wiring them at construction makes a missing callback visible at the
+// call site instead of producing a silent nil-func fall-through at runtime.
+// Any field left nil behaves exactly as if its setter was never called.
+type CommandHandlerConfig struct {
+	RunCommandFunc     func(ctx context.Context, contextID, taskID string)
+	StatusQueryFunc    func(contextID string) (pending, running interface{})
+	ActiveProjectFunc  func(contextID string) (name, path string)
+	ProjectListFunc    func() []interface{}
+	SetProjectFunc     func(contextID, projectName string) error
+	CancelTaskFunc     func(ctx context.Context, contextID string) error
+	StopTaskFunc       func(ctx context.Context, contextID string) error
+	ListTasksFunc      func() string
+	BriefGeneratorFunc func(ctx context.Context, contextID string) error
+}
+
 // NewCommandHandler creates a command handler with messenger and optional memory store.
 func NewCommandHandler(messenger Messenger, store *memory.Store) *CommandHandler {
 	return &CommandHandler{
 		messenger: messenger,
 		store:     store,
+	}
+}
+
+// NewCommandHandlerWithConfig creates a command handler with all platform-specific
+// callbacks wired at construction. It is equivalent to NewCommandHandler followed
+// by the matching SetXxxFunc calls for each non-nil field.
+func NewCommandHandlerWithConfig(messenger Messenger, store *memory.Store, cfg CommandHandlerConfig) *CommandHandler {
+	return &CommandHandler{
+		messenger:          messenger,
+		store:              store,
+		runCommandFunc:     cfg.RunCommandFunc,
+		statusQueryFunc:    cfg.StatusQueryFunc,
+		activeProjectFunc:  cfg.ActiveProjectFunc,
+		projectListFunc:    cfg.ProjectListFunc,
+		setProjectFunc:     cfg.SetProjectFunc,
+		cancelTaskFunc:     cfg.CancelTaskFunc,
+		stopTaskFunc:       cfg.StopTaskFunc,
+		listTasksFunc:      cfg.ListTasksFunc,
+		briefGeneratorFunc: cfg.BriefGeneratorFunc,
 	}
 }
 

@@ -59,6 +59,44 @@ func TestCommandHandler_HandleRun(t *testing.T) {
 	}
 }
 
+// TestNewCommandHandlerWithConfig verifies callbacks wired via the config
+// struct behave identically to the same callbacks wired via SetXxxFunc.
+func TestNewCommandHandlerWithConfig(t *testing.T) {
+	messenger := &mockMessenger{}
+	cmd := NewCommandHandlerWithConfig(messenger, nil, CommandHandlerConfig{
+		RunCommandFunc: func(ctx context.Context, contextID, taskID string) {
+			_ = messenger.SendText(ctx, contextID, "Handler called with "+taskID)
+		},
+	})
+
+	ctx := context.Background()
+	cmd.HandleCommand(ctx, "chat1", "/run 42")
+
+	if len(messenger.messages) == 0 {
+		t.Fatal("no messages sent")
+	}
+	if !containsString(messenger.messages[0], "Handler called with 42") {
+		t.Errorf("config-wired run func not invoked: %s", messenger.messages[0])
+	}
+}
+
+// TestNewCommandHandlerWithConfig_NilFallsThrough verifies a nil config field
+// behaves exactly like never calling the corresponding setter.
+func TestNewCommandHandlerWithConfig_NilFallsThrough(t *testing.T) {
+	messenger := &mockMessenger{}
+	cmd := NewCommandHandlerWithConfig(messenger, nil, CommandHandlerConfig{})
+
+	ctx := context.Background()
+	cmd.HandleCommand(ctx, "chat1", "/run 42")
+
+	if len(messenger.messages) == 0 {
+		t.Fatal("no messages sent")
+	}
+	if !containsString(messenger.messages[0], "Usage: /run") {
+		t.Errorf("expected usage fallthrough, got: %s", messenger.messages[0])
+	}
+}
+
 // TestCommandHandler_HandleSwitch tests the /switch command.
 func TestCommandHandler_HandleSwitch(t *testing.T) {
 	tests := []struct {

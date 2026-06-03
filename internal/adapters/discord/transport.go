@@ -23,6 +23,7 @@ type GatewayClient struct {
 	heartbeatTick *time.Ticker
 	stopCh        chan struct{}
 	mu            sync.Mutex
+	hbWG          sync.WaitGroup
 	closeOnce     sync.Once
 	log           *slog.Logger
 }
@@ -117,6 +118,7 @@ func (g *GatewayClient) handleHello(ctx context.Context) error {
 
 	// Start heartbeat loop
 	g.heartbeatTick = time.NewTicker(time.Duration(hello.HeartbeatInterval) * time.Millisecond)
+	g.hbWG.Add(1)
 	go g.heartbeatLoop()
 
 	return nil
@@ -124,6 +126,7 @@ func (g *GatewayClient) handleHello(ctx context.Context) error {
 
 // heartbeatLoop sends periodic heartbeat messages.
 func (g *GatewayClient) heartbeatLoop() {
+	defer g.hbWG.Done()
 	defer g.heartbeatTick.Stop()
 
 	for {
@@ -159,10 +162,16 @@ func (g *GatewayClient) BotUserID() string {
 func (g *GatewayClient) Close() error {
 	var closeErr error
 	g.closeOnce.Do(func() {
+		// Signal the heartbeat goroutine to stop and wait for it to fully
+		// exit before touching the connection. The heartbeat loop acquires
+		// g.mu on each tick, so the wait must happen outside the lock to
+		// avoid deadlock, and it guarantees no WriteJSON races a conn.Close.
+		close(g.stopCh)
+		g.hbWG.Wait()
+
 		g.mu.Lock()
 		defer g.mu.Unlock()
 
-		close(g.stopCh)
 		if g.heartbeatTick != nil {
 			g.heartbeatTick.Stop()
 		}
