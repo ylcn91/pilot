@@ -36,25 +36,30 @@ Conventional Commits, AI footer yok. Biten maddeyi [x] işaretle. Tek bölüm = 
 
 ---
 
-## DURUM (2026-06-03 oturumu · branch `fix/verified-findings`, worktree `.claude/worktrees/worklist`, `dev`'den ayrıldı)
+## DURUM (2026-06-03 · dev'e merge + origin'e push — Go refactor + full frontend redesign)
 
-**50 commit · `go build ./...` + `go test ./... -race` YEŞİL (44 ok, 0 FAIL/panic/race). Dev'e merge'e hazır.** Asıl kayıt: `git log dev..HEAD`.
+**Bu oturum:** kalan worklist üçe ayrıldı — (1) yapılan 2 davranış-koruyan Go refactor, (2) recon+kaynak-doğrulamayla premise'i yanlış çıkan 11 madde (skip), (3) web/desktop full redesign. Hepsi dev'e merge, origin'e push. Tüm build'ler yeşil.
 
-**Yapıldı:** Faz 1 (4/4), Faz 2 (1/1), Faz 3 (~77/100: 62 yeni test + 15 zaten-kapalı), Faz 4a (correctness bug'ları + dead-code), Faz 4b (orta refactor'lar), Faz 4c (mimari: Poller/Server/Model god-struct split, teamAdapter DI, migrate+teams versiyonlama, handleMerging split, Metrics.RestoreFromRow, linear/jira typed parse, plane per-project cache, telegram dead-state).
+**Yapıldı (Go, behavior-preserving):**
+- **C1** — architect `ScanOptions` → core + `MemoryOptions` split (saf field-path rename). `go build`+`go test ./internal/architect/... ./cmd/pilot/...`+vet yeşil.
+- **CX1** — executor `goto retrySucceeded` → flag (`runner.go executeWithOptions`; timeout-fall-through için iki guard). `go test ./internal/executor/` unit + `-tags=integration` -race yeşil.
 
-**KALAN — başka session'a handoff:**
+**Yapıldı (frontend full redesign — 24-madde audit: `.agent/system/frontend-design-audit.md`):**
+- **Desktop** (Wails React): yoğun TUI → modern dark dashboard. AA palet (gray/slate fix, steel tokenize), type scale (12–22px, 10px bitti), `ui/Row`+`Button`+`EmptyState`+`Skeleton`+`status.ts`+`colors.ts` primitive'leri, focus-visible, `main`/`header`/`section`/`h2` landmark, aria-live/role=progressbar, loading skeleton, responsive grid (`main.go` 480→1100/720), text wordmark. `tsc && vite build` yeşil.
+- **Web** (Nextra): Geist font wiring fix (var'lar tanımsızdı), gerçek H1 hero + CTA buton, brand accent, footer, navbar version wiring, favicon/robots/sitemap/opengraph-image + metadataBase + title.template, 53/53 per-page SEO frontmatter, 8 Mermaid diyagram, optimize hero webp (1.2MB png→20KB). `next build` 61/61 yeşil.
 
-- **Mega-refactor (saf yapısal · 0 davranış değişimi · düşük aciliyet · AYRI PR önerilir):**
-  - [ ] Runner god struct split (`runner_construct.go`) — 120 alan, 95 atama, 3 ctor, 174 test dosyası
-  - [ ] executeState carrier split (`runner_execute_state.go`) — 1538 erişim noktası
-  - [ ] BasePoller[T] / 7x ProcessedStore+IssueResult+dispatch dedup (`registry.go` + 7 adapter) — exported API, cross-package
-  - [ ] dual pattern store birleştirme (`extractor_save.go`) — JSON vs SQLite uyumsuz şema
-  - [ ] Prometheus SDK rewrite (`prometheus.go`) — byte-identical scrape çıktısı imkansız
-- **PREMISE YANLIŞ — YAPMA (worklist bulgusu hatalı; bu oturumda doğrulandı):**
-  - QualityOutcome/QualityGateDetail "import cycle" → **cycle YOK** (`internal/quality`, `internal/executor`'ı import etmiyor); mirror'lar redundant ama taşımanın değeri yok.
-  - chat "triplicated" formatter helper'ları → 3 impl **kasıtlı farklı**; comms'a geçmek assert'leri kırıyor + davranış değiştiriyor.
-  - github "duplicated issue-filter loop" (filterCandidates) → **3 gerçek davranış farkı** (recordSkip metrics, markProcessed-on-Done, pendingDeps-in-loop); birleştirmek davranışı değiştirir.
-- **Yapılabilir ama yapılmadı (next session isterse):** architect ScanOptions→core+MemoryOptions split; architect IssueRef return (emit.go github import'unu muhtemelen KALDIRMAZ — önce doğrula); config.go god-dep factory registration; executor `goto` runner.go:262 helper extraction, resolveComplexity double-call, error-classification structured; chat handler_fastpath FS abstraction; shell hook dedup (pilot-stop-gate.sh / pilot-bash-guard.sh).
+**SKIP — premise yanlış / behavior-preserving imkansız (recon + kaynak-doğrulamalı; ZORLAMA = negatif değer):**
+- A1 Runner god struct split → embedding composite-literal'ları kırar (compiler-proven); worklist counts şişik (67≠120 alan, 29≠174 test). Behavior-risk, saf yapısal değil.
+- A2 executeState carrier split → aynı embedding/literal problemi; 93-satır struct, ölçülebilir kazanç yok.
+- A3 BasePoller[T] → dispatch 8 gerçek davranış farkı (ClearProcessed-on-error, ID tipi, status-label, metrics, azuredevops/github merge-wait state machine); generic base ya davranış değiştirir ya no-op.
+- A4 dual pattern store → tek otoritatif SQLite read path zaten var; JSON = write-side dedup index; şema uzlaşmaz → birleştirme data loss/davranış değişimi.
+- A5 Prometheus SDK rewrite → forced-zero label series client_golang'da yapısal olarak üretilemez + per-scrape histogram recompute; byte-identical çıktı imkansız.
+- C2 architect IssueRef → return tipi değişse de github import kalır (struct field+ctor+CreatePilotIssue+linear shim) → sıfır kazanç.
+- C3 config.go god-dep → factory mekanizması yok; "god-dep" 12 import zaten config_orchestrator.go'da → relocate sıfır coupling azaltır.
+- CX2 resolveComplexity double-call → 2 ayrı method (tek method'da çift değil); Classify zaten task.ID-cache'li; router-cache concurrent shared-state riski + empty-ID davranışı bozar.
+- CX3 structured error → zaten structured (`ClaudeCodeError` + 9 typed const); kalan "string" kısmı detection'ın kendisi.
+- CX4 telegram fastpath FS seam → zaten testable (`projectPath`+`t.TempDir()`, ~100% cov); `fs.FS` absolute/`..` path davranışını bozar.
+- CX5 shell-hook dedup → `pilot-stop-gate.sh`'te jq yok (paylaşılan şey yok); güvenlik guard'ını `source`'a bağlamak failure-path davranışını değiştirir.
 
 ---
 
