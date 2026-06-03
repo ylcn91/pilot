@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -142,27 +143,7 @@ func (p *CloudflareProvider) Start(ctx context.Context) (string, error) {
 		}
 	}()
 
-	go func() {
-		scanner := bufio.NewScanner(stderr)
-		for scanner.Scan() {
-			line := scanner.Text()
-			p.logger.Debug("cloudflared stderr", "line", line)
-
-			// Look for connection established
-			if strings.Contains(line, "Connection") && strings.Contains(line, "registered") {
-				// Determine URL
-				url := p.determineURL()
-				urlChan <- url
-				return
-			}
-
-			// Look for errors
-			if strings.Contains(line, "error") || strings.Contains(line, "failed") {
-				errChan <- fmt.Errorf("cloudflared error: %s", line)
-				return
-			}
-		}
-	}()
+	go scanStderrForURL(stderr, p.logger, p.determineURL, urlChan, errChan)
 
 	select {
 	case url := <-urlChan:
@@ -181,6 +162,39 @@ func (p *CloudflareProvider) Start(ctx context.Context) (string, error) {
 	case <-ctx.Done():
 		_ = p.Stop()
 		return "", ctx.Err()
+	}
+}
+
+// scanStderrForURL reads cloudflared stderr line by line, debug-logging each
+// line, and reports the outcome on exactly one of the supplied channels:
+//
+//   - on a "Connection ... registered" line it resolves the public URL via
+//     urlFn and sends it on urlChan, then returns;
+//   - on a line containing "error" or "failed" it sends a wrapped error on
+//     errChan, then returns.
+//
+// If the reader closes before either condition is seen the function returns
+// without sending — matching Start()'s reliance on the connectionTimeout /
+// ctx.Done() select arms. Extracted from Start() so the detection logic is
+// unit-testable against canned stderr without launching cloudflared.
+func scanStderrForURL(r io.Reader, logger *slog.Logger, urlFn func() string, urlChan chan<- string, errChan chan<- error) {
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Text()
+		logger.Debug("cloudflared stderr", "line", line)
+
+		// Look for connection established
+		if strings.Contains(line, "Connection") && strings.Contains(line, "registered") {
+			// Determine URL
+			urlChan <- urlFn()
+			return
+		}
+
+		// Look for errors
+		if strings.Contains(line, "error") || strings.Contains(line, "failed") {
+			errChan <- fmt.Errorf("cloudflared error: %s", line)
+			return
+		}
 	}
 }
 
