@@ -9,6 +9,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "geist": "^1.7.2",
     "next": "^15.0.0",
     "nextra": "^4.0.0",
     "nextra-theme-docs": "^4.0.0",
@@ -17,7 +18,8 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "typescript": "5.9.3",
-    "pagefind": "^1.0.0"
+    "@types/react": "19.2.16",
+    "pagefind": "^1.0.0",
+    "typescript": "5.9.3"
   }
 }

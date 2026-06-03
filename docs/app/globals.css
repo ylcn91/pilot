@@ -1,7 +1,58 @@
+:root {
+  color-scheme: dark;
+}
+
 body {
   font-family: var(--font-geist-sans);
 }
 
 code {
   font-family: var(--font-geist-mono);
+}
+
+.pilot-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.pilot-hero-logo {
+  height: 67px;
+  width: auto;
+}
+
+.pilot-hero-title {
+  margin: 0;
+  font-size: 2.25rem;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.pilot-hero-subtitle {
+  margin: 0;
+  max-width: 42rem;
+  font-size: 1.0625rem;
+  line-height: 1.5;
+  opacity: 0.8;
+}
+
+.pilot-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

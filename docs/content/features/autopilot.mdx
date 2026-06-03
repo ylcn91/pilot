@@ -1,3 +1,8 @@
+---
+title: Autopilot Mode
+description: Fully autonomous operation with automatic PR merging — CI monitoring, conflict resolution, auto-merge, and release after a PR is opened.
+---
+
 import { Callout } from 'nextra/components'
 
 # Autopilot Mode
@@ -52,18 +57,22 @@ pilot start --github --env=prod
 
 Autopilot always waits for CI to pass:
 
-```
-Task → PR → CI Running → CI Passes → Merge
-                      ↘ CI Fails → Notify, No Merge
+```mermaid
+flowchart LR
+    T["Task"] --> P["PR"] --> R["CI Running"]
+    R --> Pass["CI Passes"] --> M["Merge"]
+    R --> Fail["CI Fails"] --> N["Notify, No Merge"]
 ```
 
 ### Merge Delay (Stage)
 
 In `stage` mode, there's a configurable delay:
 
-```
-CI Passes → 5min delay → Check for comments → Merge
-                       ↘ Comments found → Notify, No Merge
+```mermaid
+flowchart LR
+    P["CI Passes"] --> D["5min delay"] --> C["Check for comments"]
+    C --> M["Merge"]
+    C --> F["Comments found"] --> N["Notify, No Merge"]
 ```
 
 ### Protected Branches
@@ -100,32 +109,13 @@ When a Pilot PR has a merge conflict, autopilot automatically attempts to resolv
 
 ### Auto-Rebase Flow
 
-```
-Merge Conflict Detected
-       │
-       ▼
-┌──────────────────────────┐
-│ handleMergeConflict()    │
-│ Detect DIRTY/CONFLICTING │
-└────────┬─────────────────┘
-         │
-         ▼
-┌──────────────────────────┐
-│ UpdatePullRequestBranch  │ ← GitHub API: merge base into head
-│ (auto-rebase)            │
-└────────┬─────────────────┘
-         │
-    ┌────┴────┐
-    │         │
-  Success   Failure
-    │         │
-    ▼         ▼
-WaitingCI   ┌──────────────────────────┐
-(re-run CI) │ Close PR with comment    │
-            │ Re-queue original issue  │
-            │ New branch from latest   │
-            │ main → full re-execution │
-            └──────────────────────────┘
+```mermaid
+flowchart TD
+    D["Merge Conflict Detected"] --> H["handleMergeConflict()<br/>Detect DIRTY/CONFLICTING"]
+    H --> U["UpdatePullRequestBranch (auto-rebase)<br/>GitHub API: merge base into head"]
+    U --> S{rebase result}
+    S -->|Success| W["WaitingCI<br/>(re-run CI)"]
+    S -->|Failure| C["Close PR with comment<br/>Re-queue original issue<br/>New branch from latest main → full re-execution"]
 ```
 
 ### How Conflict Detection Works
