@@ -154,3 +154,11 @@ func (c *Controller) SetOnIssueDone(fn func(issueNumber int)) {
 func (c *Controller) SetGuardrailsGate(g *GuardrailsGate) {
 	c.guardrailsGate = g
 }
+
+// GuardrailsGate returns the wired guardrails gate, or nil when none is
+// attached (the dormant default). It exists so the composition root can verify
+// what it injected without reaching into unexported state; callers MUST treat it
+// as read-only.
+func (c *Controller) GuardrailsGate() *GuardrailsGate {
+	return c.guardrailsGate
+}

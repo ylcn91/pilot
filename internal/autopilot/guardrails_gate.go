@@ -133,6 +133,16 @@ func (g *GuardrailsGate) Enabled() bool {
 	return g != nil && g.cfg.Enabled
 }
 
+// Mode returns the gate's effective mode ("report" or "block"), resolving an
+// empty Mode to the report-only default. A nil gate reports "report". It exists
+// so the composition root can verify the mode it translated from config.
+func (g *GuardrailsGate) Mode() string {
+	if g == nil {
+		return guardrailsModeReport
+	}
+	return g.cfg.EffectiveMode()
+}
+
 // Evaluate runs the guardrail rules over the PR's changed files and posts a
 // commit status (always) and a PR comment (only when there is something to
 // report). It honours pilot-guardrail-allow exception directives (read from the

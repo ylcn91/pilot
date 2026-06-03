@@ -213,6 +213,7 @@ func buildGatewayInfra(cfg *config.Config, cmd *cobra.Command, projectPath strin
 					parts[1],
 					gwBoardOpts...,
 				)
+				maybeAttachGuardrails(gw.AutopilotController, cfg, ghClient, parts[0], parts[1], projectPath)
 				// GH-2685: wire the controller as the approval state writer so
 				// async approval decisions update the in-memory PRState.
 				approvalMgr.WithStateWriter(gw.AutopilotController)

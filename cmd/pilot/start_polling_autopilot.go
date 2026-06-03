@@ -83,6 +83,7 @@ func (p *pollingRuntime) setupAutopilotControllers() {
 						parts[1],
 						ctrlOpts...,
 					)
+					maybeAttachGuardrails(controller, cfg, ghClient, parts[0], parts[1], projectPath)
 					autopilotControllers[cfg.Adapters.GitHub.Repo] = controller
 					autopilotController = controller // Default for backwards compat
 				}
@@ -108,6 +109,7 @@ func (p *pollingRuntime) setupAutopilotControllers() {
 					proj.GitHub.Repo,
 					ctrlOpts...,
 				)
+				maybeAttachGuardrails(controller, cfg, ghClient, proj.GitHub.Owner, proj.GitHub.Repo, proj.Path)
 				autopilotControllers[repoFullName] = controller
 				logging.WithComponent("autopilot").Info("created controller for project",
 					slog.String("project", proj.Name),
