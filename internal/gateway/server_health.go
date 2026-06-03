@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"runtime"
 	"time"
+
+	"github.com/ylcn91/pilot/internal/pilotapi"
 )
 
 // handleHealth returns server health status
@@ -184,6 +186,33 @@ func (s *Server) handleAutopilot(w http.ResponseWriter, r *http.Request) {
 		"autoRelease":  provider.IsAutoReleaseEnabled(),
 		"activePRs":    activePRs,
 		"failureCount": provider.GetFailureCount(),
+	})
+}
+
+// handleArchitectFindings returns the current Architect findings as JSON.
+// Findings are read-only observations/proposals emitted by the Architect
+// family (Radar, Dependency-Doctor, …). When no provider is wired the
+// response is an empty list with count 0, mirroring handleAutopilot's
+// nil-provider behaviour so the dashboard always receives a valid payload.
+func (s *Server) handleArchitectFindings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	s.mu.RLock()
+	provider := s.architectProvider
+	s.mu.RUnlock()
+
+	var findings []pilotapi.Finding
+	if provider != nil {
+		findings = provider.Findings()
+	}
+	// Guarantee a JSON array (never null) for an absent or empty result.
+	if findings == nil {
+		findings = []pilotapi.Finding{}
+	}
+
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"findings": findings,
+		"count":    len(findings),
 	})
 }
 

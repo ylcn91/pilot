@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/ylcn91/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/pilotapi"
 )
 
 // Panel width (all panels same width)
@@ -178,9 +179,12 @@ type Model struct {
 	completedTasks []CompletedTask
 	costPerMToken  float64
 	autopilotPanel *AutopilotPanel
-	version        string
-	store          *memory.Store // SQLite persistence (GH-367)
-	sessionID      string        // Current session ID for persistence
+	// findings holds the latest Architect findings (Radar/Dependency-Doctor
+	// push these via UpdateFindings); rendered by the FINDINGS panel.
+	findings  []pilotapi.Finding
+	version   string
+	store     *memory.Store // SQLite persistence (GH-367)
+	sessionID string        // Current session ID for persistence
 
 	// Metrics cards
 	metricsCard   MetricsCardData
@@ -197,6 +201,10 @@ type Model struct {
 
 	// Banner toggle (GH-1520)
 	showBanner bool
+
+	// Findings panel toggle. When false the FINDINGS panel is hidden even if
+	// findings are present.
+	showFindings bool
 
 	// Banner metadata (GH-2455 / GH-2459 rework): env name, model stack, adapter
 	// status list.

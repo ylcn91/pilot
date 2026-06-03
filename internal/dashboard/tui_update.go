@@ -22,6 +22,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "l":
 			m.showLogs = !m.showLogs
 			return m, tea.ClearScreen // GH-1249: Logs toggle changes height
+		case "f":
+			m.showFindings = !m.showFindings
+			return m, tea.ClearScreen // Findings toggle changes height
 		case "g":
 			// Toggle git graph: Hidden ↔ Visible (auto-sizes)
 			if m.gitGraphMode == GitGraphHidden {
@@ -161,6 +164,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if gitCmd != nil {
 			return m, gitCmd
+		}
+
+	case updateFindingsMsg:
+		prevLen := len(m.findings)
+		m.findings = msg
+		// GH-1249 pattern: a changed finding count alters panel height, so
+		// force a full repaint to avoid ghost lines from the diff renderer.
+		if len(m.findings) != prevLen {
+			return m, tea.ClearScreen
 		}
 
 	case addLogMsg:

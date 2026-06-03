@@ -84,6 +84,18 @@ export interface GitGraphData {
   last_refresh: string
 }
 
+export type RiskLevel = 'low' | 'medium' | 'high' | 'release-blocker'
+
+export interface Finding {
+  title: string
+  kind: string
+  risk: RiskLevel
+  why_it_matters: string
+  suggested_pr_pieces?: string[]
+  test_plan?: string
+  files?: string[]
+}
+
 export type GatewayMessageType = 'task' | 'status' | 'progress' | 'ping' | 'pong'
 
 export interface GatewayMessage<TPayload = unknown> {

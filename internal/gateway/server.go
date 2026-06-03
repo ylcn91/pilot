@@ -14,6 +14,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/ylcn91/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/pilotapi"
 )
 
 // ReadinessChecker is an interface for components that can report their readiness.
@@ -53,6 +54,15 @@ type AutopilotProvider interface {
 	IsAutoReleaseEnabled() bool
 }
 
+// ArchitectProvider exposes Architect findings to the gateway API.
+// Findings originate from the Architect family (e.g. Radar, Dependency-Doctor)
+// and are surfaced read-only via /api/v1/architect. The provider is injected
+// as an interface so the gateway never imports internal/architect; it depends
+// only on the leaf package internal/pilotapi for the Finding shape.
+type ArchitectProvider interface {
+	Findings() []pilotapi.Finding
+}
+
 // Server is the main gateway server handling WebSocket and HTTP connections.
 // It provides a control plane for managing Pilot via WebSocket, receives webhooks
 // from external services (Linear, GitHub, Jira, Asana), and exposes REST APIs for status
@@ -75,6 +85,7 @@ type Server struct {
 	prometheusExporter     *PrometheusExporter
 	alertsSource           AlertMetricsSource
 	autopilotProvider      AutopilotProvider
+	architectProvider      ArchitectProvider
 	dashboardStore         DashboardStore
 	logStreamStore         LogStreamStore
 	runtimeApprovals       *runtimeApprovalRegistry
@@ -193,56 +204,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.running = true
 	s.mu.Unlock()
 
-	mux := http.NewServeMux()
-
-	// WebSocket endpoint for control plane
-	mux.HandleFunc("/ws", s.handleWebSocket)
-
-	// WebSocket endpoint for dashboard log streaming
-	mux.HandleFunc("/ws/dashboard", s.handleDashboardWebSocket)
-
-	// Public endpoints (no auth required)
-	mux.HandleFunc("/health", s.handleHealth)
-	mux.HandleFunc("/ready", s.handleReady)
-	mux.HandleFunc("/live", s.handleLive)
-	mux.HandleFunc("/metrics", s.handleMetrics)
-
-	// Protected API endpoints (auth required when configured)
-	apiMux := http.NewServeMux()
-	apiMux.HandleFunc("/api/v1/status", s.handleStatus)
-	apiMux.HandleFunc("/api/v1/tasks", s.handleTasks)
-	apiMux.HandleFunc("/api/v1/autopilot", s.handleAutopilot)
-	apiMux.HandleFunc("/api/v1/metrics", s.handleDashboardMetrics)
-	apiMux.HandleFunc("/api/v1/queue", s.handleDashboardQueue)
-	apiMux.HandleFunc("/api/v1/history", s.handleDashboardHistory)
-	apiMux.HandleFunc("/api/v1/logs", s.handleDashboardLogs)
-	apiMux.HandleFunc("/api/v1/gitgraph", s.handleGitGraph)
-
-	// Apply auth middleware to API routes
-	if s.auth != nil {
-		mux.Handle("/api/v1/", s.auth.Middleware(apiMux))
-	} else {
-		mux.Handle("/api/v1/", apiMux)
-	}
-
-	// Webhook endpoints for adapters (use signature validation, not bearer tokens)
-	mux.HandleFunc("/webhooks/linear", s.handleLinearWebhook)
-	mux.HandleFunc("/webhooks/github", s.handleGithubWebhook)
-	mux.HandleFunc("/webhooks/gitlab", s.handleGitlabWebhook)
-	mux.HandleFunc("/webhooks/jira", s.handleJiraWebhook)
-	mux.HandleFunc("/webhooks/asana", s.handleAsanaWebhook)
-	mux.HandleFunc("/webhooks/azuredevops", s.handleAzureDevOpsWebhook)
-	mux.HandleFunc("/webhooks/plane", s.handlePlaneWebhook)
-
-	// Register custom handlers
-	s.mu.RLock()
-	for path, handler := range s.customHandlers {
-		mux.Handle(path, handler)
-	}
-	s.mu.RUnlock()
-
-	// Serve embedded React dashboard at /dashboard/ if available
-	s.serveDashboard(mux)
+	mux := s.buildHandler()
 
 	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
 	s.server = &http.Server{
@@ -306,6 +268,14 @@ func (s *Server) SetAutopilotProvider(p AutopilotProvider) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.autopilotProvider = p
+}
+
+// SetArchitectProvider sets the architect provider for the /api/v1/architect endpoint.
+// Must be called before Start().
+func (s *Server) SetArchitectProvider(p ArchitectProvider) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.architectProvider = p
 }
 
 // SetGitGraphPath sets the project path used by the /api/v1/gitgraph endpoint.

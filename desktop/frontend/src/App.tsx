@@ -3,6 +3,7 @@ import { Header } from './components/Header'
 import { MetricsCards } from './components/MetricsCards'
 import { QueuePanel } from './components/QueuePanel'
 import { AutopilotPanel } from './components/AutopilotPanel'
+import { RadarPanel } from './components/RadarPanel'
 import { HistoryPanel } from './components/HistoryPanel'
 import { LogsPanel } from './components/LogsPanel'
 import { GitGraphPanel } from './components/GitGraphPanel'
@@ -11,7 +12,7 @@ import { useDashboard } from './hooks/useDashboard'
 import { useGitGraph } from './hooks/useGitGraph'
 
 function App() {
-  const { metrics, queueTasks, history, autopilot, server, serverStarting, logs, ensureGatewayRunning } = useDashboard()
+  const { metrics, queueTasks, history, autopilot, findings, server, serverStarting, logs, ensureGatewayRunning } = useDashboard()
   const gitGraph = useGitGraph()
   const isWails = !!(window as any).go?.main?.App
 
@@ -32,6 +33,7 @@ function App() {
           <MetricsCards metrics={metrics} />
           <QueuePanel tasks={queueTasks} />
           <AutopilotPanel status={autopilot} />
+          <RadarPanel findings={findings} />
           <HistoryPanel entries={history} />
           <LogsPanel entries={logs} />
         </div>

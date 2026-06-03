@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
-import type { DashboardMetrics, QueueTask, HistoryEntry, AutopilotStatus, ServerStatus, LogEntry } from '../types'
+import type { DashboardMetrics, QueueTask, HistoryEntry, AutopilotStatus, ServerStatus, LogEntry, Finding } from '../types'
 import { api } from '../provider'
 import { useDashboardLogs } from './useWebSocket'
 
-const { GetMetrics, GetQueueTasks, GetHistory, GetAutopilotStatus, GetServerStatus } = api
+const { GetMetrics, GetQueueTasks, GetHistory, GetAutopilotStatus, GetServerStatus, GetArchitectFindings } = api
 
 export interface DashboardState {
   metrics: DashboardMetrics
   queueTasks: QueueTask[]
   history: HistoryEntry[]
   autopilot: AutopilotStatus
+  findings: Finding[]
   server: ServerStatus
   serverStarting: boolean
   logs: LogEntry[]
@@ -47,6 +48,7 @@ export function useDashboard(): DashboardState {
   const [queueTasks, setQueueTasks] = useState<QueueTask[]>([])
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [autopilot, setAutopilot] = useState<AutopilotStatus>(defaultAutopilot)
+  const [findings, setFindings] = useState<Finding[]>([])
   const [server, setServer] = useState<ServerStatus>(defaultServer)
   const [serverStarting, setServerStarting] = useState(false)
 
@@ -62,16 +64,18 @@ export function useDashboard(): DashboardState {
 
       // Data: every 1 second
       try {
-        const [m, q, h, ap] = await Promise.all([
+        const [m, q, h, ap, fnd] = await Promise.all([
           GetMetrics(),
           GetQueueTasks(),
           GetHistory(5),
           GetAutopilotStatus(),
+          GetArchitectFindings(),
         ])
         if (m) setMetrics(m)
         if (q) setQueueTasks(q)
         if (h) setHistory(h)
         if (ap) setAutopilot(ap)
+        if (fnd) setFindings(fnd)
       } catch {
         // Graceful degradation — keep previous values
       }
@@ -106,5 +110,5 @@ export function useDashboard(): DashboardState {
     }
   }
 
-  return { metrics, queueTasks, history, autopilot, server, serverStarting, logs, ensureGatewayRunning }
+  return { metrics, queueTasks, history, autopilot, findings, server, serverStarting, logs, ensureGatewayRunning }
 }
