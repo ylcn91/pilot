@@ -3,7 +3,6 @@ package autopilot
 import (
 	"context"
 
-	"github.com/ylcn91/pilot/internal/adapters/github"
 	"github.com/ylcn91/pilot/internal/memory"
 )
 
@@ -61,7 +60,7 @@ type ControllerOption func(*Controller)
 // WithProjectBoardSync wires a GitHub Projects V2 board sync into the controller.
 // doneStatus: merged PRs; failStatus: CI/exec failures; reviewStatus: PR created (In Progress → Review);
 // inProgressStatus: reserved for future use (wired for symmetry, not yet emitted).
-func WithProjectBoardSync(bs *github.ProjectBoardSync, doneStatus, failStatus, reviewStatus, inProgressStatus string) ControllerOption {
+func WithProjectBoardSync(bs projectBoardSyncer, doneStatus, failStatus, reviewStatus, inProgressStatus string) ControllerOption {
 	return func(c *Controller) {
 		c.boardSync = bs
 		c.doneStatus = doneStatus

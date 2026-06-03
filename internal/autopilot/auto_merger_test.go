@@ -49,7 +49,7 @@ func TestAutoMerger_ShouldWaitForCI(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			merger := NewAutoMerger(ghClient, nil, nil, "owner", "repo", cfg)
-			got := merger.ShouldWaitForCI(tt.env)
+			got := merger.ShouldWaitForCI()
 			if got != tt.wantWait {
 				t.Errorf("ShouldWaitForCI(%s) = %v, want %v", tt.env, got, tt.wantWait)
 			}
@@ -226,7 +226,7 @@ func TestEnvironmentBehaviorMatrix(t *testing.T) {
 		t.Run(string(tt.env), func(t *testing.T) {
 			merger := NewAutoMerger(ghClient, nil, nil, "owner", "repo", cfg)
 
-			shouldWait := merger.ShouldWaitForCI(tt.env)
+			shouldWait := merger.ShouldWaitForCI()
 			if shouldWait != tt.waitForCI {
 				t.Errorf("ShouldWaitForCI(%s) = %v, want %v", tt.env, shouldWait, tt.waitForCI)
 			}

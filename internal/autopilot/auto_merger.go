@@ -68,7 +68,7 @@ func (m *AutoMerger) MergePR(ctx context.Context, prState *PRState) error {
 
 	// Final CI verification immediately before merge to prevent race conditions.
 	// CI status can change between initial check and merge, so we verify again.
-	if m.ShouldWaitForCI(m.config.Environment) {
+	if m.ShouldWaitForCI() {
 		if err := m.verifyCIBeforeMerge(ctx, prState); err != nil {
 			return fmt.Errorf("pre-merge CI verification failed: %w", err)
 		}
@@ -176,7 +176,7 @@ func (m *AutoMerger) CanMerge(ctx context.Context, prNumber int) (bool, string, 
 
 // ShouldWaitForCI returns true if the environment requires CI to pass before merge.
 // All environments now wait for CI to prevent broken code from merging.
-func (m *AutoMerger) ShouldWaitForCI(env Environment) bool {
+func (m *AutoMerger) ShouldWaitForCI() bool {
 	return true
 }
 

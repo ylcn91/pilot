@@ -163,46 +163,7 @@ func bumpPriority(b BumpType) int {
 
 // GetCurrentVersion returns the current version from latest release or tags.
 func (r *Releaser) GetCurrentVersion(ctx context.Context) (SemVer, error) {
-	// Try latest release first
-	release, err := r.ghClient.GetLatestRelease(ctx, r.owner, r.repo)
-	if err != nil {
-		return SemVer{}, fmt.Errorf("failed to get latest release: %w", err)
-	}
-	if release != nil {
-		return ParseSemVer(release.TagName)
-	}
-
-	// Fall back to tags
-	tags, err := r.ghClient.ListTags(ctx, r.owner, r.repo, 10)
-	if err != nil {
-		return SemVer{}, fmt.Errorf("failed to list tags: %w", err)
-	}
-
-	// Find highest semver tag
-	var versions []SemVer
-	for _, tag := range tags {
-		if v, err := ParseSemVer(tag.Name); err == nil {
-			versions = append(versions, v)
-		}
-	}
-
-	if len(versions) == 0 {
-		// No versions found, start at 0.0.0
-		return SemVer{}, nil
-	}
-
-	// Sort descending
-	sort.Slice(versions, func(i, j int) bool {
-		if versions[i].Major != versions[j].Major {
-			return versions[i].Major > versions[j].Major
-		}
-		if versions[i].Minor != versions[j].Minor {
-			return versions[i].Minor > versions[j].Minor
-		}
-		return versions[i].Patch > versions[j].Patch
-	})
-
-	return versions[0], nil
+	return r.GetCurrentVersionForRepo(ctx, r.owner, r.repo)
 }
 
 // GenerateChangelog generates a changelog from commits.
