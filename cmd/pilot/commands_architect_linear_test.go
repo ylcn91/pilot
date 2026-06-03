@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ylcn91/pilot/internal/adapters/github"
 	"github.com/ylcn91/pilot/internal/architect"
 	"github.com/ylcn91/pilot/internal/config"
 	"github.com/ylcn91/pilot/internal/pilotapi"
@@ -20,10 +19,10 @@ type recordingArchitectCreator struct {
 	bodies []string
 }
 
-func (r *recordingArchitectCreator) CreatePilotIssue(_ context.Context, _, _, title, body string, _ []string) (*github.Issue, error) {
+func (r *recordingArchitectCreator) CreatePilotIssue(_ context.Context, _, _, title, body string, _ []string) (*architect.IssueRef, error) {
 	r.titles = append(r.titles, title)
 	r.bodies = append(r.bodies, body)
-	return &github.Issue{Number: len(r.titles), Title: title}, nil
+	return &architect.IssueRef{Number: len(r.titles)}, nil
 }
 
 // failingArchitectCreator records every create attempt but returns failAt's error
@@ -35,12 +34,12 @@ type failingArchitectCreator struct {
 	failErr error
 }
 
-func (c *failingArchitectCreator) CreatePilotIssue(_ context.Context, _, _, title string, _ string, _ []string) (*github.Issue, error) {
+func (c *failingArchitectCreator) CreatePilotIssue(_ context.Context, _, _, _ string, _ string, _ []string) (*architect.IssueRef, error) {
 	c.calls++
 	if c.calls == c.failOn {
 		return nil, c.failErr
 	}
-	return &github.Issue{Number: c.calls, Title: title}, nil
+	return &architect.IssueRef{Number: c.calls}, nil
 }
 
 func TestEmitRefactorPlanToLinearSurface_PreservesPlanOrder(t *testing.T) {

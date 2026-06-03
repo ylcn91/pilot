@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 
-	"github.com/ylcn91/pilot/internal/adapters/github"
 	"github.com/ylcn91/pilot/internal/pilotapi"
 )
 
@@ -48,7 +47,7 @@ type createCall struct {
 
 func newMockCreator() *mockCreator { return &mockCreator{} }
 
-func (m *mockCreator) CreatePilotIssue(_ context.Context, owner, repo, title, body string, labels []string) (*github.Issue, error) {
+func (m *mockCreator) CreatePilotIssue(_ context.Context, owner, repo, title, body string, labels []string) (*IssueRef, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.err != nil {
@@ -56,7 +55,7 @@ func (m *mockCreator) CreatePilotIssue(_ context.Context, owner, repo, title, bo
 	}
 	m.calls = append(m.calls, createCall{owner: owner, repo: repo, title: title, body: body, labels: labels})
 	m.nextID++
-	return &github.Issue{Number: m.nextID, Title: title}, nil
+	return &IssueRef{Number: m.nextID}, nil
 }
 
 func (m *mockCreator) count() int {

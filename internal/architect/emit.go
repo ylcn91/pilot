@@ -16,6 +16,15 @@ import (
 // proactive analysis path (the "architect" label).
 var defaultEmitLabels = []string{"pilot", "architect"}
 
+// IssueRef is the architect-local result of a successful issue creation. It
+// carries only the field the EMIT stage actually consumes (the issue number,
+// for logging), so the github.Issue type does not leak across the IssueCreator
+// boundary. Backends that have no numeric identifier (e.g. Linear) leave Number
+// zero.
+type IssueRef struct {
+	Number int
+}
+
 // IssueCreator is the minimal creation surface the Emitter needs. Defining it
 // here (rather than calling github.CreatePilotIssue directly) lets the EMIT
 // stage be unit-tested with a stub that records calls and makes no network
@@ -23,10 +32,10 @@ var defaultEmitLabels = []string{"pilot", "architect"}
 // *github.Client and the package-level github.CreatePilotIssue chokepoint.
 type IssueCreator interface {
 	// CreatePilotIssue files an issue with the given conventional-commit title,
-	// markdown body, and labels, returning the created issue. It must enforce
-	// the same guardrails as github.CreatePilotIssue (issue-creation enabled,
-	// repo allowlist, conventional-commit title).
-	CreatePilotIssue(ctx context.Context, owner, repo, title, body string, labels []string) (*github.Issue, error)
+	// markdown body, and labels, returning a reference to the created issue. It
+	// must enforce the same guardrails as github.CreatePilotIssue (issue-creation
+	// enabled, repo allowlist, conventional-commit title).
+	CreatePilotIssue(ctx context.Context, owner, repo, title, body string, labels []string) (*IssueRef, error)
 }
 
 // clientIssueCreator adapts a *github.Client to IssueCreator. It enables issue
@@ -48,8 +57,15 @@ func NewClientIssueCreator(client *github.Client) IssueCreator {
 	return &clientIssueCreator{client: client}
 }
 
-func (c *clientIssueCreator) CreatePilotIssue(ctx context.Context, owner, repo, title, body string, labels []string) (*github.Issue, error) {
-	return github.CreatePilotIssue(ctx, c.client, github.AllowAllIssueRepos(), owner, repo, title, body, labels)
+func (c *clientIssueCreator) CreatePilotIssue(ctx context.Context, owner, repo, title, body string, labels []string) (*IssueRef, error) {
+	issue, err := github.CreatePilotIssue(ctx, c.client, github.AllowAllIssueRepos(), owner, repo, title, body, labels)
+	if err != nil {
+		return nil, err
+	}
+	if issue == nil {
+		return nil, nil
+	}
+	return &IssueRef{Number: issue.Number}, nil
 }
 
 // SubIssueCreator is the minimal sub-issue creation surface the Linear EMIT
@@ -67,8 +83,8 @@ type SubIssueCreator interface {
 // sub-issue hung off parentID; the dedup marker travels inside body exactly as
 // it does for GitHub, so MarkerFor still embeds and cross-run dedup still works.
 // owner/repo from the Emitter are ignored — Linear derives team/project from the
-// parent. The returned *github.Issue is a thin shim (number is unavailable from
-// Linear's string identifier) so the Emitter's logging path stays uniform.
+// parent. The returned *IssueRef carries no number (unavailable from Linear's
+// string identifier) so the Emitter's logging path stays uniform.
 type linearIssueCreator struct {
 	client   SubIssueCreator
 	parentID string
@@ -86,12 +102,11 @@ func NewLinearIssueCreator(client SubIssueCreator, parentID string) IssueCreator
 	return &linearIssueCreator{client: client, parentID: parentID}
 }
 
-func (c *linearIssueCreator) CreatePilotIssue(ctx context.Context, _, _, title, body string, labels []string) (*github.Issue, error) {
-	identifier, _, err := c.client.CreateIssue(ctx, c.parentID, title, body, labels)
-	if err != nil {
+func (c *linearIssueCreator) CreatePilotIssue(ctx context.Context, _, _, title, body string, labels []string) (*IssueRef, error) {
+	if _, _, err := c.client.CreateIssue(ctx, c.parentID, title, body, labels); err != nil {
 		return nil, err
 	}
-	return &github.Issue{Title: identifier}, nil
+	return &IssueRef{}, nil
 }
 
 // Emitter is the EMIT stage: it turns ranked proposals into idempotent GitHub
@@ -218,9 +233,9 @@ func (e *Emitter) emit(ctx context.Context, ranked []pilotapi.Finding, dryRun bo
 	return created, skipped, nil
 }
 
-// issueNumber safely extracts the issue number from a possibly-nil issue (a stub
+// issueNumber safely extracts the issue number from a possibly-nil ref (a stub
 // creator may return nil on success).
-func issueNumber(i *github.Issue) int {
+func issueNumber(i *IssueRef) int {
 	if i == nil {
 		return 0
 	}
