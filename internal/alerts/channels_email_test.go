@@ -2,6 +2,7 @@ package alerts
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -168,5 +169,38 @@ func TestEmailChannel_FormatBody(t *testing.T) {
 				t.Error("expected substantial HTML body")
 			}
 		})
+	}
+}
+
+// TestEmailChannel_FormatBody_EscapesHTML verifies that attacker-controlled
+// alert Title/Message (e.g. a ticket title from GitHub/Linear/Jira) are
+// HTML-escaped instead of rendered as live markup in the recipient's inbox.
+func TestEmailChannel_FormatBody_EscapesHTML(t *testing.T) {
+	ch := NewEmailChannel("test", &mockEmailSender{}, &EmailChannelConfig{
+		To: []string{"test@example.com"},
+	})
+
+	alert := &Alert{
+		ID:        "alert-xss",
+		Type:      AlertTypeTaskFailed,
+		Severity:  SeverityCritical,
+		Title:     `<script>alert('xss')</script>`,
+		Message:   `<img src=x onerror="alert(1)">`,
+		CreatedAt: time.Now(),
+	}
+
+	body := ch.formatBody(alert)
+
+	if strings.Contains(body, "<script>") {
+		t.Error("raw <script> tag from alert.Title leaked into HTML body")
+	}
+	if strings.Contains(body, `<img src=x`) {
+		t.Error("raw <img> tag from alert.Message leaked into HTML body")
+	}
+	if !strings.Contains(body, "&lt;script&gt;") {
+		t.Errorf("expected escaped title in body, got:\n%s", body)
+	}
+	if !strings.Contains(body, "&lt;img src=x") {
+		t.Errorf("expected escaped message in body, got:\n%s", body)
 	}
 }

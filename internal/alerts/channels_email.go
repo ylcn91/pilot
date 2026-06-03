@@ -3,6 +3,7 @@ package alerts
 import (
 	"context"
 	"fmt"
+	"html"
 	"strings"
 	"time"
 )
@@ -96,8 +97,8 @@ code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: m
 	}
 
 	sb.WriteString(fmt.Sprintf(`<div class="alert-box %s">`, cssClass))
-	sb.WriteString(fmt.Sprintf(`<h2 class="title">%s</h2>`, alert.Title))
-	sb.WriteString(fmt.Sprintf(`<p class="message">%s</p>`, alert.Message))
+	sb.WriteString(fmt.Sprintf(`<h2 class="title">%s</h2>`, html.EscapeString(alert.Title)))
+	sb.WriteString(fmt.Sprintf(`<p class="message">%s</p>`, html.EscapeString(alert.Message)))
 
 	sb.WriteString(`<dl class="metadata">`)
 	sb.WriteString(fmt.Sprintf(`<dt>Type:</dt><dd><code>%s</code></dd>`, alert.Type))
