@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/ylcn91/pilot/internal/adapters/github"
 	"github.com/ylcn91/pilot/internal/architect"
@@ -64,10 +65,19 @@ func (c GuardrailsGateConfig) blockingMode() bool {
 // *github.Client satisfies it; tests substitute a mock to assert exactly what
 // the gate posts. Keeping the surface this small means the gate cannot reach
 // for any mutating call (merge, label, close) beyond status + comment.
+//
+// GetPullRequest + ListIssueComments are read-only and serve two purposes:
+// harvesting pilot-guardrail-allow exception directives (from the PR body and
+// any comment) and locating a prior guardrails comment to update in place.
+// UpdateIssueComment edits that prior comment so repeat runs never stack
+// duplicates; AddPRComment creates the first one.
 type guardrailsGitHub interface {
 	ListPullRequestFiles(ctx context.Context, owner, repo string, number int) ([]*github.PRFile, error)
 	CreateCommitStatus(ctx context.Context, owner, repo, sha string, status *github.CommitStatus) (*github.CommitStatus, error)
+	GetPullRequest(ctx context.Context, owner, repo string, number int) (*github.PullRequest, error)
+	ListIssueComments(ctx context.Context, owner, repo string, number int) ([]*github.Comment, error)
 	AddPRComment(ctx context.Context, owner, repo string, number int, body string) (*github.PRComment, error)
+	UpdateIssueComment(ctx context.Context, owner, repo string, commentID int64, body string) (*github.Comment, error)
 }
 
 // ruleEvaluator is the architect rule registry surface the gate depends on,
@@ -124,19 +134,32 @@ func (g *GuardrailsGate) Enabled() bool {
 }
 
 // Evaluate runs the guardrail rules over the PR's changed files and posts a
-// commit status (always) and a PR comment (only when there are violations).
+// commit status (always) and a PR comment (only when there is something to
+// report). It honours pilot-guardrail-allow exception directives (read from the
+// PR body and comments) and updates a prior guardrails comment in place rather
+// than stacking duplicates.
 //
-// It returns the violations it found purely for caller observability/tests; the
-// return value carries no control signal — callers MUST NOT block a PR on a
-// non-empty result. Blocking, when configured, is expressed solely through the
-// "failure" commit status the gate posts, so branch protection (not autopilot's
-// merge path) is what holds the PR. This keeps the merge flow oblivious to
-// guardrails and guarantees fail-open behaviour.
+// It returns the ENFORCED violations (those not waived by an exception) purely
+// for caller observability/tests; the return value carries no control signal —
+// callers MUST NOT block a PR on a non-empty result. Blocking, when configured,
+// is expressed solely through the "failure" commit status the gate posts, so
+// branch protection (not autopilot's merge path) is what holds the PR. This
+// keeps the merge flow oblivious to guardrails and guarantees fail-open
+// behaviour.
 //
 // Every failure path returns (nil, nil): a disabled gate, an unreadable PR file
 // list, or a GitHub posting error must never surface as an error that could
 // abort or fail the surrounding autopilot tick.
 func (g *GuardrailsGate) Evaluate(ctx context.Context, prNumber int, headSHA string) ([]architect.Violation, error) {
+	return g.EvaluateWithFiles(ctx, prNumber, headSHA, nil)
+}
+
+// EvaluateWithFiles is Evaluate with the PR's changed files supplied by the
+// caller, so a caller that already fetched them (e.g. handleCIPassed's size
+// gate) does not pay for a second ListPullRequestFiles round-trip. Pass nil to
+// have the gate fetch them itself. All the fail-open guarantees of Evaluate
+// hold.
+func (g *GuardrailsGate) EvaluateWithFiles(ctx context.Context, prNumber int, headSHA string, files []*github.PRFile) ([]architect.Violation, error) {
 	if !g.Enabled() {
 		return nil, nil
 	}
@@ -145,20 +168,70 @@ func (g *GuardrailsGate) Evaluate(ctx context.Context, prNumber int, headSHA str
 		return nil, nil
 	}
 
-	changed, err := g.changedFiles(ctx, prNumber)
-	if err != nil {
-		// Fail-open: cannot read the PR's files, so we cannot judge it. Do not
-		// post anything (a green status we didn't earn would be misleading; a red
-		// one would block on our own outage).
-		g.log.Warn("guardrails: cannot list PR files, skipping", "pr", prNumber, "error", err)
-		return nil, nil
+	var changed []string
+	if files != nil {
+		changed = filterChangedFiles(files)
+	} else {
+		var err error
+		changed, err = g.changedFiles(ctx, prNumber)
+		if err != nil {
+			// Fail-open: cannot read the PR's files, so we cannot judge it. Do not
+			// post anything (a green status we didn't earn would be misleading; a
+			// red one would block on our own outage).
+			g.log.Warn("guardrails: cannot list PR files, skipping", "pr", prNumber, "error", err)
+			return nil, nil
+		}
 	}
 
-	violations := g.registry.Evaluate(ctx, changed, g.worktreePath, g.cfg.DisabledRules)
+	all := g.registry.Evaluate(ctx, changed, g.worktreePath, g.cfg.DisabledRules)
 
-	g.postStatus(ctx, headSHA, violations)
-	g.postComment(ctx, prNumber, violations)
-	return violations, nil
+	// Harvest exception directives from the PR body + comments, then split the
+	// findings. Reading exceptions is best-effort: a fetch error simply means no
+	// exceptions are honoured (fail-closed for exceptions, fail-open for the
+	// gate), never an abort.
+	allowed, priorComment := g.scanPR(ctx, prNumber)
+	enforced, excepted, usedExceptions := partitionViolations(all, allowed)
+
+	g.postStatus(ctx, headSHA, enforced)
+	g.postComment(ctx, prNumber, enforced, excepted, usedExceptions, priorComment)
+	return enforced, nil
+}
+
+// scanPR fetches the PR body and every comment, returning the union of allowed
+// rule names (from pilot-guardrail-allow directives) and the prior guardrails
+// comment, if any, so it can be updated in place. Each fetch is independent and
+// best-effort: a failure on one does not abort the other or the gate.
+func (g *GuardrailsGate) scanPR(ctx context.Context, prNumber int) (allowed map[string]bool, prior *github.Comment) {
+	allowed = make(map[string]bool)
+
+	if pr, err := g.gh.GetPullRequest(ctx, g.owner, g.repo, prNumber); err != nil {
+		g.log.Warn("guardrails: cannot fetch PR body for exceptions", "pr", prNumber, "error", err)
+	} else if pr != nil {
+		mergeAllowed(allowed, parseAllowedRules(pr.Body))
+	}
+
+	comments, err := g.gh.ListIssueComments(ctx, g.owner, g.repo, prNumber)
+	if err != nil {
+		g.log.Warn("guardrails: cannot list PR comments (exceptions + dedup)", "pr", prNumber, "error", err)
+		return allowed, nil
+	}
+	for _, cm := range comments {
+		if cm == nil {
+			continue
+		}
+		mergeAllowed(allowed, parseAllowedRules(cm.Body))
+		if prior == nil && strings.Contains(cm.Body, guardrailsCommentMarker) {
+			prior = cm
+		}
+	}
+	return allowed, prior
+}
+
+// mergeAllowed folds src into dst.
+func mergeAllowed(dst, src map[string]bool) {
+	for k := range src {
+		dst[k] = true
+	}
 }
 
 // changedFiles fetches the PR's changed files and reduces them to the
@@ -168,6 +241,12 @@ func (g *GuardrailsGate) changedFiles(ctx context.Context, prNumber int) ([]stri
 	if err != nil {
 		return nil, err
 	}
+	return filterChangedFiles(files), nil
+}
+
+// filterChangedFiles reduces a PR file list to the non-empty, project-relative
+// filename slice the rules consume, dropping nil entries and empty names.
+func filterChangedFiles(files []*github.PRFile) []string {
 	out := make([]string, 0, len(files))
 	for _, f := range files {
 		if f == nil || f.Filename == "" {
@@ -175,7 +254,7 @@ func (g *GuardrailsGate) changedFiles(ctx context.Context, prNumber int) ([]stri
 		}
 		out = append(out, f.Filename)
 	}
-	return out, nil
+	return out
 }
 
 // blocking reports whether THIS run should post a failure status. Only an
@@ -203,14 +282,30 @@ func (g *GuardrailsGate) postStatus(ctx context.Context, headSHA string, violati
 	}
 }
 
-// postComment posts the findings comment, but only when there is something to
-// report. A clean PR gets no comment (just the green status), so guardrails stay
-// quiet on the common case.
-func (g *GuardrailsGate) postComment(ctx context.Context, prNumber int, violations []architect.Violation) {
-	if len(violations) == 0 {
+// postComment posts (or updates) the findings comment. A comment is warranted
+// when there is anything to surface: an enforced violation, or an acknowledged
+// exception worth recording. A fully clean PR gets no comment (just the green
+// status), so guardrails stay quiet on the common case.
+//
+// Dedup: if a prior guardrails comment exists (located by marker during
+// scanPR), its body is edited in place via UpdateIssueComment; otherwise a new
+// comment is created. This keeps exactly one guardrails comment per PR across
+// repeated runs.
+func (g *GuardrailsGate) postComment(ctx context.Context, prNumber int, enforced, excepted []architect.Violation, usedExceptions []string, prior *github.Comment) {
+	if len(enforced) == 0 && len(excepted) == 0 {
+		// Nothing to report. If a prior comment from an earlier (dirty) run is
+		// lingering, leave it untouched: editing it to "all clear" is out of
+		// scope, and removing it risks deleting a human's reply thread anchor.
 		return
 	}
-	body := renderGuardrailsComment(violations, g.cfg.EffectiveMode())
+	body := renderGuardrailsComment(enforced, excepted, usedExceptions, g.cfg.EffectiveMode())
+
+	if prior != nil {
+		if _, err := g.gh.UpdateIssueComment(ctx, g.owner, g.repo, prior.ID, body); err != nil {
+			g.log.Warn("guardrails: failed to update prior PR comment", "pr", prNumber, "comment", prior.ID, "error", err)
+		}
+		return
+	}
 	if _, err := g.gh.AddPRComment(ctx, g.owner, g.repo, prNumber, body); err != nil {
 		g.log.Warn("guardrails: failed to post PR comment", "pr", prNumber, "error", err)
 	}
@@ -229,4 +324,39 @@ func statusDescription(n int, mode string) string {
 		return fmt.Sprintf("%d guardrail %s (blocking)", n, noun)
 	}
 	return fmt.Sprintf("%d guardrail %s (report-only)", n, noun)
+}
+
+// runGuardrailsGate runs the optional per-PR architectural guardrails gate as a
+// FAIL-OPEN side-effect of handleCIPassed. It NEVER changes prState.Stage or
+// otherwise influences the merge decision: blocking, when configured, is
+// surfaced purely through the gate's pilot/guardrails commit status, leaving the
+// autopilot merge path oblivious to guardrails. A nil/disabled gate is a no-op.
+//
+// files are the PR's changed files already fetched by handleCIPassed; pass nil
+// to let the gate fetch them itself. Any error — or even a panic inside a buggy
+// rule — is contained here so guardrails can never break an existing autopilot
+// flow.
+func (c *Controller) runGuardrailsGate(ctx context.Context, prState *PRState, files []*github.PRFile) {
+	if c.guardrailsGate == nil || !c.guardrailsGate.Enabled() {
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			c.log.Warn("guardrails gate panicked, ignoring (fail-open)",
+				"pr", prState.PRNumber, "panic", r)
+		}
+	}()
+
+	violations, err := c.guardrailsGate.EvaluateWithFiles(ctx, prState.PRNumber, prState.HeadSHA, files)
+	if err != nil {
+		// EvaluateWithFiles is already fail-open and returns nil error, but guard
+		// anyway so a future change cannot leak an error into the merge path.
+		c.log.Warn("guardrails gate errored, continuing (fail-open)",
+			"pr", prState.PRNumber, "error", err)
+		return
+	}
+	if len(violations) > 0 {
+		c.log.Info("guardrails gate found violations (report-only unless block mode)",
+			"pr", prState.PRNumber, "count", len(violations))
+	}
 }

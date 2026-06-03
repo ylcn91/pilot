@@ -145,3 +145,12 @@ func (c *Controller) SetReleaseSummaryGenerator(gen *ReleaseSummaryGenerator) {
 func (c *Controller) SetOnIssueDone(fn func(issueNumber int)) {
 	c.onIssueDone = fn
 }
+
+// SetGuardrailsGate wires the per-PR architectural guardrails gate. When set and
+// enabled, handleCIPassed runs it as a fail-open, report-only-by-default check
+// that posts a pilot/guardrails commit status + PR comment. It never blocks the
+// merge path: a nil or disabled gate is a no-op, and any error inside the gate
+// is swallowed so guardrails can only add information, never break autopilot.
+func (c *Controller) SetGuardrailsGate(g *GuardrailsGate) {
+	c.guardrailsGate = g
+}

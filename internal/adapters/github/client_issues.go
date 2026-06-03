@@ -92,6 +92,19 @@ func (c *Client) AddComment(ctx context.Context, owner, repo string, number int,
 	return &comment, nil
 }
 
+// UpdateIssueComment edits the body of an existing issue/PR comment by its
+// comment ID. Used to update-or-create idempotent bot comments (e.g. the
+// guardrails summary) instead of stacking a fresh comment on every run.
+func (c *Client) UpdateIssueComment(ctx context.Context, owner, repo string, commentID int64, body string) (*Comment, error) {
+	path := fmt.Sprintf("/repos/%s/%s/issues/comments/%d", owner, repo, commentID)
+	reqBody := map[string]string{"body": body}
+	var comment Comment
+	if err := c.doRequest(ctx, http.MethodPatch, path, reqBody, &comment); err != nil {
+		return nil, err
+	}
+	return &comment, nil
+}
+
 // AddLabels adds labels to an issue
 func (c *Client) AddLabels(ctx context.Context, owner, repo string, number int, labels []string) error {
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d/labels", owner, repo, number)

@@ -9,29 +9,53 @@ import (
 	"github.com/ylcn91/pilot/internal/pilotapi"
 )
 
-// renderGuardrailsComment formats the violations into a Markdown PR comment.
+// renderGuardrailsComment formats the findings into a Markdown PR comment.
 // The comment leads with the invisible guardrailsCommentMarker so a repeat run
-// can recognise it, states up front whether the run is report-only or blocking,
-// then lists each finding grouped by rule for readability.
+// can recognise (and update) it, states up front whether the run is report-only
+// or blocking, lists each enforced finding grouped by rule, and finally records
+// any rules that were waived via pilot-guardrail-allow exception directives so
+// the suppression stays visible rather than silent.
 //
-// Violations are assumed pre-sorted by (Rule, File) (the registry sorts them);
-// the renderer sorts defensively anyway so output is deterministic regardless of
-// input order.
-func renderGuardrailsComment(violations []architect.Violation, mode string) string {
+// enforced are the violations that count toward the status; excepted are the
+// violations a directive waived. Both are assumed pre-sorted by (Rule, File)
+// (the registry sorts them); the renderer sorts defensively anyway so output is
+// deterministic regardless of input order.
+func renderGuardrailsComment(enforced, excepted []architect.Violation, usedExceptions []string, mode string) string {
 	var b strings.Builder
 	b.WriteString(guardrailsCommentMarker)
 	b.WriteString("\n## Architectural guardrails\n\n")
-	b.WriteString(guardrailsHeadline(len(violations), mode))
+	b.WriteString(guardrailsHeadline(len(enforced), mode))
 	b.WriteString("\n\n")
 
-	for _, group := range groupByRule(violations) {
+	for _, group := range groupByRule(enforced) {
 		fmt.Fprintf(&b, "### `%s`\n\n", group.rule)
 		for _, v := range group.items {
 			fmt.Fprintf(&b, "- %s **`%s`** — %s\n", riskBadge(v.Risk), v.File, v.Detail)
 		}
 		b.WriteString("\n")
 	}
+
+	writeExceptionsSection(&b, excepted, usedExceptions)
 	return strings.TrimRight(b.String(), "\n") + "\n"
+}
+
+// writeExceptionsSection appends the "Waived" section when at least one rule was
+// suppressed by a pilot-guardrail-allow directive. It names the waived rules and
+// lists the findings each one suppressed, so an exception is documented in the
+// PR rather than vanishing silently.
+func writeExceptionsSection(b *strings.Builder, excepted []architect.Violation, usedExceptions []string) {
+	if len(excepted) == 0 || len(usedExceptions) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "### Waived via `%s` (%s)\n\n",
+		guardrailsAllowDirective, strings.Join(usedExceptions, ", "))
+	for _, group := range groupByRule(excepted) {
+		fmt.Fprintf(b, "- `%s`:\n", group.rule)
+		for _, v := range group.items {
+			fmt.Fprintf(b, "  - ~~`%s`~~ — %s\n", v.File, v.Detail)
+		}
+	}
+	b.WriteString("\n")
 }
 
 // guardrailsHeadline is the one-line summary under the heading.

@@ -8,86 +8,10 @@ import (
 
 	"github.com/ylcn91/pilot/internal/adapters/github"
 	"github.com/ylcn91/pilot/internal/architect"
-	"github.com/ylcn91/pilot/internal/pilotapi"
 )
 
-// --- test doubles -----------------------------------------------------------
-
-// mockGuardrailsGH records every call the gate makes so tests can assert that
-// the gate posts exactly the status/comment it should — and nothing more.
-type mockGuardrailsGH struct {
-	files    []*github.PRFile
-	filesErr error
-
-	statusErr  error
-	commentErr error
-
-	statusCalls  []*github.CommitStatus
-	statusSHAs   []string
-	commentBody  []string
-	commentPRs   []int
-	listPRNumber int
-	listCalls    int
-}
-
-func (m *mockGuardrailsGH) ListPullRequestFiles(_ context.Context, _, _ string, number int) ([]*github.PRFile, error) {
-	m.listCalls++
-	m.listPRNumber = number
-	if m.filesErr != nil {
-		return nil, m.filesErr
-	}
-	return m.files, nil
-}
-
-func (m *mockGuardrailsGH) CreateCommitStatus(_ context.Context, _, _, sha string, status *github.CommitStatus) (*github.CommitStatus, error) {
-	m.statusCalls = append(m.statusCalls, status)
-	m.statusSHAs = append(m.statusSHAs, sha)
-	if m.statusErr != nil {
-		return nil, m.statusErr
-	}
-	return status, nil
-}
-
-func (m *mockGuardrailsGH) AddPRComment(_ context.Context, _, _ string, number int, body string) (*github.PRComment, error) {
-	m.commentBody = append(m.commentBody, body)
-	m.commentPRs = append(m.commentPRs, number)
-	if m.commentErr != nil {
-		return nil, m.commentErr
-	}
-	return &github.PRComment{Body: body}, nil
-}
-
-// stubRegistry plants a fixed set of violations regardless of input, and records
-// the disabled-rule list it was handed so a test can assert the passthrough.
-type stubRegistry struct {
-	out          []architect.Violation
-	gotDisabled  []string
-	gotChanged   []string
-	gotWorktree  string
-	evaluateCall int
-}
-
-func (s *stubRegistry) Evaluate(_ context.Context, changed []string, worktree string, disabled []string) []architect.Violation {
-	s.evaluateCall++
-	s.gotChanged = changed
-	s.gotWorktree = worktree
-	s.gotDisabled = disabled
-	return s.out
-}
-
-func prFiles(names ...string) []*github.PRFile {
-	out := make([]*github.PRFile, 0, len(names))
-	for _, n := range names {
-		out = append(out, &github.PRFile{Filename: n, Status: "modified"})
-	}
-	return out
-}
-
-func sampleViolations() []architect.Violation {
-	return []architect.Violation{
-		{Rule: "loc-400", File: "internal/x/big.go", Detail: "file is 450 lines (limit 400)", Risk: pilotapi.RiskMedium},
-	}
-}
+// Test doubles (mockGuardrailsGH, stubRegistry, prFiles, sampleViolations) live
+// in guardrails_testdoubles_test.go and are shared across the guardrails tests.
 
 // --- interface conformance --------------------------------------------------
 

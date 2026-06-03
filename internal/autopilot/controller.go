@@ -93,6 +93,13 @@ type Controller struct {
 	// can immediately re-mark the issue as processed, closing the merge→done
 	// race window before label propagation catches up.
 	onIssueDone func(issueNumber int)
+
+	// guardrailsGate evaluates repo-specific architectural rules per PR and
+	// surfaces them as a commit status + PR comment. Optional and fail-open:
+	// nil or disabled => handleCIPassed never touches it. It NEVER influences
+	// the merge decision (blocking is expressed only through its commit status),
+	// so existing behaviour is preserved when it is unset.
+	guardrailsGate *GuardrailsGate
 }
 
 // NewController creates an autopilot controller with all required components.
