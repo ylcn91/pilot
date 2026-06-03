@@ -66,9 +66,10 @@ func quietLogger() *slog.Logger {
 }
 
 // TestEnforceReadOnly_RevertsStrayCommit verifies the core contract: a read-only
-// role that created a commit is flagged as a violation and soft-reverted to the
-// captured HEAD, so HEAD returns to headBefore while the committed file survives
-// as an uncommitted change (git reset --soft).
+// role that created a commit is flagged as a violation and the worktree is
+// restored to a PRISTINE headBefore state — HEAD returns to headBefore AND the
+// committed file is gone (git reset --hard, not --soft). The old soft-reset
+// guard preserved the file; that leaked traces to the next role.
 func TestEnforceReadOnly_RevertsStrayCommit(t *testing.T) {
 	dir, git, head := readOnlyTestRepo(t)
 	ctx := context.Background()
@@ -93,9 +94,16 @@ func TestEnforceReadOnly_RevertsStrayCommit(t *testing.T) {
 	if nowHead != head {
 		t.Errorf("HEAD = %q after revert, want captured head %q", nowHead, head)
 	}
-	// --soft preserves the work: the file is still present and staged.
-	if _, err := os.Stat(filepath.Join(dir, "stray.txt")); err != nil {
-		t.Errorf("soft revert lost working changes: stray.txt missing: %v", err)
+	// Pristine restore: the committed file must be gone (was tracked → hard reset).
+	if _, err := os.Stat(filepath.Join(dir, "stray.txt")); !os.IsNotExist(err) {
+		t.Errorf("pristine restore did not discard committed file: stray.txt still present (err=%v)", err)
+	}
+	dirty, err := git.IsDirty(ctx)
+	if err != nil {
+		t.Fatalf("IsDirty: %v", err)
+	}
+	if dirty {
+		t.Error("worktree dirty after pristine restore, want clean")
 	}
 	count, err := git.CountNewCommits(ctx, "main")
 	if err == nil && count != 0 {
@@ -123,10 +131,12 @@ func TestEnforceReadOnly_WellBehavedNoop(t *testing.T) {
 	}
 }
 
-// TestEnforceReadOnly_PreservesUncommittedWork verifies the guard is a no-op when
-// a well-behaved read-only role left only uncommitted working-tree changes (no
-// commit). Such changes must NOT be reverted — only stray commits are.
-func TestEnforceReadOnly_PreservesUncommittedWork(t *testing.T) {
+// TestEnforceReadOnly_DiscardsUncommittedWrite verifies the leak the old guard
+// missed: a read-only role that WROTE a file WITHOUT committing leaves HEAD
+// unchanged, so a SHA-only guard no-ops and the file leaks to the next role.
+// The pristine-restore guard flags it as a violation and removes the untracked
+// file even though HEAD never moved.
+func TestEnforceReadOnly_DiscardsUncommittedWrite(t *testing.T) {
 	dir, git, head := readOnlyTestRepo(t)
 	ctx := context.Background()
 
@@ -136,17 +146,67 @@ func TestEnforceReadOnly_PreservesUncommittedWork(t *testing.T) {
 
 	res := enforceReadOnly(ctx, git, head, pilotapi.RolePlan, quietLogger())
 
-	if res.Violated {
-		t.Error("Violated = true, want false: uncommitted changes are not a commit violation")
+	if !res.Violated {
+		t.Error("Violated = false, want true: an uncommitted write is a read-only trace")
 	}
-	if _, err := os.Stat(filepath.Join(dir, "wip.txt")); err != nil {
-		t.Errorf("guard touched uncommitted work: wip.txt missing: %v", err)
+	// HEAD never moved, so there is nothing to report as RevertedFrom.
+	if res.RevertedFrom != "" {
+		t.Errorf("RevertedFrom = %q, want empty: no commit was made", res.RevertedFrom)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "wip.txt")); !os.IsNotExist(err) {
+		t.Errorf("guard left uncommitted write behind: wip.txt still present (err=%v)", err)
+	}
+	dirty, err := git.IsDirty(ctx)
+	if err != nil {
+		t.Fatalf("IsDirty: %v", err)
+	}
+	if dirty {
+		t.Error("worktree dirty after pristine restore, want clean")
+	}
+	nowHead, _ := git.GetCurrentCommitSHA(ctx)
+	if nowHead != head {
+		t.Errorf("HEAD = %q, want unchanged %q", nowHead, head)
+	}
+}
+
+// TestEnforceReadOnly_DiscardsModifiedTrackedFile verifies the guard also reverts
+// a modified TRACKED file (not just untracked additions) left uncommitted by a
+// read-only role — `git status --porcelain` is non-empty and `git reset --hard`
+// restores the original content.
+func TestEnforceReadOnly_DiscardsModifiedTrackedFile(t *testing.T) {
+	dir, git, head := readOnlyTestRepo(t)
+	ctx := context.Background()
+
+	// seed.txt is tracked (committed in readOnlyTestRepo); overwrite it.
+	if err := os.WriteFile(filepath.Join(dir, "seed.txt"), []byte("MUTATED\n"), 0o644); err != nil {
+		t.Fatalf("write seed: %v", err)
+	}
+
+	res := enforceReadOnly(ctx, git, head, pilotapi.RoleArchitect, quietLogger())
+
+	if !res.Violated {
+		t.Error("Violated = false, want true: a modified tracked file is a read-only trace")
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "seed.txt"))
+	if err != nil {
+		t.Fatalf("read seed after restore: %v", err)
+	}
+	if string(content) != "seed\n" {
+		t.Errorf("seed.txt = %q after restore, want original %q", content, "seed\n")
+	}
+	dirty, err := git.IsDirty(ctx)
+	if err != nil {
+		t.Fatalf("IsDirty: %v", err)
+	}
+	if dirty {
+		t.Error("worktree dirty after pristine restore, want clean")
 	}
 }
 
 // TestEnforceReadOnly_RevertsMultipleStrayCommits verifies the worst case: a
 // misbehaving role that lands several commits is fully unwound back to the
-// captured HEAD in one soft reset.
+// captured HEAD in one hard reset, and every committed file is discarded so the
+// worktree is pristine for the next role.
 func TestEnforceReadOnly_RevertsMultipleStrayCommits(t *testing.T) {
 	dir, git, head := readOnlyTestRepo(t)
 	ctx := context.Background()
@@ -165,9 +225,16 @@ func TestEnforceReadOnly_RevertsMultipleStrayCommits(t *testing.T) {
 		t.Errorf("HEAD = %q, want captured head %q after multi-commit revert", nowHead, head)
 	}
 	for _, f := range []string{"a.txt", "b.txt", "c.txt"} {
-		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
-			t.Errorf("soft revert lost %s: %v", f, err)
+		if _, err := os.Stat(filepath.Join(dir, f)); !os.IsNotExist(err) {
+			t.Errorf("pristine restore did not discard %s (err=%v)", f, err)
 		}
+	}
+	dirty, err := git.IsDirty(ctx)
+	if err != nil {
+		t.Fatalf("IsDirty: %v", err)
+	}
+	if dirty {
+		t.Error("worktree dirty after pristine restore, want clean")
 	}
 }
 

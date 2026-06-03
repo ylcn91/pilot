@@ -55,9 +55,13 @@ func TestExecutePipelinePlan_RevertsStrayCommit(t *testing.T) {
 	if s.planOutput != spec {
 		t.Errorf("planOutput = %q, want spec captured despite revert", s.planOutput)
 	}
-	// --soft keeps the planner's file as uncommitted work.
-	if _, err := os.Stat(filepath.Join(dir, "plan_stray.go")); err != nil {
-		t.Errorf("soft revert lost planner working file: %v", err)
+	// Pristine restore: the planner's committed file is discarded so it cannot
+	// leak into the execute diff.
+	if _, err := os.Stat(filepath.Join(dir, "plan_stray.go")); !os.IsNotExist(err) {
+		t.Errorf("pristine restore left planner file behind (err=%v)", err)
+	}
+	if dirty, _ := git.IsDirty(context.Background()); dirty {
+		t.Error("worktree dirty after plan revert, want clean")
 	}
 }
 
@@ -157,9 +161,11 @@ func TestRunTDDSequence_ArchitectStrayCommitReverted(t *testing.T) {
 		t.Errorf("HEAD at test-author start = %q, want pre-architect %q (architect commit not reverted)",
 			headAtTestAuthor, headBeforeArch)
 	}
-	// --soft preserved the architect's file as uncommitted work.
-	if _, err := os.Stat(filepath.Join(dir, "arch_stray.go")); err != nil {
-		t.Errorf("architect working file lost after soft revert: %v", err)
+	// Pristine restore: the architect's file is discarded so the test-author sees
+	// a clean tree (the RED-gate integrity guarantee). The live architect-leak we
+	// observed (calc.go left behind) is exactly what this asserts is gone.
+	if _, err := os.Stat(filepath.Join(dir, "arch_stray.go")); !os.IsNotExist(err) {
+		t.Errorf("pristine restore left architect file behind (err=%v)", err)
 	}
 }
 
