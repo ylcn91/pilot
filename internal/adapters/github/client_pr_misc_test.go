@@ -54,6 +54,51 @@ func TestIsUnprocessableError(t *testing.T) {
 	}
 }
 
+func TestIsAPIError_TypedStatus(t *testing.T) {
+	tests := []struct {
+		name              string
+		err               error
+		wantNotFound      bool
+		wantUnprocessable bool
+	}{
+		{
+			name:              "typed 404",
+			err:               &APIError{StatusCode: http.StatusNotFound, Message: "Not Found"},
+			wantNotFound:      true,
+			wantUnprocessable: false,
+		},
+		{
+			name:              "typed 422",
+			err:               &APIError{StatusCode: http.StatusUnprocessableEntity, Message: "Reference does not exist"},
+			wantNotFound:      false,
+			wantUnprocessable: true,
+		},
+		{
+			name:              "typed 404 wrapped",
+			err:               fmt.Errorf("update ref: %w", &APIError{StatusCode: http.StatusNotFound}),
+			wantNotFound:      true,
+			wantUnprocessable: false,
+		},
+		{
+			name:              "typed 500",
+			err:               &APIError{StatusCode: http.StatusInternalServerError},
+			wantNotFound:      false,
+			wantUnprocessable: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isNotFoundError(tt.err); got != tt.wantNotFound {
+				t.Errorf("isNotFoundError() = %v, want %v", got, tt.wantNotFound)
+			}
+			if got := isUnprocessableError(tt.err); got != tt.wantUnprocessable {
+				t.Errorf("isUnprocessableError() = %v, want %v", got, tt.wantUnprocessable)
+			}
+		})
+	}
+}
+
 func TestGetPullRequestComments(t *testing.T) {
 	tests := []struct {
 		name       string

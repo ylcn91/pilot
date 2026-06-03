@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,6 +28,18 @@ type RateLimitError struct {
 }
 
 func (e *RateLimitError) Error() string {
+	return fmt.Sprintf("API error (status %d): %s", e.StatusCode, e.Message)
+}
+
+// APIError is returned by doRequest for non-2xx GitHub responses that are not
+// rate limits. Carrying the status code lets callers branch with errors.As
+// instead of matching the formatted message string.
+type APIError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *APIError) Error() string {
 	return fmt.Sprintf("API error (status %d): %s", e.StatusCode, e.Message)
 }
 
@@ -158,7 +171,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 					}
 				}
 			}
-			return fmt.Errorf("API error (status %d): %s", resp.StatusCode, msg)
+			return &APIError{StatusCode: resp.StatusCode, Message: msg}
 		}
 
 		if result != nil && len(respBody) > 0 {
@@ -171,20 +184,28 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 	}, c.retryOpts)
 }
 
-// isNotFoundError checks if error is a 404 not found error
-func isNotFoundError(err error) bool {
+// hasAPIStatus reports whether err is (or wraps) an *APIError with the given
+// status code. It also recognizes the legacy formatted message string so callers
+// that only have the rendered error (rather than the typed value) still match.
+func hasAPIStatus(err error, status int) bool {
 	if err == nil {
 		return false
 	}
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.StatusCode == status
+	}
+	prefix := fmt.Sprintf("API error (status %d", status)
 	errStr := err.Error()
-	return len(errStr) >= 21 && errStr[:21] == "API error (status 404"
+	return len(errStr) >= len(prefix) && errStr[:len(prefix)] == prefix
+}
+
+// isNotFoundError checks if error is a 404 not found error
+func isNotFoundError(err error) bool {
+	return hasAPIStatus(err, http.StatusNotFound)
 }
 
 // isUnprocessableError checks if error is a 422 unprocessable entity error
 func isUnprocessableError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := err.Error()
-	return len(errStr) >= 21 && errStr[:21] == "API error (status 422"
+	return hasAPIStatus(err, http.StatusUnprocessableEntity)
 }
