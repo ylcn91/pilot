@@ -135,7 +135,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"version":  "0.1.0",
 		"running":  s.running,
-		"sessions": s.sessions.Count(),
+		"sessions": s.authn.sessions.Count(),
 	})
 }
 
@@ -153,7 +153,7 @@ func (s *Server) handleAutopilot(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	s.mu.RLock()
-	provider := s.autopilotProvider
+	provider := s.providers.autopilot
 	s.mu.RUnlock()
 
 	if provider == nil {
@@ -198,7 +198,7 @@ func (s *Server) handleArchitectFindings(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 
 	s.mu.RLock()
-	provider := s.architectProvider
+	provider := s.providers.architect
 	s.mu.RUnlock()
 
 	var findings []pilotapi.Finding
@@ -219,7 +219,7 @@ func (s *Server) handleArchitectFindings(w http.ResponseWriter, r *http.Request)
 // handleMetrics returns metrics in Prometheus text format
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
-	exporter := s.prometheusExporter
+	exporter := s.providers.prometheusExporter
 	s.mu.RUnlock()
 
 	if exporter == nil {

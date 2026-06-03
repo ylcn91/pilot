@@ -22,7 +22,7 @@ func TestNewServer(t *testing.T) {
 	if server.config != config {
 		t.Error("Server config not set correctly")
 	}
-	if server.sessions == nil {
+	if server.authn.sessions == nil {
 		t.Error("Sessions manager not initialized")
 	}
 	if server.router == nil {

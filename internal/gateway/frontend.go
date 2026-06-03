@@ -16,7 +16,7 @@ import (
 func (s *Server) SetDashboardFS(fsys fs.FS) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.dashboardFS = fsys
+	s.dashboard.fs = fsys
 }
 
 // serveDashboard registers the /dashboard/ route on the given mux.
@@ -24,7 +24,7 @@ func (s *Server) SetDashboardFS(fsys fs.FS) {
 // any path under /dashboard/ that doesn't match a real file serves index.html.
 func (s *Server) serveDashboard(mux *http.ServeMux) {
 	s.mu.RLock()
-	fsys := s.dashboardFS
+	fsys := s.dashboard.fs
 	s.mu.RUnlock()
 
 	if fsys == nil {

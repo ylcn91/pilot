@@ -31,7 +31,7 @@ type DashboardStore interface {
 func (s *Server) SetDashboardStore(store DashboardStore) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.dashboardStore = store
+	s.dashboard.store = store
 }
 
 // --- JSON response types (mirrors desktop/types.go) ---
@@ -88,7 +88,7 @@ func (s *Server) handleDashboardMetrics(w http.ResponseWriter, r *http.Request) 
 	}
 
 	s.mu.RLock()
-	store := s.dashboardStore
+	store := s.dashboard.store
 	s.mu.RUnlock()
 
 	if store == nil {
@@ -154,7 +154,7 @@ func (s *Server) handleDashboardQueue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.RLock()
-	store := s.dashboardStore
+	store := s.dashboard.store
 	s.mu.RUnlock()
 
 	if store == nil {
@@ -201,7 +201,7 @@ func (s *Server) handleDashboardHistory(w http.ResponseWriter, r *http.Request) 
 	}
 
 	s.mu.RLock()
-	store := s.dashboardStore
+	store := s.dashboard.store
 	s.mu.RUnlock()
 
 	if store == nil {
@@ -252,8 +252,8 @@ func (s *Server) handleGitGraph(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.RLock()
-	fetcher := s.gitGraphFetcher
-	projectPath := s.gitGraphPath
+	fetcher := s.dashboard.gitGraphFetcher
+	projectPath := s.dashboard.gitGraphPath
 	s.mu.RUnlock()
 
 	if fetcher == nil {
@@ -283,7 +283,7 @@ func (s *Server) handleDashboardLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.RLock()
-	store := s.dashboardStore
+	store := s.dashboard.store
 	s.mu.RUnlock()
 
 	if store == nil {

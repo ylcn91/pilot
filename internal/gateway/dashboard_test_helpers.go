@@ -45,7 +45,7 @@ func (m *mockDashboardStore) GetRecentLogs(_ int) ([]*memory.LogEntry, error) {
 
 func newTestServerWithDashboard(store DashboardStore) *Server {
 	s := NewServer(&Config{Host: "127.0.0.1", Port: 9090})
-	s.dashboardStore = store
+	s.dashboard.store = store
 	return s
 }
 

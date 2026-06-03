@@ -38,8 +38,8 @@ func (s *Server) buildHandler() http.Handler {
 	apiMux.HandleFunc("/api/v1/gitgraph", s.handleGitGraph)
 
 	// Apply auth middleware to API routes
-	if s.auth != nil {
-		mux.Handle("/api/v1/", s.auth.Middleware(apiMux))
+	if s.authn.auth != nil {
+		mux.Handle("/api/v1/", s.authn.auth.Middleware(apiMux))
 	} else {
 		mux.Handle("/api/v1/", apiMux)
 	}

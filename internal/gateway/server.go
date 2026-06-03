@@ -63,35 +63,68 @@ type ArchitectProvider interface {
 	Findings() []pilotapi.Finding
 }
 
+// authState groups the request-authentication concerns: WebSocket/session
+// management plus the per-adapter webhook signature material. All of these
+// are set once at construction (or via Set* before Start) and then read
+// without locking.
+type authState struct {
+	auth     *Authenticator
+	sessions *SessionManager
+	// githubWebhookSecret is the secret for GitHub webhook signature validation.
+	githubWebhookSecret string
+	// linearWebhookPublicKey is the Ed25519 public key for Linear webhook
+	// signature validation (TASK-295). Nil = verification disabled.
+	linearWebhookPublicKey ed25519.PublicKey
+}
+
+// providerState groups the read-only observability providers surfaced over the
+// REST/metrics API: Prometheus export, alert metrics, autopilot state and
+// Architect findings. Every field is guarded by Server.mu.
+type providerState struct {
+	prometheusExporter *PrometheusExporter
+	alertsSource       AlertMetricsSource
+	autopilot          AutopilotProvider
+	architect          ArchitectProvider
+}
+
+// dashboardState groups everything backing the dashboard surface: the metrics
+// store, the log-stream store, the git-graph fetcher and the embedded React
+// frontend. Every field is guarded by Server.mu.
+type dashboardState struct {
+	store           DashboardStore
+	logStreamStore  LogStreamStore
+	gitGraphPath    string          // Project path for git graph API (defaults to ".")
+	gitGraphFetcher GitGraphFetcher // Injected to avoid import cycle with internal/dashboard
+	fs              fs.FS           // Embedded React frontend (nil if not embedded)
+}
+
+// codexRuntimeState groups the Codex app-server runtime registries used by the
+// gateway WebSocket sessions. Both are set once at construction and read
+// without locking.
+type codexRuntimeState struct {
+	approvals *runtimeApprovalRegistry
+	sessions  *runtimeSessionRegistry
+}
+
 // Server is the main gateway server handling WebSocket and HTTP connections.
 // It provides a control plane for managing Pilot via WebSocket, receives webhooks
 // from external services (Linear, GitHub, Jira, Asana), and exposes REST APIs for status
 // and task management. Server is safe for concurrent use.
 type Server struct {
-	config                 *Config
-	auth                   *Authenticator
-	sessions               *SessionManager
-	router                 *Router
-	upgrader               websocket.Upgrader
-	server                 *http.Server
-	mu                     sync.RWMutex
-	running                bool
-	customHandlers         map[string]http.Handler
-	githubWebhookSecret    string            // Secret for GitHub webhook signature validation
-	linearWebhookPublicKey ed25519.PublicKey // Ed25519 public key for Linear webhook signature validation (TASK-295). Nil = verification disabled.
-	dashboardFS            fs.FS             // Embedded React frontend (nil if not embedded)
-	readinessCheckers      []ReadinessChecker
-	liveness               *livenessState
-	prometheusExporter     *PrometheusExporter
-	alertsSource           AlertMetricsSource
-	autopilotProvider      AutopilotProvider
-	architectProvider      ArchitectProvider
-	dashboardStore         DashboardStore
-	logStreamStore         LogStreamStore
-	runtimeApprovals       *runtimeApprovalRegistry
-	runtimeSessions        *runtimeSessionRegistry
-	gitGraphPath           string          // Project path for git graph API (defaults to ".")
-	gitGraphFetcher        GitGraphFetcher // Injected to avoid import cycle with internal/dashboard
+	config            *Config
+	router            *Router
+	upgrader          websocket.Upgrader
+	server            *http.Server
+	mu                sync.RWMutex
+	running           bool
+	customHandlers    map[string]http.Handler
+	readinessCheckers []ReadinessChecker
+	liveness          *livenessState
+
+	authn     authState
+	providers providerState
+	dashboard dashboardState
+	codex     codexRuntimeState
 }
 
 // Config holds gateway server configuration including network binding options.
@@ -152,16 +185,20 @@ func NewServerWithAuth(config *Config, authConfig *AuthConfig) *Server {
 	}
 
 	s := &Server{
-		config:                 config,
-		auth:                   auth,
-		sessions:               NewSessionManager(),
-		router:                 NewRouter(),
-		customHandlers:         make(map[string]http.Handler),
-		githubWebhookSecret:    config.GithubWebhookSecret,
-		linearWebhookPublicKey: config.LinearWebhookPublicKey,
-		runtimeApprovals:       newRuntimeApprovalRegistry(),
-		runtimeSessions:        newRuntimeSessionRegistry(),
-		readinessCheckers:      make([]ReadinessChecker, 0),
+		config:            config,
+		router:            NewRouter(),
+		customHandlers:    make(map[string]http.Handler),
+		readinessCheckers: make([]ReadinessChecker, 0),
+		authn: authState{
+			auth:                   auth,
+			sessions:               NewSessionManager(),
+			githubWebhookSecret:    config.GithubWebhookSecret,
+			linearWebhookPublicKey: config.LinearWebhookPublicKey,
+		},
+		codex: codexRuntimeState{
+			approvals: newRuntimeApprovalRegistry(),
+			sessions:  newRuntimeSessionRegistry(),
+		},
 		liveness: &livenessState{
 			maxGoroutines:   1000,
 			panicWindowSecs: 300, // 5 minutes
@@ -245,9 +282,9 @@ func (s *Server) RegisterHandler(path string, handler http.Handler) {
 func (s *Server) SetMetricsSource(source MetricsSource) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.prometheusExporter = NewPrometheusExporter(source)
-	if s.alertsSource != nil {
-		s.prometheusExporter.SetAlertsSource(s.alertsSource)
+	s.providers.prometheusExporter = NewPrometheusExporter(source)
+	if s.providers.alertsSource != nil {
+		s.providers.prometheusExporter.SetAlertsSource(s.providers.alertsSource)
 	}
 }
 
@@ -256,9 +293,9 @@ func (s *Server) SetMetricsSource(source MetricsSource) {
 func (s *Server) SetAlertsMetricsSource(source AlertMetricsSource) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.alertsSource = source
-	if s.prometheusExporter != nil {
-		s.prometheusExporter.SetAlertsSource(source)
+	s.providers.alertsSource = source
+	if s.providers.prometheusExporter != nil {
+		s.providers.prometheusExporter.SetAlertsSource(source)
 	}
 }
 
@@ -267,7 +304,7 @@ func (s *Server) SetAlertsMetricsSource(source AlertMetricsSource) {
 func (s *Server) SetAutopilotProvider(p AutopilotProvider) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.autopilotProvider = p
+	s.providers.autopilot = p
 }
 
 // SetArchitectProvider sets the architect provider for the /api/v1/architect endpoint.
@@ -275,7 +312,7 @@ func (s *Server) SetAutopilotProvider(p AutopilotProvider) {
 func (s *Server) SetArchitectProvider(p ArchitectProvider) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.architectProvider = p
+	s.providers.architect = p
 }
 
 // SetGitGraphPath sets the project path used by the /api/v1/gitgraph endpoint.
@@ -283,7 +320,7 @@ func (s *Server) SetArchitectProvider(p ArchitectProvider) {
 func (s *Server) SetGitGraphPath(path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.gitGraphPath = path
+	s.dashboard.gitGraphPath = path
 }
 
 // SetGitGraphFetcher sets the function used to fetch git graph data.
@@ -291,7 +328,7 @@ func (s *Server) SetGitGraphPath(path string) {
 func (s *Server) SetGitGraphFetcher(f GitGraphFetcher) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.gitGraphFetcher = f
+	s.dashboard.gitGraphFetcher = f
 }
 
 // Shutdown gracefully shuts down the server with a 30-second timeout.
@@ -319,9 +356,9 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session := s.sessions.Create(conn)
-	defer s.sessions.Remove(session.ID)
-	defer s.runtimeSessions.close(session.ID)
+	session := s.authn.sessions.Create(conn)
+	defer s.authn.sessions.Remove(session.ID)
+	defer s.codex.sessions.close(session.ID)
 
 	logging.WithComponent("gateway").Info("New WebSocket session", slog.String("session_id", session.ID))
 

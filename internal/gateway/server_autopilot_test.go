@@ -158,14 +158,14 @@ func TestHandleAutopilotEmptyPRs(t *testing.T) {
 func TestSetAutopilotProvider(t *testing.T) {
 	server := NewServer(&Config{Host: "127.0.0.1", Port: 9090})
 
-	if server.autopilotProvider != nil {
+	if server.providers.autopilot != nil {
 		t.Error("Expected nil autopilot provider initially")
 	}
 
 	provider := &mockAutopilotProvider{environment: "prod"}
 	server.SetAutopilotProvider(provider)
 
-	if server.autopilotProvider == nil {
+	if server.providers.autopilot == nil {
 		t.Error("Expected autopilot provider to be set")
 	}
 }

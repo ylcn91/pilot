@@ -22,7 +22,7 @@ func (s *Server) awaitRuntimeApproval(ctx context.Context, session *Session, req
 		return runtimeApprovalResponsePayload{}, err
 	}
 
-	ch, cancel, err := s.runtimeApprovals.register(session.ID, requestID)
+	ch, cancel, err := s.codex.approvals.register(session.ID, requestID)
 	if err != nil {
 		return runtimeApprovalResponsePayload{}, err
 	}

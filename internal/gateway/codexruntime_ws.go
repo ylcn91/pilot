@@ -133,14 +133,14 @@ func (s *Server) handleRuntimeTask(session *Session, payload json.RawMessage) {
 			return
 		}
 	case runtimeActionStop:
-		s.runtimeSessions.close(session.ID)
+		s.codex.sessions.close(session.ID)
 	case runtimeActionApprovalRespond:
 		response, err := parseRuntimeApprovalResponse(task)
 		if err != nil {
 			_ = sendRuntimeError(session, err)
 			return
 		}
-		if err := s.runtimeApprovals.resolve(session.ID, response); err != nil {
+		if err := s.codex.approvals.resolve(session.ID, response); err != nil {
 			_ = sendRuntimeError(session, err)
 			return
 		}
@@ -243,9 +243,9 @@ func (s *Server) runRuntimeSession(ctx context.Context, session *Session, task r
 	controller.setRunning(true)
 	defer func() {
 		controller.finish()
-		s.runtimeSessions.removeIf(session.ID, controller)
+		s.codex.sessions.removeIf(session.ID, controller)
 	}()
-	s.runtimeSessions.replace(session.ID, controller)
+	s.codex.sessions.replace(session.ID, controller)
 
 	for {
 		select {

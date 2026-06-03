@@ -158,7 +158,7 @@ func (r *runtimeSessionRegistry) close(sessionID string) {
 }
 
 func (s *Server) startRuntimeTurn(sessionID, prompt string) error {
-	controller, ok := s.runtimeSessions.get(sessionID)
+	controller, ok := s.codex.sessions.get(sessionID)
 	if !ok {
 		return errors.New("runtime session is not active")
 	}

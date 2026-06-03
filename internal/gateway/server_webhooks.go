@@ -60,8 +60,8 @@ func (s *Server) handleLinearWebhook(w http.ResponseWriter, r *http.Request) {
 	// Read raw body — required for Ed25519 verification (signature covers the
 	// exact bytes sent, before JSON parsing normalizes them).
 	_, payload, ok := readWebhookBody(w, r, func(body []byte) bool {
-		if s.linearWebhookPublicKey != nil {
-			if verr := linear.VerifyLinearSignature(s.linearWebhookPublicKey, signature, body); verr != nil {
+		if s.authn.linearWebhookPublicKey != nil {
+			if verr := linear.VerifyLinearSignature(s.authn.linearWebhookPublicKey, signature, body); verr != nil {
 				logging.WithComponent("gateway").Warn("Linear webhook signature verification failed",
 					slog.String("error", verr.Error()),
 					slog.String("remote_addr", r.RemoteAddr),
@@ -99,8 +99,8 @@ func (s *Server) handleGithubWebhook(w http.ResponseWriter, r *http.Request) {
 	// Read raw body first (required for HMAC signature validation)
 	_, payload, ok := readWebhookBody(w, r, func(body []byte) bool {
 		// Validate webhook signature if secret is configured
-		if s.githubWebhookSecret != "" {
-			if !github.VerifyWebhookSignature(body, signature, s.githubWebhookSecret) {
+		if s.authn.githubWebhookSecret != "" {
+			if !github.VerifyWebhookSignature(body, signature, s.authn.githubWebhookSecret) {
 				logging.WithComponent("gateway").Warn("GitHub webhook signature verification failed",
 					slog.String("event_type", eventType))
 				http.Error(w, "Invalid signature", http.StatusUnauthorized)

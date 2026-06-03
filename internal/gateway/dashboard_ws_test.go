@@ -75,7 +75,7 @@ func TestDashboardWebSocket_InitialLogs(t *testing.T) {
 	}
 
 	srv := NewServer(&Config{Host: "127.0.0.1", Port: 0})
-	srv.logStreamStore = store
+	srv.dashboard.logStreamStore = store
 
 	ts := httptest.NewServer(http.HandlerFunc(srv.handleDashboardWebSocket))
 	defer ts.Close()
@@ -115,7 +115,7 @@ func TestDashboardWebSocket_StreamEntry(t *testing.T) {
 	store := &mockLogStreamStore{}
 
 	srv := NewServer(&Config{Host: "127.0.0.1", Port: 0})
-	srv.logStreamStore = store
+	srv.dashboard.logStreamStore = store
 
 	ts := httptest.NewServer(http.HandlerFunc(srv.handleDashboardWebSocket))
 	defer ts.Close()
@@ -190,7 +190,7 @@ func TestDashboardWebSocket_ClientDisconnect(t *testing.T) {
 	store := &mockLogStreamStore{}
 
 	srv := NewServer(&Config{Host: "127.0.0.1", Port: 0})
-	srv.logStreamStore = store
+	srv.dashboard.logStreamStore = store
 
 	ts := httptest.NewServer(http.HandlerFunc(srv.handleDashboardWebSocket))
 	defer ts.Close()

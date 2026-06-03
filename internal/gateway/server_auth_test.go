@@ -20,7 +20,7 @@ func TestNewServerWithAuth(t *testing.T) {
 	if server == nil {
 		t.Fatal("NewServerWithAuth returned nil")
 	}
-	if server.auth == nil {
+	if server.authn.auth == nil {
 		t.Error("Server auth not initialized")
 	}
 	if server.config != config {
@@ -36,7 +36,7 @@ func TestNewServerWithAuth_NilAuth(t *testing.T) {
 	if server == nil {
 		t.Fatal("NewServerWithAuth returned nil")
 	}
-	if server.auth != nil {
+	if server.authn.auth != nil {
 		t.Error("Server auth should be nil when authConfig is nil")
 	}
 }

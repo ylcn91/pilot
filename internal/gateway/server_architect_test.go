@@ -227,14 +227,14 @@ func TestHandleArchitectAllRiskLevels(t *testing.T) {
 func TestSetArchitectProvider(t *testing.T) {
 	server := NewServer(&Config{Host: "127.0.0.1", Port: 9090})
 
-	if server.architectProvider != nil {
+	if server.providers.architect != nil {
 		t.Error("Expected nil architect provider initially")
 	}
 
 	provider := &mockArchitectProvider{findings: []pilotapi.Finding{{Title: "t"}}}
 	server.SetArchitectProvider(provider)
 
-	if server.architectProvider == nil {
+	if server.providers.architect == nil {
 		t.Error("Expected architect provider to be set")
 	}
 }

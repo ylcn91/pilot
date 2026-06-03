@@ -33,7 +33,7 @@ type LogStreamStore interface {
 func (s *Server) SetLogStreamStore(store LogStreamStore) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.logStreamStore = store
+	s.dashboard.logStreamStore = store
 }
 
 // handleDashboardWebSocket upgrades the connection to WebSocket and streams
@@ -41,7 +41,7 @@ func (s *Server) SetLogStreamStore(store LogStreamStore) {
 // initial payload, then pushes new entries as they arrive.
 func (s *Server) handleDashboardWebSocket(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
-	store := s.logStreamStore
+	store := s.dashboard.logStreamStore
 	s.mu.RUnlock()
 
 	if store == nil {
