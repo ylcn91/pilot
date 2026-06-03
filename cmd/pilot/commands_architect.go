@@ -133,11 +133,15 @@ func buildArchitectRunConfig(cfg *config.Config, agentDir string, f *architectFl
 		return architect.RunConfig{}, err
 	}
 
+	// Dry-run uses the deterministic, network-free PROPOSE path so a scan yields
+	// real graph-derived findings without spawning an LLM subprocess. Issue
+	// creation (--create-issues) keeps the backend-driven analysis.
 	analyzer := architect.NewAnalyzer(
 		architectBackendStage(ac, f.backend),
 		architectBaseBackend(cfg),
 		agentDir,
 		architect.WithSlant(lens.Slant),
+		architect.WithOffline(f.dryRun),
 	)
 
 	rc := architect.RunConfig{

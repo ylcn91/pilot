@@ -51,6 +51,12 @@ type Analyzer struct {
 	// (e.g. the test-gap designer). Nil keeps the default refactor framing.
 	slant *LensSlant
 
+	// offline, when true, makes Propose synthesize findings deterministically
+	// from the Signals instead of invoking the backend. It is the network-free
+	// path the dry-run CLI uses so a scan produces real, graph-derived findings
+	// without spawning an LLM subprocess.
+	offline bool
+
 	// newBackend resolves the backend for a Propose call. Defaults to
 	// executor.NewStageBackend; tests override it to inject a mock.
 	newBackend backendFactory
@@ -66,6 +72,14 @@ type AnalyzerOption func(*Analyzer)
 // unconditionally.
 func WithSlant(slant *LensSlant) AnalyzerOption {
 	return func(a *Analyzer) { a.slant = slant }
+}
+
+// WithOffline toggles the deterministic, network-free PROPOSE path. When
+// enabled, Propose synthesizes findings from the Signals directly (no backend
+// subprocess, no LLM), making `pilot architect --dry-run` produce real
+// graph-derived findings even without a reachable backend.
+func WithOffline(offline bool) AnalyzerOption {
+	return func(a *Analyzer) { a.offline = offline }
 }
 
 // NewAnalyzer builds an Analyzer that resolves its backend from stage (the
@@ -95,6 +109,14 @@ func NewAnalyzer(stage *executor.StageConfig, base executor.BackendConfig, agent
 func (a *Analyzer) Propose(ctx context.Context, signals []Signal) ([]pilotapi.Finding, error) {
 	if len(signals) == 0 {
 		return []pilotapi.Finding{}, nil
+	}
+
+	// Offline path: synthesize findings deterministically from the Signals,
+	// never touching the backend. The finding framing is derived from each
+	// Signal's Kind (which already encodes the lens's concern), so this honours
+	// the active lens without needing the slant's prompt overrides.
+	if a.offline {
+		return SynthesizeFindings(signals), nil
 	}
 
 	prompt := a.buildPrompt(signals)
