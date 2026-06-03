@@ -15,20 +15,34 @@ function goCall<T>(method: string, ...args: unknown[]): Promise<T> {
   return Promise.resolve(undefined as unknown as T)
 }
 
+// Go marshals nil slices to JSON `null`, not `[]`. Coerce every slice field
+// back to an array at the binding boundary so components can call .length/.map
+// without null guards (browser/HTTP mode already returns `[]`).
 export function GetMetrics(): Promise<DashboardMetrics> {
-  return goCall<DashboardMetrics>('GetMetrics')
+  return goCall<DashboardMetrics>('GetMetrics').then((m) =>
+    m
+      ? {
+          ...m,
+          tokenSparkline: m.tokenSparkline ?? [],
+          costSparkline: m.costSparkline ?? [],
+          queueSparkline: m.queueSparkline ?? [],
+        }
+      : m,
+  )
 }
 
 export function GetQueueTasks(): Promise<QueueTask[]> {
-  return goCall<QueueTask[]>('GetQueueTasks')
+  return goCall<QueueTask[]>('GetQueueTasks').then((q) => q ?? [])
 }
 
 export function GetHistory(limit: number): Promise<HistoryEntry[]> {
-  return goCall<HistoryEntry[]>('GetHistory', limit)
+  return goCall<HistoryEntry[]>('GetHistory', limit).then((h) => h ?? [])
 }
 
 export function GetAutopilotStatus(): Promise<AutopilotStatus> {
-  return goCall<AutopilotStatus>('GetAutopilotStatus')
+  return goCall<AutopilotStatus>('GetAutopilotStatus').then((s) =>
+    s ? { ...s, activePRs: s.activePRs ?? [] } : s,
+  )
 }
 
 export function GetServerStatus(): Promise<ServerStatus> {
@@ -40,11 +54,13 @@ export function EnsureGatewayRunning(): Promise<ServerStatus> {
 }
 
 export function GetLogs(limit: number): Promise<LogEntry[]> {
-  return goCall<LogEntry[]>('GetLogs', limit)
+  return goCall<LogEntry[]>('GetLogs', limit).then((l) => l ?? [])
 }
 
 export function GetGitGraph(limit: number): Promise<GitGraphData> {
-  return goCall<GitGraphData>('GetGitGraph', limit)
+  return goCall<GitGraphData>('GetGitGraph', limit).then((g) =>
+    g ? { ...g, lines: g.lines ?? [] } : g,
+  )
 }
 
 export function GetArchitectFindings(): Promise<Finding[]> {
