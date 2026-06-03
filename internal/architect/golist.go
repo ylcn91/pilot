@@ -135,3 +135,16 @@ func loadPackageGraph(ctx context.Context, run commandRunner, dir, modulePrefix 
 	}
 	return NewPackageGraph(goListNodes(pkgs, modulePrefix)), nil
 }
+
+// LoadProjectGraph builds the project's package dependency graph for projectPath
+// by shelling the real `go list`, deriving the module prefix from its go.mod. It
+// is the public entry point a lens (the RFC/refactor planner) uses to obtain the
+// blast-radius graph that drives PR ordering, outside the collector roster.
+//
+// It is best-effort and never panics: a project without a reachable `go`
+// toolchain (or no go.mod) yields a nil graph and an error the caller can treat
+// as "no graph available" — every downstream planner tolerates a nil graph by
+// treating each change as a zero-blast leaf.
+func LoadProjectGraph(ctx context.Context, projectPath string) (*PackageGraph, error) {
+	return loadPackageGraph(ctx, execCommandRunner, projectPath, modulePathFromDir(projectPath))
+}
