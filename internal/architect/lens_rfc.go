@@ -58,8 +58,8 @@ var rfcSlant = &LensSlant{
 // RFC's tiny-PR sequence is driven by the identical signals and blast-radius
 // graph. Reusing refactorCollectors keeps the two lenses in lock-step by
 // construction — the RFC is the refactor plan wrapped in an ADR document.
-func rfcCollectors(projectPath string, opts ScanOptions) []Collector {
-	return refactorCollectors(projectPath, opts)
+func rfcCollectors(opts ScanOptions) []Collector {
+	return refactorCollectors(opts)
 }
 
 // init registers the RFC-generator lens. Selectable via `pilot architect --lens

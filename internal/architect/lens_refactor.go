@@ -60,7 +60,7 @@ var refactorSlant = &LensSlant{
 // decompositions, the cleanup chores, and the structural fixes whose blast
 // radius drives the ordering. Every collector degrades gracefully on its own, so
 // the lens is safe to run against any project state.
-func refactorCollectors(_ string, opts ScanOptions) []Collector {
+func refactorCollectors(opts ScanOptions) []Collector {
 	collectors := coreCollectors(opts)
 	collectors = append(collectors, NewDepsCollector())
 	return collectors

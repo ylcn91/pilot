@@ -16,7 +16,7 @@ const RadarLensName = "radar"
 // runner, an absent `go` toolchain, a non-git directory, or a nil failure
 // source each yields zero signals rather than an error), so the radar lens is
 // safe to run unattended on a schedule against any project state.
-func radarCollectors(_ string, opts ScanOptions) []Collector {
+func radarCollectors(opts ScanOptions) []Collector {
 	collectors := coreCollectors(opts)
 	collectors = append(collectors, NewDepsCollector())
 	collectors = append(collectors, NewStaleTestsCollector())

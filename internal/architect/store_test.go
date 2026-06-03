@@ -150,7 +150,7 @@ func TestRadarLens_RegisteredAndSelectable(t *testing.T) {
 
 func TestRadarLens_BundlesExpectedCollectors(t *testing.T) {
 	l, _ := LensByName(RadarLensName)
-	got := names(l.Collectors("/proj", ScanOptions{}))
+	got := names(l.Collectors(ScanOptions{}))
 	// Core (loc, todo, duplicate, lint) + dependency_doctor + stale_test + churn, no coverage.
 	want := []string{"loc_over_400", "todo_fixme", kindDuplicateBlock, "lint", "dependency_doctor", "stale_test", "churn_hotspot"}
 	for _, w := range want {
@@ -165,7 +165,7 @@ func TestRadarLens_BundlesExpectedCollectors(t *testing.T) {
 
 func TestRadarLens_CoverageWhenRequested(t *testing.T) {
 	l, _ := LensByName(RadarLensName)
-	got := names(l.Collectors("/proj", ScanOptions{MinCoverage: 75}))
+	got := names(l.Collectors(ScanOptions{MinCoverage: 75}))
 	if !contains(got, "coverage") {
 		t.Errorf("MinCoverage>0 must add coverage to radar roster, got %v", got)
 	}

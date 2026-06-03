@@ -41,7 +41,7 @@ func TestRefactorLens_SelectableCaseInsensitive(t *testing.T) {
 // collectors plus the dependency-doctor collector (the blast-radius source).
 func TestRefactorLens_BundlesRefactorCollectors(t *testing.T) {
 	l, _ := LensByName(RefactorLensName)
-	got := names(l.Collectors("/proj", ScanOptions{}))
+	got := names(l.Collectors(ScanOptions{}))
 	want := map[string]bool{
 		"loc_over_400":      true,
 		"todo_fixme":        true,

@@ -13,7 +13,7 @@ func init() {
 	RegisterLens(Lens{
 		Name:        DepDoctorLensName,
 		Description: "dependency doctor: import-graph cycles, layer violations, unused/heavy deps",
-		Collectors: func(_ string, _ ScanOptions) []Collector {
+		Collectors: func(_ ScanOptions) []Collector {
 			return []Collector{NewDepsCollector()}
 		},
 	})

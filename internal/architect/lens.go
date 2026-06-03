@@ -26,11 +26,11 @@ type Lens struct {
 	Name string
 	// Description is a one-line human summary shown in help/listings.
 	Description string
-	// Collectors builds the lens's collectors for the given project root and
-	// scan options. It must be deterministic and must not perform I/O itself
-	// (collectors do their work lazily in Collect). A lens that ignores the
-	// options (e.g. depdoctor) simply does not read them.
-	Collectors func(projectPath string, opts ScanOptions) []Collector
+	// Collectors builds the lens's collectors from the scan options. It must be
+	// deterministic and must not perform I/O itself (collectors do their work
+	// lazily in Collect, receiving the project root there). A lens that ignores
+	// the options (e.g. depdoctor) simply does not read them.
+	Collectors func(opts ScanOptions) []Collector
 
 	// Slant optionally aims the PROPOSE stage at the lens's concern by
 	// overriding the task description and injecting an extra instruction block
@@ -122,15 +122,18 @@ func normalizeLensName(name string) string {
 }
 
 // BuildLensScanner resolves the named lens and wires a Scanner over its
-// collectors for projectPath. An empty name selects the core lens. The
-// returned scanner is filtered by opts.Signals (when non-empty) exactly like
-// BuildDefaultScanner, so the same per-Kind selection works across every lens.
+// collectors. An empty name selects the core lens. The returned scanner is
+// filtered by opts.Signals (when non-empty) exactly like BuildDefaultScanner,
+// so the same per-Kind selection works across every lens. projectPath is the
+// scan root the resulting Scanner will run against (collectors receive it in
+// Collect); the lens's Collectors factory no longer needs it at construction.
 func BuildLensScanner(name, projectPath string, opts ScanOptions) (*Scanner, error) {
+	_ = projectPath
 	l, err := LensByName(name)
 	if err != nil {
 		return nil, err
 	}
-	collectors := l.Collectors(projectPath, opts)
+	collectors := l.Collectors(opts)
 	selected := filterCollectors(collectors, opts.Signals)
 	scanner := NewScanner(selected...)
 	// When the rule-suggester is enabled (and a knowledge source is wired), the
@@ -153,7 +156,7 @@ func init() {
 	RegisterLens(Lens{
 		Name:        CoreLensName,
 		Description: "deterministic core scan: oversized files, TODO/FIXME, lint, coverage",
-		Collectors: func(_ string, opts ScanOptions) []Collector {
+		Collectors: func(opts ScanOptions) []Collector {
 			return coreCollectors(opts)
 		},
 	})

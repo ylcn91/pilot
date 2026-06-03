@@ -43,7 +43,7 @@ func TestRFCLens_SelectableCaseInsensitive(t *testing.T) {
 // driven by the same blast-radius signals.
 func TestRFCLens_BundlesRefactorCollectors(t *testing.T) {
 	l, _ := LensByName(RFCLensName)
-	got := names(l.Collectors("/proj", ScanOptions{}))
+	got := names(l.Collectors(ScanOptions{}))
 	want := map[string]bool{
 		"loc_over_400":      true,
 		"todo_fixme":        true,

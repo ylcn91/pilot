@@ -37,7 +37,7 @@ func TestTestGapLens_CaseInsensitiveLookup(t *testing.T) {
 func TestTestGapLens_BundlesBugHistoryAndMissingTests(t *testing.T) {
 	l, _ := LensByName(TestGapLensName)
 	// No quality runner, no coverage => bug_hotspot + missing_test only.
-	got := l.Collectors("/proj", ScanOptions{})
+	got := l.Collectors(ScanOptions{})
 	if len(got) != 2 {
 		t.Fatalf("without coverage, testgap should wire 2 collectors, got %d: %v", len(got), names(got))
 	}
@@ -51,7 +51,7 @@ func TestTestGapLens_BundlesBugHistoryAndMissingTests(t *testing.T) {
 
 func TestTestGapLens_SkipsCoverageWithoutRunner(t *testing.T) {
 	l, _ := LensByName(TestGapLensName)
-	got := l.Collectors("/proj", ScanOptions{
+	got := l.Collectors(ScanOptions{
 		QualityRunner: nil, // gateRunnerFromQuality(nil)==nil, so coverage is skipped
 		MinCoverage:   80,
 	})
@@ -62,7 +62,7 @@ func TestTestGapLens_SkipsCoverageWithoutRunner(t *testing.T) {
 
 func TestTestGapLens_AddsCoverageWhenRunnerAndThreshold(t *testing.T) {
 	l, _ := LensByName(TestGapLensName)
-	got := l.Collectors("/proj", ScanOptions{
+	got := l.Collectors(ScanOptions{
 		QualityRunner: quality.NewRunner(nil, "/proj"), // non-nil runner
 		MinCoverage:   75,
 	})
@@ -76,7 +76,7 @@ func TestTestGapLens_AddsCoverageWhenRunnerAndThreshold(t *testing.T) {
 
 func TestTestGapLens_SkipsCoverageWithoutThreshold(t *testing.T) {
 	l, _ := LensByName(TestGapLensName)
-	got := l.Collectors("/proj", ScanOptions{
+	got := l.Collectors(ScanOptions{
 		QualityRunner: quality.NewRunner(nil, "/proj"), // runner present, threshold 0
 		MinCoverage:   0,
 	})
@@ -90,7 +90,7 @@ func TestTestGapLens_WiresFailureSource(t *testing.T) {
 	src := &mockFailureSource{reasons: []*memory.FailureReason{
 		{Reason: "boom", Count: 3},
 	}}
-	got := l.Collectors("/proj", ScanOptions{FailureSource: src})
+	got := l.Collectors(ScanOptions{FailureSource: src})
 	var bug *BugHistoryCollector
 	for _, c := range got {
 		if b, ok := c.(*BugHistoryCollector); ok {

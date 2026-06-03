@@ -48,7 +48,7 @@ var testGapSlant = &LensSlant{
 // spine (low_coverage), and the changed-files-without-tests collector
 // (missing_test). The bug-history and coverage collectors stay inert when their
 // backing source/runner is absent, so the lens degrades gracefully.
-func testGapCollectors(_ string, opts ScanOptions) []Collector {
+func testGapCollectors(opts ScanOptions) []Collector {
 	collectors := []Collector{
 		NewBugHistoryCollector(opts.FailureSource, opts.FailureQuery, 0, opts.ProjectID),
 		NewMissingTestsCollector(),
