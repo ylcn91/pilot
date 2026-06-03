@@ -103,7 +103,7 @@ func (p *Poller) recordDeferredScopeOverlap() {
 // Logs errors but does not fail the dispatch — board sync is best-effort.
 // No-op when boardSync is nil or inProgressStatus is empty.
 func (p *Poller) syncBoardStatusInProgress(ctx context.Context, issue *Issue) {
-	if p.boardSync == nil || p.inProgressStatus == "" {
+	if p.board.boardSync == nil || p.board.inProgressStatus == "" {
 		return
 	}
 
@@ -119,10 +119,10 @@ func (p *Poller) syncBoardStatusInProgress(ctx context.Context, issue *Issue) {
 		}
 	}
 
-	if err := p.boardSync.UpdateProjectItemStatus(ctx, nodeID, p.inProgressStatus); err != nil {
+	if err := p.board.boardSync.UpdateProjectItemStatus(ctx, nodeID, p.board.inProgressStatus); err != nil {
 		p.logger.Warn("board sync: failed to update project item status",
 			slog.Int("issue", issue.Number),
-			slog.String("status", p.inProgressStatus),
+			slog.String("status", p.board.inProgressStatus),
 			slog.Any("error", err))
 	}
 }

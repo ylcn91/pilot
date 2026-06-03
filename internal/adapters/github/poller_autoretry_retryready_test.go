@@ -22,11 +22,28 @@ func TestPoller_AutoRetryRetryReadyIssue_FirstRetry(t *testing.T) {
 	}
 
 	var labelRemoved atomic.Bool
+	var retry1Added atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		// Handle label removal
 		if r.Method == http.MethodDelete && r.URL.Path == "/repos/owner/repo/issues/42/labels/"+LabelRetryReady {
 			labelRemoved.Store(true)
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		// GH-2432: the retry budget is persisted via pilot-retry-N labels, which
+		// are the source of truth (no in-memory counter). The first retry stamps
+		// pilot-retry-1.
+		if r.Method == http.MethodPost && r.URL.Path == "/repos/owner/repo/issues/42/labels" {
+			var body struct {
+				Labels []string `json:"labels"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			for _, l := range body.Labels {
+				if l == LabelRetry1 {
+					retry1Added.Store(true)
+				}
+			}
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -59,12 +76,9 @@ func TestPoller_AutoRetryRetryReadyIssue_FirstRetry(t *testing.T) {
 		t.Error("pilot-retry-ready label should have been removed")
 	}
 
-	// Verify retry count incremented
-	poller.mu.RLock()
-	retries := poller.retryReadyCount[42]
-	poller.mu.RUnlock()
-	if retries != 1 {
-		t.Errorf("retry count = %d, want 1", retries)
+	// Verify retry was recorded via the label source of truth (pilot-retry-1).
+	if !retry1Added.Load() {
+		t.Error("pilot-retry-1 label should have been added on the first retry")
 	}
 }
 
@@ -216,15 +230,15 @@ func TestPoller_WithMaxRetryReadyRetries(t *testing.T) {
 	poller, _ := NewPoller(client, "owner/repo", "pilot", 30*time.Second,
 		WithMaxRetryReadyRetries(5),
 	)
-	if poller.maxRetryReadyRetries != 5 {
-		t.Errorf("maxRetryReadyRetries = %d, want 5", poller.maxRetryReadyRetries)
+	if poller.dispatch.maxRetryReadyRetries != 5 {
+		t.Errorf("maxRetryReadyRetries = %d, want 5", poller.dispatch.maxRetryReadyRetries)
 	}
 
 	// Negative values should be clamped to 0
 	poller2, _ := NewPoller(client, "owner/repo", "pilot", 30*time.Second,
 		WithMaxRetryReadyRetries(-1),
 	)
-	if poller2.maxRetryReadyRetries != 0 {
-		t.Errorf("maxRetryReadyRetries = %d, want 0 (clamped from -1)", poller2.maxRetryReadyRetries)
+	if poller2.dispatch.maxRetryReadyRetries != 0 {
+		t.Errorf("maxRetryReadyRetries = %d, want 0 (clamped from -1)", poller2.dispatch.maxRetryReadyRetries)
 	}
 }

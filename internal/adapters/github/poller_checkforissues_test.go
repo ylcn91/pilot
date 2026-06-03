@@ -212,7 +212,7 @@ func TestPoller_CheckForNewIssues_SkipsAlreadyProcessed(t *testing.T) {
 
 	// GH-2176: Set retry count to max so issue is skipped (not auto-retried)
 	poller.mu.Lock()
-	poller.failedRetryCount[1] = 3
+	poller.dispatch.failedRetryCount[1] = 3
 	poller.mu.Unlock()
 
 	poller.checkForNewIssues(context.Background())

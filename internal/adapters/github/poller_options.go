@@ -77,7 +77,7 @@ func WithProcessedStore(store ProcessedStore) PollerOption {
 // marked processed before the retry path will allow re-dispatch. Default: 5 minutes.
 func WithRetryGracePeriod(d time.Duration) PollerOption {
 	return func(p *Poller) {
-		p.retryGracePeriod = d
+		p.dispatch.retryGracePeriod = d
 	}
 }
 
@@ -85,7 +85,7 @@ func WithRetryGracePeriod(d time.Duration) PollerOption {
 // queued or in-progress before allowing retry after the grace period expires.
 func WithTaskChecker(tc TaskChecker) PollerOption {
 	return func(p *Poller) {
-		p.taskChecker = tc
+		p.dispatch.taskChecker = tc
 	}
 }
 
@@ -93,8 +93,8 @@ func WithTaskChecker(tc TaskChecker) PollerOption {
 // of tasks that already have a completed execution in the database (GH-2242).
 func WithExecutionChecker(ec ExecutionChecker, projectPath string) PollerOption {
 	return func(p *Poller) {
-		p.execChecker = ec
-		p.projectPath = projectPath
+		p.dispatch.execChecker = ec
+		p.dispatch.projectPath = projectPath
 	}
 }
 
@@ -105,7 +105,7 @@ func WithMaxFailedRetries(n int) PollerOption {
 		if n < 0 {
 			n = 0
 		}
-		p.maxFailedRetries = n
+		p.dispatch.maxFailedRetries = n
 	}
 }
 
@@ -116,7 +116,7 @@ func WithMaxRetryReadyRetries(n int) PollerOption {
 		if n < 0 {
 			n = 0
 		}
-		p.maxRetryReadyRetries = n
+		p.dispatch.maxRetryReadyRetries = n
 	}
 }
 
@@ -134,14 +134,14 @@ func WithMaxConcurrent(n int) PollerOption {
 // Pass nil to disable (same as not calling this option).
 func WithPreFlightJudge(judge PreFlightJudger) PollerOption {
 	return func(p *Poller) {
-		p.preFlightJudge = judge
+		p.dispatch.preFlightJudge = judge
 	}
 }
 
 // WithExecutionSaver sets the store used to persist pre-flight rejection records.
 func WithExecutionSaver(saver ExecutionSaver) PollerOption {
 	return func(p *Poller) {
-		p.execSaver = saver
+		p.dispatch.execSaver = saver
 	}
 }
 
@@ -165,7 +165,7 @@ func WithPollerMetrics(rec skipreason.PollerMetricsRecorder) PollerOption {
 // as the candidate fetch in findOldestUnprocessedIssue; all downstream filters are unchanged.
 func WithProjectBoardSource(src *ProjectBoardSource) PollerOption {
 	return func(p *Poller) {
-		p.projectBoardSource = src
+		p.board.projectBoardSource = src
 	}
 }
 
@@ -173,7 +173,7 @@ func WithProjectBoardSource(src *ProjectBoardSource) PollerOption {
 // Projects V2 board after confirmed dispatch. No-op when bs is nil or inProgressStatus is "".
 func WithBoardSync(bs *ProjectBoardSync, inProgressStatus string) PollerOption {
 	return func(p *Poller) {
-		p.boardSync = bs
-		p.inProgressStatus = inProgressStatus
+		p.board.boardSync = bs
+		p.board.inProgressStatus = inProgressStatus
 	}
 }

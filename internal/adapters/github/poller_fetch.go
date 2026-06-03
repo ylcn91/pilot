@@ -20,12 +20,12 @@ import (
 // consulted the board source, so source_enabled + mode:parallel silently
 // reverted to label polling.
 func (p *Poller) fetchCandidates(ctx context.Context) ([]*Issue, error) {
-	if p.projectBoardSource != nil {
-		sourceStatus := p.projectBoardSource.config.SourceStatus
+	if p.board.projectBoardSource != nil {
+		sourceStatus := p.board.projectBoardSource.config.SourceStatus
 		if sourceStatus == "" {
 			sourceStatus = "Todo"
 		}
-		return p.projectBoardSource.FindIssuesFromProject(ctx, sourceStatus)
+		return p.board.projectBoardSource.FindIssuesFromProject(ctx, sourceStatus)
 	}
 	return p.client.ListIssues(ctx, p.owner, p.repo, &ListIssuesOptions{
 		Labels: []string{p.label},
@@ -95,18 +95,18 @@ func (p *Poller) findOldestUnprocessedIssue(ctx context.Context) (*Issue, error)
 		// If processed but no status labels, allow retry (pilot-failed was removed)
 		if processed {
 			// GH-2201: Check grace period before allowing retry
-			if p.retryGracePeriod > 0 && time.Since(processedAt) < p.retryGracePeriod {
+			if p.dispatch.retryGracePeriod > 0 && time.Since(processedAt) < p.dispatch.retryGracePeriod {
 				p.logger.Debug("Issue within retry grace period, skipping",
 					slog.Int("number", issue.Number),
 					slog.Duration("elapsed", time.Since(processedAt)),
-					slog.Duration("grace_period", p.retryGracePeriod))
+					slog.Duration("grace_period", p.dispatch.retryGracePeriod))
 				continue
 			}
 
 			// GH-2201: Check if task is still queued/in-progress
-			if p.taskChecker != nil {
+			if p.dispatch.taskChecker != nil {
 				taskID := fmt.Sprintf("GH-%d", issue.Number)
-				if p.taskChecker.IsTaskQueued(taskID) {
+				if p.dispatch.taskChecker.IsTaskQueued(taskID) {
 					p.logger.Debug("Issue still queued/in-progress, skipping retry",
 						slog.Int("number", issue.Number),
 						slog.String("task_id", taskID))
@@ -153,9 +153,9 @@ func (p *Poller) findOldestUnprocessedIssue(ctx context.Context) (*Issue, error)
 
 		// GH-3269: Mirror the parallel-mode HasCompletedExecution guard — prevents
 		// re-dispatch when the pilot-done label failed to apply after execution.
-		if p.execChecker != nil {
+		if p.dispatch.execChecker != nil {
 			taskID := fmt.Sprintf("GH-%d", issue.Number)
-			completed, err := p.execChecker.HasCompletedExecution(taskID, p.projectPath)
+			completed, err := p.dispatch.execChecker.HasCompletedExecution(taskID, p.dispatch.projectPath)
 			if err != nil {
 				p.logger.Warn("Failed to check execution status",
 					slog.Int("number", issue.Number),

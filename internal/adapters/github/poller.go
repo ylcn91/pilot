@@ -78,6 +78,60 @@ type IssueMetricsRecorder interface {
 	RecordIssueProcessed(result string)
 }
 
+// DispatchPolicy groups the knobs that govern whether and when an issue is
+// dispatched: retry strategy (failed + retry-ready budgets, grace period,
+// task-queued guard), the pre-flight quality judge, and the completed-execution
+// guard. Extracted from the Poller god struct; behavior is unchanged — these
+// were previously flat fields on Poller.
+type DispatchPolicy struct {
+	// GH-2201: Retry grace period prevents rapid re-dispatch of recently-processed
+	// issues. When a processed issue's status labels are removed, the poller waits
+	// this duration before allowing retry. Default: 5 minutes.
+	retryGracePeriod time.Duration
+
+	// GH-2201: taskChecker verifies whether an issue is still queued/in-progress
+	// before allowing retry after the grace period expires.
+	taskChecker TaskChecker
+
+	// GH-2176: Auto-retry issues stuck with pilot-failed from execution failures.
+	// failedRetryCount tracks how many times each issue has been retried after
+	// pilot-failed; maxFailedRetries caps it (default: 3).
+	failedRetryCount map[int]int
+	maxFailedRetries int
+
+	// GH-2276/GH-2432: Auto-retry issues with pilot-retry-ready (PR closed without
+	// merge). The budget is tracked via GitHub labels (pilot-retry-1/2/exhausted);
+	// maxRetryReadyRetries records the configured cap (default: 3).
+	maxRetryReadyRetries int
+
+	// GH-2802: Pre-flight judge evaluates issues before dispatch. nil means
+	// disabled (config flag executor.pre_flight_judge.enabled=false). execSaver
+	// persists pre-flight rejection records for observability.
+	preFlightJudge PreFlightJudger
+	execSaver      ExecutionSaver
+
+	// GH-2242: execChecker prevents re-dispatch of completed tasks when the
+	// pilot-done label failed to apply. projectPath scopes the lookup.
+	execChecker ExecutionChecker
+	projectPath string
+}
+
+// BoardConfig groups the Projects V2 board integration knobs: the candidate
+// source column (GH-3228) and the in-progress write-back on dispatch (GH-3252).
+// Extracted from the Poller god struct; behavior is unchanged.
+type BoardConfig struct {
+	// projectBoardSource sources candidates from a Projects V2 board column
+	// (GH-3228). When non-nil, replaces label-based ListIssues in
+	// findOldestUnprocessedIssue.
+	projectBoardSource *ProjectBoardSource
+
+	// boardSync moves the issue card to inProgressStatus on confirmed dispatch
+	// (GH-3252). nil or empty inProgressStatus disables the write-back, keeping
+	// label-mode identical.
+	boardSync        *ProjectBoardSync
+	inProgressStatus string
+}
+
 // IssueResult is returned by the issue handler with PR information
 type IssueResult struct {
 	Success    bool
@@ -125,34 +179,9 @@ type Poller struct {
 	// Persistent processed store (optional)
 	processedStore ProcessedStore
 
-	// GH-2201: Retry grace period prevents rapid re-dispatch of recently-processed issues.
-	// When a processed issue's status labels are removed, the poller waits this duration
-	// before allowing retry. Default: 5 minutes.
-	retryGracePeriod time.Duration
-
-	// GH-2201: TaskChecker verifies whether an issue is still queued/in-progress
-	// before allowing retry after the grace period expires.
-	taskChecker TaskChecker
-
-	// GH-2176: Auto-retry issues stuck with pilot-failed from execution failures.
-	// Tracks how many times each issue has been retried after pilot-failed.
-	failedRetryCount map[int]int
-	maxFailedRetries int // default: 3
-
-	// GH-2276: Auto-retry issues with pilot-retry-ready (PR closed without merge).
-	// Tracks how many times each issue has been retried after pilot-retry-ready.
-	retryReadyCount      map[int]int
-	maxRetryReadyRetries int // default: 3
-
-	// GH-2242: ExecutionChecker prevents re-dispatch of completed tasks
-	// when pilot-done label failed to apply.
-	execChecker ExecutionChecker
-	projectPath string
-
-	// GH-2802: Pre-flight judge evaluates issues before dispatch.
-	// nil means disabled (config flag executor.pre_flight_judge.enabled=false).
-	preFlightJudge PreFlightJudger
-	execSaver      ExecutionSaver
+	// dispatch groups the retry strategy, pre-flight judge, and completed-execution
+	// guard (GH-2176/2201/2242/2276/2432/2802).
+	dispatch DispatchPolicy
 
 	// metricsRecorder records issue processing outcomes (optional).
 	metricsRecorder IssueMetricsRecorder
@@ -160,14 +189,9 @@ type Poller struct {
 	// pollerMetrics records per-repo dispatch/skip counters (TASK-293, GH-3064).
 	pollerMetrics skipreason.PollerMetricsRecorder
 
-	// projectBoardSource sources candidates from a Projects V2 board column (GH-3228).
-	// When non-nil, replaces label-based ListIssues in findOldestUnprocessedIssue.
-	projectBoardSource *ProjectBoardSource
-
-	// boardSync moves the issue card to inProgressStatus on confirmed dispatch (GH-3252).
-	// nil or empty inProgressStatus disables the write-back, keeping label-mode identical.
-	boardSync        *ProjectBoardSync
-	inProgressStatus string
+	// board groups the Projects V2 candidate source and in-progress write-back
+	// (GH-3228/GH-3252).
+	board BoardConfig
 }
 
 // NewPoller creates a new GitHub issue poller
@@ -178,22 +202,23 @@ func NewPoller(client *Client, repo string, label string, interval time.Duration
 	}
 
 	p := &Poller{
-		client:               client,
-		owner:                parts[0],
-		repo:                 parts[1],
-		label:                label,
-		interval:             interval,
-		processed:            make(map[int]time.Time),
-		logger:               logging.WithComponent("github-poller"),
-		executionMode:        ExecutionModeAuto, // Default matches config.DefaultExecutionConfig()
-		waitForMerge:         true,
-		prPollInterval:       30 * time.Second,
-		prTimeout:            1 * time.Hour,
-		retryGracePeriod:     5 * time.Minute, // GH-2201: default grace period
-		failedRetryCount:     make(map[int]int),
-		maxFailedRetries:     3, // GH-2176: default max retries for pilot-failed issues
-		retryReadyCount:      make(map[int]int),
-		maxRetryReadyRetries: 3, // GH-2276: default max retries for pilot-retry-ready issues
+		client:         client,
+		owner:          parts[0],
+		repo:           parts[1],
+		label:          label,
+		interval:       interval,
+		processed:      make(map[int]time.Time),
+		logger:         logging.WithComponent("github-poller"),
+		executionMode:  ExecutionModeAuto, // Default matches config.DefaultExecutionConfig()
+		waitForMerge:   true,
+		prPollInterval: 30 * time.Second,
+		prTimeout:      1 * time.Hour,
+		dispatch: DispatchPolicy{
+			retryGracePeriod:     5 * time.Minute, // GH-2201: default grace period
+			failedRetryCount:     make(map[int]int),
+			maxFailedRetries:     3, // GH-2176: default max retries for pilot-failed issues
+			maxRetryReadyRetries: 3, // GH-2276: default max retries for pilot-retry-ready issues
+		},
 	}
 
 	for _, opt := range opts {

@@ -186,7 +186,7 @@ func TestSourceEnabledFalse_UsesLabelPath(t *testing.T) {
 		t.Fatalf("NewPoller: %v", err)
 	}
 	// projectBoardSource is nil → must use label path
-	if poller.projectBoardSource != nil {
+	if poller.board.projectBoardSource != nil {
 		t.Fatal("expected projectBoardSource to be nil when not configured")
 	}
 

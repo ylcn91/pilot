@@ -59,7 +59,7 @@ func TestPoller_AutoRetryFailedIssue_FirstFailure(t *testing.T) {
 
 	// Verify retry count incremented
 	poller.mu.RLock()
-	retries := poller.failedRetryCount[42]
+	retries := poller.dispatch.failedRetryCount[42]
 	poller.mu.RUnlock()
 	if retries != 1 {
 		t.Errorf("retry count = %d, want 1", retries)
@@ -86,7 +86,7 @@ func TestPoller_AutoRetryFailedIssue_RetryLimitReached(t *testing.T) {
 
 	// Simulate: already retried 3 times
 	poller.mu.Lock()
-	poller.failedRetryCount[42] = 3
+	poller.dispatch.failedRetryCount[42] = 3
 	poller.mu.Unlock()
 
 	issue, err := poller.findOldestUnprocessedIssue(context.Background())
@@ -236,7 +236,7 @@ func TestPoller_AutoRetryFailedIssue_ParallelMode_LimitReached(t *testing.T) {
 
 	// Simulate: already at max retries
 	poller.mu.Lock()
-	poller.failedRetryCount[42] = 2
+	poller.dispatch.failedRetryCount[42] = 2
 	poller.mu.Unlock()
 
 	poller.checkForNewIssues(context.Background())

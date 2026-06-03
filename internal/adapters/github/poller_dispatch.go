@@ -121,8 +121,8 @@ func (p *Poller) startSequential(ctx context.Context) {
 		)
 
 		// GH-2802: Pre-flight judge — evaluate issue quality before burning a worker slot.
-		if p.preFlightJudge != nil {
-			verdict, pfErr := p.preFlightJudge.JudgeIssue(ctx, issue.Title, issue.Body, "")
+		if p.dispatch.preFlightJudge != nil {
+			verdict, pfErr := p.dispatch.preFlightJudge.JudgeIssue(ctx, issue.Title, issue.Body, "")
 			if pfErr != nil {
 				p.logger.Warn("pre-flight judge error (fail-open)",
 					slog.Int("issue", issue.Number),

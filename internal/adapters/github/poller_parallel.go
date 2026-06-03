@@ -86,19 +86,19 @@ func (p *Poller) checkForNewIssues(ctx context.Context) {
 		// If processed but no status labels, allow retry (pilot-failed was removed)
 		if processed {
 			// GH-2201: Check grace period before allowing retry
-			if p.retryGracePeriod > 0 && time.Since(processedAt) < p.retryGracePeriod {
+			if p.dispatch.retryGracePeriod > 0 && time.Since(processedAt) < p.dispatch.retryGracePeriod {
 				p.logger.Debug("Issue within retry grace period, skipping",
 					slog.Int("number", issue.Number),
 					slog.Duration("elapsed", time.Since(processedAt)),
-					slog.Duration("grace_period", p.retryGracePeriod))
+					slog.Duration("grace_period", p.dispatch.retryGracePeriod))
 				p.recordSkip(skipreason.ReasonProcessedGrace)
 				continue
 			}
 
 			// GH-2201: Check if task is still queued/in-progress
-			if p.taskChecker != nil {
+			if p.dispatch.taskChecker != nil {
 				taskID := fmt.Sprintf("GH-%d", issue.Number)
-				if p.taskChecker.IsTaskQueued(taskID) {
+				if p.dispatch.taskChecker.IsTaskQueued(taskID) {
 					p.logger.Debug("Issue still queued/in-progress, skipping retry",
 						slog.Int("number", issue.Number),
 						slog.String("task_id", taskID))
@@ -160,9 +160,9 @@ func (p *Poller) checkForNewIssues(ctx context.Context) {
 
 		// GH-2242: Before dispatching, check if we already have a completed execution.
 		// This prevents re-dispatch when pilot-done label failed to apply.
-		if p.execChecker != nil {
+		if p.dispatch.execChecker != nil {
 			taskID := fmt.Sprintf("GH-%d", issue.Number)
-			completed, err := p.execChecker.HasCompletedExecution(taskID, p.projectPath)
+			completed, err := p.dispatch.execChecker.HasCompletedExecution(taskID, p.dispatch.projectPath)
 			if err != nil {
 				p.logger.Warn("Failed to check execution status",
 					slog.Int("number", issue.Number),
@@ -226,8 +226,8 @@ func (p *Poller) checkForNewIssues(ctx context.Context) {
 		}
 
 		// GH-2802: Pre-flight judge — evaluate issue quality before burning a worker slot.
-		if p.preFlightJudge != nil {
-			verdict, pfErr := p.preFlightJudge.JudgeIssue(ctx, issue.Title, issue.Body, "")
+		if p.dispatch.preFlightJudge != nil {
+			verdict, pfErr := p.dispatch.preFlightJudge.JudgeIssue(ctx, issue.Title, issue.Body, "")
 			if pfErr != nil {
 				p.logger.Warn("pre-flight judge error (fail-open)",
 					slog.Int("issue", issue.Number),

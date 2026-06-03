@@ -35,8 +35,8 @@ func (p *Poller) handlePreFlightReject(ctx context.Context, issue *Issue, verdic
 			slog.Any("error", err))
 	}
 
-	if p.execSaver != nil {
-		if err := p.execSaver.SaveDeclinedExecution(taskID, p.projectPath, "declined-preflight", verdict.Reason); err != nil {
+	if p.dispatch.execSaver != nil {
+		if err := p.dispatch.execSaver.SaveDeclinedExecution(taskID, p.dispatch.projectPath, "declined-preflight", verdict.Reason); err != nil {
 			p.logger.Warn("pre-flight: failed to save execution record",
 				slog.Int("issue", issue.Number),
 				slog.Any("error", err))
@@ -156,14 +156,14 @@ func (p *Poller) shouldRetryFailedIssue(ctx context.Context, issue *Issue) bool 
 	}
 
 	p.mu.RLock()
-	retries := p.failedRetryCount[issue.Number]
+	retries := p.dispatch.failedRetryCount[issue.Number]
 	p.mu.RUnlock()
 
-	if retries >= p.maxFailedRetries {
+	if retries >= p.dispatch.maxFailedRetries {
 		p.logger.Warn("Issue has reached max failed retries, skipping",
 			slog.Int("number", issue.Number),
 			slog.Int("retries", retries),
-			slog.Int("max", p.maxFailedRetries),
+			slog.Int("max", p.dispatch.maxFailedRetries),
 		)
 		return false
 	}
@@ -183,7 +183,7 @@ func (p *Poller) shouldRetryFailedIssue(ctx context.Context, issue *Issue) bool 
 	}
 
 	p.mu.Lock()
-	p.failedRetryCount[issue.Number] = retries + 1
+	p.dispatch.failedRetryCount[issue.Number] = retries + 1
 	p.mu.Unlock()
 
 	// Clear from processed map so the issue can be re-picked
@@ -192,7 +192,7 @@ func (p *Poller) shouldRetryFailedIssue(ctx context.Context, issue *Issue) bool 
 	p.logger.Info("Auto-retrying pilot-failed issue",
 		slog.Int("number", issue.Number),
 		slog.Int("retry", retries+1),
-		slog.Int("max", p.maxFailedRetries),
+		slog.Int("max", p.dispatch.maxFailedRetries),
 	)
 
 	return true
@@ -298,11 +298,8 @@ func (p *Poller) shouldRetryRetryReadyIssue(ctx context.Context, issue *Issue) b
 		return false
 	}
 
-	// Keep the legacy in-memory counter in sync so existing tests/state observers
-	// remain consistent. GH-2432: this is now a mirror, not the source of truth.
-	p.mu.Lock()
-	p.retryReadyCount[issue.Number]++
-	p.mu.Unlock()
+	// GH-2432: the retry budget is now tracked entirely via the pilot-retry-N
+	// labels swapped above; no in-memory counter to bump.
 
 	// Clear from processed map so the issue can be re-picked
 	p.ClearProcessed(issue.Number)
