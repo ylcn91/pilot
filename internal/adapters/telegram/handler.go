@@ -44,24 +44,6 @@ type ApprovalCallbackHandler interface {
 	HandleCallback(ctx context.Context, callbackID, data, userID, username string) bool
 }
 
-// PendingTask represents a task awaiting confirmation
-type PendingTask struct {
-	TaskID      string
-	Description string
-	ChatID      string
-	MessageID   int64
-	SenderID    int64 // Telegram user ID of the sender for RBAC (GH-634)
-	CreatedAt   time.Time
-}
-
-// RunningTask represents a task currently being executed
-type RunningTask struct {
-	TaskID    string
-	ChatID    string
-	StartedAt time.Time
-	Cancel    context.CancelFunc
-}
-
 // Handler processes incoming Telegram messages and executes tasks
 type Handler struct {
 	client           *Client

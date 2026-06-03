@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 // TestPendingTask tests pending task management via commsHandler
@@ -145,34 +144,6 @@ func TestRunningTask(t *testing.T) {
 	}
 
 	// Full lifecycle (execute → running → done) tested in comms/handler_test.go.
-}
-
-// TestPendingTaskStruct tests PendingTask struct
-func TestPendingTaskStruct(t *testing.T) {
-	now := time.Now()
-	task := &PendingTask{
-		TaskID:      "TASK-01",
-		Description: "Test description",
-		ChatID:      "12345",
-		MessageID:   100,
-		CreatedAt:   now,
-	}
-
-	if task.TaskID != "TASK-01" {
-		t.Errorf("TaskID = %q, want TASK-01", task.TaskID)
-	}
-	if task.Description != "Test description" {
-		t.Errorf("Description = %q, want Test description", task.Description)
-	}
-	if task.ChatID != "12345" {
-		t.Errorf("ChatID = %q, want 12345", task.ChatID)
-	}
-	if task.MessageID != 100 {
-		t.Errorf("MessageID = %d, want 100", task.MessageID)
-	}
-	if !task.CreatedAt.Equal(now) {
-		t.Errorf("CreatedAt = %v, want %v", task.CreatedAt, now)
-	}
 }
 
 // TestTaskInfo tests TaskInfo struct
