@@ -21,14 +21,14 @@ func main() {
 
 	if err := wails.Run(&options.App{
 		Title:     "Pilot " + version,
-		Width:     480,
+		Width:     1100,
 		Height:    900,
-		MinWidth:  400,
+		MinWidth:  720,
 		MinHeight: 600,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 30, G: 34, B: 42, A: 255},
+		BackgroundColour: &options.RGBA{R: 13, G: 17, B: 23, A: 255},
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,
 		Bind:             []interface{}{app},

@@ -1,9 +1,8 @@
 import React from 'react'
-
-type BarStatus = 'done' | 'running' | 'queued' | 'pending' | 'failed'
+import { Status, STATUS_FILL } from './status'
 
 interface ProgressBarProps {
-  status: BarStatus
+  status: Status
   progress: number // 0.0 - 1.0
   shimmerDelay?: number // 0-4
   className?: string
@@ -11,30 +10,34 @@ interface ProgressBarProps {
 
 export function ProgressBar({ status, progress, shimmerDelay = 0, className = '' }: ProgressBarProps) {
   const w = className || 'w-20'
+  const pct = Math.max(0, Math.min(1, progress)) * 100
+  const valueNow = Math.round(pct)
+
+  const ariaProps = {
+    role: 'progressbar' as const,
+    'aria-valuenow': valueNow,
+    'aria-valuemin': 0,
+    'aria-valuemax': 100,
+    'aria-label': 'Task progress',
+  }
 
   if (status === 'queued') {
     const delayClass = `shimmer-delay-${Math.min(shimmerDelay, 4)}`
     return (
-      <div className={`inline-block ${w} h-2 rounded-sm shimmer-bar ${delayClass}`} />
+      <div {...ariaProps} className={`inline-block ${w} h-2 rounded-md shimmer-bar ${delayClass}`} />
     )
   }
 
   if (status === 'pending') {
     return (
-      <div className={`inline-flex ${w} h-2 rounded-sm bg-slate overflow-hidden`} />
+      <div {...ariaProps} className={`inline-flex ${w} h-2 rounded-md bg-fill overflow-hidden`} />
     )
   }
 
-  const pct = Math.max(0, Math.min(1, progress)) * 100
-  const fillColor =
-    status === 'done'
-      ? 'bg-sage'
-      : status === 'failed'
-      ? 'bg-rose'
-      : 'bg-steel'
+  const fillColor = STATUS_FILL[status] ?? 'bg-accent'
 
   return (
-    <div className={`inline-flex ${w} h-2 rounded-sm bg-slate overflow-hidden`}>
+    <div {...ariaProps} className={`inline-flex ${w} h-2 rounded-md bg-fill overflow-hidden`}>
       <div className={`h-full ${fillColor}`} style={{ width: `${pct}%` }} />
     </div>
   )

@@ -1,21 +1,46 @@
 import type { Config } from 'tailwindcss'
+import { COLORS } from './src/components/ui/colors'
 
 export default {
   content: ['./src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        steel: '#7eb8da',
-        sage: '#7ec699',
-        rose: '#d48a8a',
-        slate: '#3d4450',
-        midgray: '#8b949e',
-        gray: '#6e7681',
-        amber: '#d4a054',
-        lightgray: '#c9d1d9',
-        bg: '#1e222a',
-        card: '#252a35',
-        border: '#2d3340',
+        // Surfaces
+        bg: COLORS.bg,
+        card: COLORS.card,
+        raised: COLORS.raised,
+        border: COLORS.border,
+        // Text
+        fg: COLORS.fg,
+        secondary: COLORS.secondary,
+        muted: COLORS.muted,
+        faint: COLORS.faint,
+        // The one accent + semantic status
+        accent: COLORS.accent,
+        success: COLORS.success,
+        danger: COLORS.danger,
+        warning: COLORS.warning,
+        // Non-text fill / track
+        fill: COLORS.fill,
+        // Legacy aliases (kept so existing panels keep compiling) — re-pointed
+        // to the AA-verified palette. New code should prefer the tokens above.
+        steel: COLORS.accent,
+        sage: COLORS.success,
+        rose: COLORS.danger,
+        amber: COLORS.warning,
+        slate: COLORS.fill,
+        lightgray: COLORS.secondary,
+        midgray: COLORS.muted,
+        gray: COLORS.faint,
+      },
+      fontSize: {
+        meta: ['12px', { lineHeight: '17px' }],
+        sm: ['13px', { lineHeight: '19px' }],
+        base: ['14px', { lineHeight: '21px' }],
+        cardTitle: ['13px', { lineHeight: '18px' }],
+        metric: ['22px', { lineHeight: '28px' }],
+        heading: ['17px', { lineHeight: '24px' }],
       },
       fontFamily: {
         mono: ['SF Mono', 'Menlo', 'Monaco', 'Consolas', 'monospace'],

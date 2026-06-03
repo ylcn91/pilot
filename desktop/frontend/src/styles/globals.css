@@ -14,27 +14,53 @@
     height: 100%;
     margin: 0;
     padding: 0;
-    background-color: #1e222a;
-    color: #c9d1d9;
+    color-scheme: dark;
+    background-color: #0d1117;
+    color: #e6edf3;
     font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
-    font-size: 12px;
-    line-height: 1.5;
+    font-size: 13px;
+    line-height: 19px;
     overflow: hidden;
   }
 
-  /* Wails-specific styles: disable text selection, add titlebar padding */
+  /* Content is selectable by default; only the titlebar drag strip opts out. */
+  body {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* Wails-specific: add titlebar inset padding when hidden-inset titlebar. */
   .wails-mode {
-    -webkit-user-select: none;
-    user-select: none;
-    /* macOS traffic light buttons: add top padding when titlebar hidden-inset */
     padding-top: env(safe-area-inset-top, 0px);
   }
 
-  /* Browser-mode styles: normal text selection, standard scrollbar */
   .browser-mode {
-    -webkit-user-select: auto;
-    user-select: auto;
     padding-top: 0;
+  }
+
+  /* Drag strip: no text selection, no caret while dragging the window. */
+  .titlebar {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Re-enable selection on long-form / copyable content surfaces. */
+  .selectable,
+  .log-scroll,
+  .codex-transcript {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* Visible keyboard focus ring (replaces blanket outline stripping). */
+  :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid #6cb6ff;
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  :focus:not(:focus-visible) {
+    outline: none;
   }
 }
 
@@ -50,7 +76,7 @@
   }
 
   .shimmer-bar {
-    background: linear-gradient(90deg, #3d4450 40%, #8b949e 50%, #3d4450 60%);
+    background: linear-gradient(90deg, #3d4450 40%, #9aa5b1 50%, #3d4450 60%);
     background-size: 200% 100%;
     animation: shimmer 2s infinite linear;
   }
@@ -95,7 +121,7 @@
 
   .dot-leader-key {
     flex: 0 0 auto;
-    color: #8b949e;
+    color: #9aa5b1;
   }
 
   .dot-leader-dots {
@@ -117,5 +143,16 @@
 
   .log-scroll::-webkit-scrollbar {
     display: none;
+  }
+
+  /* Respect reduced-motion: freeze shimmer/pulse with a static fallback. */
+  @media (prefers-reduced-motion: reduce) {
+    .shimmer-bar,
+    .pulse {
+      animation: none !important;
+    }
+    .shimmer-bar {
+      background: #3d4450;
+    }
   }
 }

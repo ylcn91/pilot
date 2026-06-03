@@ -1,4 +1,5 @@
 import React from 'react'
+import { COLORS } from './colors'
 
 interface SparklineProps {
   data: number[]
@@ -12,7 +13,7 @@ interface SparklineProps {
 // Heights are normalized to 1-8 scale; 0 values render at minimum height.
 export function Sparkline({
   data,
-  color = '#7eb8da',
+  color = COLORS.accent,
   width = 120,
   height = 24,
   showDot = true,
@@ -34,7 +35,7 @@ export function Sparkline({
   const lastDotY = height - lastH - 2
 
   return (
-    <svg width={width} height={height} style={{ display: 'block' }}>
+    <svg width={width} height={height} role="img" aria-hidden="true" style={{ display: 'block' }}>
       {bars.map((_, i) => {
         const x = i * (barWidth + gap)
         const h = normalizedHeights[i]
