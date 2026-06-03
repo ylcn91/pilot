@@ -204,6 +204,46 @@ func TestRunRadar_ContextCancelled(t *testing.T) {
 	}
 }
 
+// TestRunRadar_BuildLensScannerError covers the error branch where RunRadar's
+// call to BuildLensScanner fails: RunRadar hardcodes RadarLensName, so the only
+// way the resolver can fail is if the radar lens is not registered. The test
+// temporarily removes the radar lens from the package-private registry (tests in
+// this package run sequentially — none call t.Parallel — so the global mutation
+// is safe), forcing the "unknown lens" path, and asserts RunRadar surfaces it
+// without populating the store. t.Cleanup restores the lens so later tests see
+// the normal registry.
+func TestRunRadar_BuildLensScannerError(t *testing.T) {
+	lensMu.Lock()
+	saved, existed := lensRegistry[RadarLensName]
+	delete(lensRegistry, RadarLensName)
+	lensMu.Unlock()
+	t.Cleanup(func() {
+		lensMu.Lock()
+		if existed {
+			lensRegistry[RadarLensName] = saved
+		} else {
+			delete(lensRegistry, RadarLensName)
+		}
+		lensMu.Unlock()
+	})
+
+	store := NewFindingsStore()
+	store.Set([]pilotapi.Finding{{Title: "prior"}})
+
+	err := RunRadar(context.Background(), RadarConfig{ProjectPath: t.TempDir()}, store)
+	if err == nil {
+		t.Fatal("RunRadar must surface the BuildLensScanner error when the radar lens is unregistered")
+	}
+	if !strings.Contains(err.Error(), "unknown lens") {
+		t.Fatalf("error must come from lens resolution, got %v", err)
+	}
+	// The scanner was never built, so the store must keep its prior contents
+	// untouched — RunRadar only clears on a successful empty scan.
+	if store.Len() != 1 {
+		t.Fatalf("a build error must not mutate the store, got %d findings", store.Len())
+	}
+}
+
 func TestRunRadar_EmptyProjectClearsStore(t *testing.T) {
 	store := NewFindingsStore()
 	store.Set([]pilotapi.Finding{{Title: "stale"}})
