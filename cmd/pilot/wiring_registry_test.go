@@ -5,6 +5,7 @@ import (
 
 	"github.com/ylcn91/pilot/internal/adapters/asana"
 	"github.com/ylcn91/pilot/internal/adapters/azuredevops"
+	"github.com/ylcn91/pilot/internal/adapters/bitbucket"
 	"github.com/ylcn91/pilot/internal/adapters/discord"
 	"github.com/ylcn91/pilot/internal/adapters/gitlab"
 	"github.com/ylcn91/pilot/internal/adapters/jira"
@@ -67,6 +68,13 @@ func TestPollerEnabled_MultipleAdaptersSimultaneously(t *testing.T) {
 				Token:   testutil.FakeGitLabToken,
 				Polling: &gitlab.PollingConfig{Enabled: true},
 			},
+			Bitbucket: &bitbucket.Config{
+				Enabled:   true,
+				Token:     testutil.FakeBitbucketToken,
+				Workspace: "my-workspace",
+				Repo:      "my-repo",
+				Polling:   &bitbucket.PollingConfig{Enabled: true},
+			},
 			// These remain disabled
 			Asana:       &asana.Config{Enabled: false},
 			AzureDevOps: &azuredevops.Config{Enabled: false},
@@ -81,6 +89,7 @@ func TestPollerEnabled_MultipleAdaptersSimultaneously(t *testing.T) {
 		"jira":        true,
 		"discord":     true,
 		"gitlab":      true,
+		"bitbucket":   true,
 		"asana":       false,
 		"azuredevops": false,
 		"plane":       false,

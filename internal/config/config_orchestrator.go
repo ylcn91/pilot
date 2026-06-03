@@ -5,6 +5,7 @@ import (
 
 	"github.com/ylcn91/pilot/internal/adapters/asana"
 	"github.com/ylcn91/pilot/internal/adapters/azuredevops"
+	"github.com/ylcn91/pilot/internal/adapters/bitbucket"
 	"github.com/ylcn91/pilot/internal/adapters/discord"
 	"github.com/ylcn91/pilot/internal/adapters/github"
 	"github.com/ylcn91/pilot/internal/adapters/gitlab"
@@ -32,6 +33,7 @@ type AdaptersConfig struct {
 	Telegram    *telegram.Config    `yaml:"telegram"`
 	GitHub      *github.Config      `yaml:"github"`
 	GitLab      *gitlab.Config      `yaml:"gitlab"`
+	Bitbucket   *bitbucket.Config   `yaml:"bitbucket"`
 	AzureDevOps *azuredevops.Config `yaml:"azure_devops"`
 	Jira        *jira.Config        `yaml:"jira"`
 	Asana       *asana.Config       `yaml:"asana"`

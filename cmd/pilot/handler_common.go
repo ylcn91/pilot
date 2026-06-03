@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/ylcn91/pilot/internal/adapters/azuredevops"
+	"github.com/ylcn91/pilot/internal/adapters/bitbucket"
 	"github.com/ylcn91/pilot/internal/adapters/github"
 	"github.com/ylcn91/pilot/internal/adapters/gitlab"
 	"github.com/ylcn91/pilot/internal/alerts"
@@ -258,6 +259,10 @@ func handleIssueGeneric(ctx context.Context, deps HandlerDeps, info IssueInfo, t
 				}
 			case "azuredevops":
 				if prNum, err := azuredevops.ExtractPRNumber(result.PRUrl); err == nil {
+					hr.PRNumber = prNum
+				}
+			case "bitbucket":
+				if prNum, err := bitbucket.ExtractPRNumber(result.PRUrl); err == nil {
 					hr.PRNumber = prNum
 				}
 			default:

@@ -5,6 +5,7 @@ import (
 
 	"github.com/ylcn91/pilot/internal/adapters/asana"
 	"github.com/ylcn91/pilot/internal/adapters/azuredevops"
+	"github.com/ylcn91/pilot/internal/adapters/bitbucket"
 	"github.com/ylcn91/pilot/internal/adapters/discord"
 	"github.com/ylcn91/pilot/internal/adapters/gitlab"
 	"github.com/ylcn91/pilot/internal/adapters/jira"
@@ -67,6 +68,60 @@ func TestPollerEnabled_Linear(t *testing.T) {
 					Enabled: true,
 					APIKey:  testutil.FakeLinearAPIKey,
 					Polling: &linear.PollingConfig{Enabled: true},
+				},
+			}},
+			enabled: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := reg.Enabled(tt.cfg); got != tt.enabled {
+				t.Errorf("Enabled() = %v, want %v", got, tt.enabled)
+			}
+		})
+	}
+}
+
+func TestPollerEnabled_Bitbucket(t *testing.T) {
+	reg := bitbucketPollerRegistration()
+
+	tests := []struct {
+		name    string
+		cfg     *config.Config
+		enabled bool
+	}{
+		{
+			name:    "nil config",
+			cfg:     &config.Config{Adapters: &config.AdaptersConfig{}},
+			enabled: false,
+		},
+		{
+			name: "enabled without polling",
+			cfg: &config.Config{Adapters: &config.AdaptersConfig{
+				Bitbucket: &bitbucket.Config{Enabled: true},
+			}},
+			enabled: false,
+		},
+		{
+			name: "adapter enabled but polling disabled",
+			cfg: &config.Config{Adapters: &config.AdaptersConfig{
+				Bitbucket: &bitbucket.Config{
+					Enabled: true,
+					Polling: &bitbucket.PollingConfig{Enabled: false},
+				},
+			}},
+			enabled: false,
+		},
+		{
+			name: "fully enabled",
+			cfg: &config.Config{Adapters: &config.AdaptersConfig{
+				Bitbucket: &bitbucket.Config{
+					Enabled:   true,
+					Token:     testutil.FakeBitbucketToken,
+					Workspace: "my-workspace",
+					Repo:      "my-repo",
+					Polling:   &bitbucket.PollingConfig{Enabled: true},
 				},
 			}},
 			enabled: true,
