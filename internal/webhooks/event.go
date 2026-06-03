@@ -1,6 +1,7 @@
 package webhooks
 
 import (
+	"crypto/rand"
 	"time"
 )
 
@@ -104,14 +105,17 @@ func generateEventID() string {
 	return "evt_" + randomString(16)
 }
 
-// randomString generates a random alphanumeric string.
+// randomString generates a random alphanumeric string using crypto/rand.
 func randomString(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
 	b := make([]byte, length)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand never fails on supported platforms; a failure means the
+		// system entropy source is unavailable, which is unrecoverable here.
+		panic("webhooks: crypto/rand unavailable: " + err.Error())
+	}
 	for i := range b {
-		// Use time-based seed for simplicity (in production, use crypto/rand)
-		b[i] = charset[time.Now().UnixNano()%int64(len(charset))]
-		time.Sleep(time.Nanosecond)
+		b[i] = charset[int(b[i])%len(charset)]
 	}
 	return string(b)
 }
