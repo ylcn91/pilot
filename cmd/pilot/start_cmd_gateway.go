@@ -138,7 +138,46 @@ func buildGatewayInfra(cfg *config.Config, cmd *cobra.Command, projectPath strin
 		gw.Runner.SetLogStore(gw.Store)
 	}
 
-	// Create approval manager for autopilot
+	// Create approval manager and register the configured approval handlers.
+	approvalMgr := buildGatewayApprovalManager(gw, cfg)
+
+	// Create autopilot controller and state store if enabled.
+	buildGatewayAutopilot(gw, cfg, approvalMgr, projectPath)
+
+	// Create alerts engine if configured
+	buildGatewayAlertsEngine(gw, cfg)
+
+	// Create monitor and TUI program for dashboard mode
+	if dashboardMode {
+		gw.Runner.SuppressProgressLogs(true)
+		gw.Monitor = executor.NewMonitor()
+		gw.Runner.SetMonitor(gw.Monitor)
+		// GH-1336: Wire monitor to autopilot controller so dashboard shows "done" after merge
+		if gw.AutopilotController != nil {
+			gw.AutopilotController.SetMonitor(gw.Monitor)
+		}
+		model := dashboard.NewModelWithOptions(version, gw.Store, gw.AutopilotController, nil)
+		model.SetProjectPath(projectPath)
+		applyDashboardBannerMeta(&model, cfg, cmd)
+		model.EnableSplash(resolvedConfigPath())
+		gw.Program = tea.NewProgram(model,
+			tea.WithAltScreen(),
+			tea.WithInput(os.Stdin),
+			tea.WithOutput(os.Stdout),
+		)
+		// GH-2291: Progress/token callbacks are registered by runDashboardMode
+		// which merges task states from both adapter pollers and gateway webhooks.
+	}
+
+	return gw, cleanup, nil
+}
+
+// buildGatewayApprovalManager creates the approval manager for gateway-mode
+// autopilot and registers the Telegram and Slack approval handlers when their
+// adapters are enabled. The Telegram handler is also stashed on gw so the
+// caller can surface it; the GitHub approval handler is registered later inside
+// buildGatewayAutopilot because it needs the GitHub client built there.
+func buildGatewayApprovalManager(gw *gatewayInfra, cfg *config.Config) *approval.Manager {
 	approvalMgr := approval.NewManager(cfg.Approval)
 
 	// Register Telegram approval handler if enabled
@@ -169,6 +208,16 @@ func buildGatewayInfra(cfg *config.Config, cmd *cobra.Command, projectPath strin
 		}
 	}
 
+	return approvalMgr
+}
+
+// buildGatewayAutopilot creates the autopilot controller (and its SQLite state
+// store) for gateway mode when autopilot is enabled and a GitHub repo is
+// configured. It registers the GitHub approval handler, wires board sync and
+// guardrails, and sets approvalMgr's state writer to the controller. On any
+// non-fatal failure it logs and leaves the corresponding gw field nil, matching
+// the original inline behavior.
+func buildGatewayAutopilot(gw *gatewayInfra, cfg *config.Config, approvalMgr *approval.Manager, projectPath string) {
 	// Create autopilot controller if enabled
 	if cfg.Orchestrator.Autopilot != nil && cfg.Orchestrator.Autopilot.Enabled {
 		ghToken := ""
@@ -239,33 +288,6 @@ func buildGatewayInfra(cfg *config.Config, cmd *cobra.Command, projectPath strin
 			}
 		}
 	}
-
-	// Create alerts engine if configured
-	buildGatewayAlertsEngine(gw, cfg)
-
-	// Create monitor and TUI program for dashboard mode
-	if dashboardMode {
-		gw.Runner.SuppressProgressLogs(true)
-		gw.Monitor = executor.NewMonitor()
-		gw.Runner.SetMonitor(gw.Monitor)
-		// GH-1336: Wire monitor to autopilot controller so dashboard shows "done" after merge
-		if gw.AutopilotController != nil {
-			gw.AutopilotController.SetMonitor(gw.Monitor)
-		}
-		model := dashboard.NewModelWithOptions(version, gw.Store, gw.AutopilotController, nil)
-		model.SetProjectPath(projectPath)
-		applyDashboardBannerMeta(&model, cfg, cmd)
-		model.EnableSplash(resolvedConfigPath())
-		gw.Program = tea.NewProgram(model,
-			tea.WithAltScreen(),
-			tea.WithInput(os.Stdin),
-			tea.WithOutput(os.Stdout),
-		)
-		// GH-2291: Progress/token callbacks are registered by runDashboardMode
-		// which merges task states from both adapter pollers and gateway webhooks.
-	}
-
-	return gw, cleanup, nil
 }
 
 // buildGatewayAlertsEngine creates and starts the alerts engine for gateway

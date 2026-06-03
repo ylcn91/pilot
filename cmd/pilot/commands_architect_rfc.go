@@ -8,6 +8,7 @@ import (
 
 	"github.com/ylcn91/pilot/internal/architect"
 	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/pilotapi"
 )
 
 // rfcTitleDefault is the working title used for the generated RFC when no
@@ -51,7 +52,7 @@ func runArchitectRFC(ctx context.Context, cfg *config.Config, agentDir string, f
 	// On the write path, try to enrich the narrative sections with the
 	// configured backend; any failure falls back silently to the offline doc.
 	if !f.dryRun {
-		if enriched, ok := enrichRFCWithBackend(ctx, cfg, agentDir, f, signals, graph, owners); ok {
+		if enriched, ok := enrichRFCWithBackend(ctx, cfg, agentDir, f, signals, findings, &plan); ok {
 			doc = enriched
 		}
 	}
@@ -95,8 +96,10 @@ func scanRFCSignals(ctx context.Context, cfg *config.Config, agentDir string, f 
 // enrichRFCWithBackend asks the configured backend (via the rfc slant) for the
 // narrative sections and folds them into the RFC. It returns ok=false on any
 // error or empty response so the caller keeps the offline document; the
-// deterministic tiny-PR sequence is always preserved.
-func enrichRFCWithBackend(ctx context.Context, cfg *config.Config, agentDir string, f *architectFlags, signals []architect.Signal, graph *architect.PackageGraph, owners map[string]string) (architect.RFCDoc, bool) {
+// deterministic tiny-PR sequence is always preserved. The deterministic
+// findings and plan are computed once by the caller and threaded through here
+// so they are not recomputed.
+func enrichRFCWithBackend(ctx context.Context, cfg *config.Config, agentDir string, f *architectFlags, signals []architect.Signal, findings []pilotapi.Finding, plan *architect.RefactorPlan) (architect.RFCDoc, bool) {
 	lens, err := architect.LensByName(f.lens)
 	if err != nil {
 		return architect.RFCDoc{}, false
@@ -107,13 +110,12 @@ func enrichRFCWithBackend(ctx context.Context, cfg *config.Config, agentDir stri
 		agentDir,
 		architect.WithSlant(lens.Slant),
 	)
-	findings, err := analyzer.Propose(ctx, signals)
-	if err != nil || len(findings) == 0 {
+	proposed, err := analyzer.Propose(ctx, signals)
+	if err != nil || len(proposed) == 0 {
 		return architect.RFCDoc{}, false
 	}
-	prose := architect.ProseFromFindings(findings)
-	plan := architect.ProjectToEpic(architect.SynthesizeFindings(signals), graph, owners)
-	return architect.BuildRFCDoc(rfcTitleDefault, architect.SynthesizeFindings(signals), plan, prose), true
+	prose := architect.ProseFromFindings(proposed)
+	return architect.BuildRFCDoc(rfcTitleDefault, findings, *plan, prose), true
 }
 
 // printRFCDryRun prints the rendered RFC and the path it would be written to,
