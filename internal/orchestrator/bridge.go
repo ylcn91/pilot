@@ -4,12 +4,23 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"time"
 )
+
+// ErrPythonNotFound is returned when the configured python interpreter cannot
+// be located/executed at call time. It is surfaced fast (before the context
+// deadline elapses) so a missing interpreter does not hang queue workers.
+var ErrPythonNotFound = errors.New("python interpreter not found")
+
+// pythonTimeout bounds a single subprocess invocation. Without it a slow or
+// hung python process would block the calling queue worker indefinitely.
+const pythonTimeout = 30 * time.Second
 
 // Bridge handles communication between Go and Python orchestrator
 type Bridge struct {
@@ -162,9 +173,12 @@ print(result)
 	return b.runPython(ctx, script)
 }
 
-// runPython executes a Python script and returns output
+// runPython executes a Python script and returns output. It bounds the
+// subprocess with pythonTimeout and fails fast with ErrPythonNotFound when the
+// interpreter cannot be executed, so a slow or missing python never hangs the
+// caller longer than the deadline.
 func (b *Bridge) runPython(ctx context.Context, script string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, pythonTimeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, b.pythonPath, "-c", script)
@@ -174,8 +188,28 @@ func (b *Bridge) runPython(ctx context.Context, script string) (string, error) {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
+		// A missing/unexecutable interpreter is reported by exec without ever
+		// reaching the deadline; surface it as a distinct, fast error.
+		if isExecStartError(err) {
+			return "", fmt.Errorf("%w (%s): %v", ErrPythonNotFound, b.pythonPath, err)
+		}
+		if ctx.Err() != nil {
+			return "", fmt.Errorf("python timed out after %s: %w", pythonTimeout, ctx.Err())
+		}
 		return "", fmt.Errorf("python error: %v: %s", err, stderr.String())
 	}
 
 	return stdout.String(), nil
+}
+
+// isExecStartError reports whether err is a failure to start the process
+// (e.g. the binary does not exist or is not executable), as opposed to the
+// process running and exiting non-zero.
+func isExecStartError(err error) bool {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		// The process started and exited non-zero — not a start failure.
+		return false
+	}
+	return errors.Is(err, exec.ErrNotFound) || os.IsNotExist(err) || errors.Is(err, os.ErrPermission)
 }
