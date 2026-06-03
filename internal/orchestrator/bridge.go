@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -17,6 +18,16 @@ import (
 // be located/executed at call time. It is surfaced fast (before the context
 // deadline elapses) so a missing interpreter does not hang queue workers.
 var ErrPythonNotFound = errors.New("python interpreter not found")
+
+// ErrHealthCheckFailed is returned when the interpreter is present and runs but
+// the probe does not produce the expected sentinel output (e.g. a broken or
+// incompatible interpreter). It lets callers distinguish "no interpreter" from
+// "interpreter exists but is unusable" and degrade accordingly.
+var ErrHealthCheckFailed = errors.New("python health check failed")
+
+// healthCheckSentinel is the marker a healthy interpreter must echo back. It is
+// deliberately unlikely to appear by accident in unrelated output.
+const healthCheckSentinel = "pilot-bridge-ok"
 
 // pythonTimeout bounds a single subprocess invocation. Without it a slow or
 // hung python process would block the calling queue worker indefinitely.
@@ -61,6 +72,33 @@ func findPython() (string, error) {
 		}
 	}
 	return "", fmt.Errorf("python not found in PATH")
+}
+
+// HealthCheck probes the configured interpreter to confirm it can actually
+// execute, not merely that its path resolves. It runs a trivial script that
+// echoes a sentinel and verifies the output. A missing/unexecutable
+// interpreter surfaces as ErrPythonNotFound (fast, before the deadline); an
+// interpreter that runs but does not return the sentinel — broken, wrong
+// runtime, or a non-zero exit — surfaces as ErrHealthCheckFailed. Callers can
+// use this at startup to degrade gracefully instead of failing mid-queue.
+func (b *Bridge) HealthCheck(ctx context.Context) error {
+	script := fmt.Sprintf("print(%q)", healthCheckSentinel)
+
+	output, err := b.runPython(ctx, script)
+	if err != nil {
+		// A missing interpreter is already a distinct sentinel from runPython;
+		// pass it through unwrapped so errors.Is(err, ErrPythonNotFound) holds.
+		if errors.Is(err, ErrPythonNotFound) {
+			return err
+		}
+		return fmt.Errorf("%w: %v", ErrHealthCheckFailed, err)
+	}
+
+	if !strings.Contains(output, healthCheckSentinel) {
+		return fmt.Errorf("%w: unexpected probe output %q", ErrHealthCheckFailed, strings.TrimSpace(output))
+	}
+
+	return nil
 }
 
 // TicketData represents ticket data for planning
