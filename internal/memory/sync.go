@@ -119,7 +119,7 @@ func (s *OrgPatternStore) save() error {
 		return err
 	}
 
-	return os.WriteFile(s.path, data, 0644)
+	return writeFileAtomic(s.path, data)
 }
 
 // Get retrieves an aggregated pattern by ID

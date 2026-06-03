@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"fmt"
+	"sort"
 )
 
 // GetPatternPerformance returns performance metrics for a pattern
@@ -73,14 +74,11 @@ func (l *LearningLoop) GetTopPerformingPatterns(ctx context.Context, limit int) 
 		performances = append(performances, perf)
 	}
 
-	// Sort by success rate
-	for i := 0; i < len(performances)-1; i++ {
-		for j := i + 1; j < len(performances); j++ {
-			if performances[j].SuccessRate > performances[i].SuccessRate {
-				performances[i], performances[j] = performances[j], performances[i]
-			}
-		}
-	}
+	// Sort by success rate (descending). SliceStable preserves the original
+	// relative order of equal-rate entries, matching the prior selection sort.
+	sort.SliceStable(performances, func(i, j int) bool {
+		return performances[i].SuccessRate > performances[j].SuccessRate
+	})
 
 	if len(performances) > limit {
 		performances = performances[:limit]

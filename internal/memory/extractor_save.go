@@ -114,13 +114,16 @@ func (e *PatternExtractor) SaveExtractedPatterns(ctx context.Context, result *Ex
 // findSimilarPattern finds an existing similar pattern
 func (e *PatternExtractor) findSimilarPattern(pattern *GlobalPattern) *GlobalPattern {
 	existing := e.store.GetByType(pattern.Type)
+	// Index by lowercased title for O(1) lookup. Keeping the first occurrence per
+	// key preserves the prior "first EqualFold match wins" semantics.
+	byTitle := make(map[string]*GlobalPattern, len(existing))
 	for _, p := range existing {
-		// Simple title matching - could be enhanced with embedding similarity
-		if strings.EqualFold(p.Title, pattern.Title) {
-			return p
+		key := strings.ToLower(p.Title)
+		if _, ok := byTitle[key]; !ok {
+			byTitle[key] = p
 		}
 	}
-	return nil
+	return byTitle[strings.ToLower(pattern.Title)]
 }
 
 // mergePattern merges a new pattern into an existing one

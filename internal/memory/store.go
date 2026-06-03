@@ -22,6 +22,11 @@ type Store struct {
 
 	logSubMu       sync.RWMutex
 	logSubscribers map[chan *LogEntry]struct{}
+
+	// usageThresholds holds the monthly alert thresholds evaluated by
+	// CheckUsageThresholds. Defaulted in NewStore to the historical $100 cost
+	// and 500-task limits; kept as a field so they can be made configurable.
+	usageThresholds []UsageThreshold
 }
 
 // NewStore creates a new Store instance with a SQLite database at the given path.
@@ -54,9 +59,10 @@ func NewStore(dataPath string) (*Store, error) {
 	db.SetConnMaxLifetime(0) // Don't close idle connections
 
 	store := &Store{
-		db:             db,
-		path:           dataPath,
-		logSubscribers: make(map[chan *LogEntry]struct{}),
+		db:              db,
+		path:            dataPath,
+		logSubscribers:  make(map[chan *LogEntry]struct{}),
+		usageThresholds: defaultUsageThresholds(),
 	}
 
 	if err := store.migrate(); err != nil {

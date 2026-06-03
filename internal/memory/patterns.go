@@ -91,7 +91,7 @@ func (s *GlobalPatternStore) saveUnlocked() error {
 		return err
 	}
 
-	return os.WriteFile(s.path, data, 0644)
+	return writeFileAtomic(s.path, data)
 }
 
 // Add adds or updates a pattern
