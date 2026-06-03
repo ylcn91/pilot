@@ -12,7 +12,7 @@ import { useDashboard } from './hooks/useDashboard'
 import { useGitGraph } from './hooks/useGitGraph'
 
 function App() {
-  const { metrics, queueTasks, history, autopilot, findings, server, serverStarting, logs, ensureGatewayRunning } = useDashboard()
+  const { metrics, queueTasks, history, autopilot, findings, server, serverStarting, logs, loaded, ensureGatewayRunning } = useDashboard()
   const gitGraph = useGitGraph()
   const isWails = !!(window as any).go?.main?.App
 
@@ -34,19 +34,19 @@ function App() {
               <MetricsCards metrics={metrics} />
             </div>
             <div className="flex-1 grow-[2] min-h-0 flex flex-col">
-              <QueuePanel tasks={queueTasks} />
+              <QueuePanel tasks={queueTasks} loaded={loaded} />
             </div>
             <div className="flex-none max-h-[18%] min-h-[88px] flex flex-col">
-              <AutopilotPanel status={autopilot} />
+              <AutopilotPanel status={autopilot} loaded={loaded} />
             </div>
             <div className="flex-none max-h-[18%] min-h-[88px] flex flex-col">
-              <RadarPanel findings={findings} />
+              <RadarPanel findings={findings} loaded={loaded} />
             </div>
             <div className="flex-none max-h-[18%] min-h-[88px] flex flex-col">
-              <HistoryPanel entries={history} />
+              <HistoryPanel entries={history} loaded={loaded} />
             </div>
             <div className="flex-1 grow-[2] min-h-0 flex flex-col">
-              <LogsPanel entries={logs} />
+              <LogsPanel entries={logs} loaded={loaded} />
             </div>
           </div>
 

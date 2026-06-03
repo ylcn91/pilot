@@ -1,5 +1,8 @@
 import React from 'react'
 import { Card } from './ui/Card'
+import { Row } from './ui/Row'
+import { Skeleton } from './ui/Skeleton'
+import { EmptyState } from './ui/EmptyState'
 import { api } from '../provider'
 
 const { OpenInBrowser } = api
@@ -23,25 +26,30 @@ interface HistoryRowProps {
 
 function HistoryRow({ entry, isSubIssue = false }: HistoryRowProps) {
   const isSuccess = entry.status === 'completed'
-  const prefix = isSuccess ? '+' : 'x'
-  const prefixColor = isSuccess ? 'text-sage' : 'text-rose'
-  const indent = isSubIssue ? 'pl-3' : ''
-
-  function handleClick() {
-    const url = entry.prURL || ''
-    if (url) OpenInBrowser(url)
-  }
+  const prefix = isSuccess ? '✓' : '✗'
+  const prefixColor = isSuccess ? 'text-success' : 'text-danger'
+  const indent = isSubIssue ? 'pl-5' : ''
+  const url = entry.prURL || ''
+  const ariaLabel = url
+    ? `Open PR for ${entry.issueID}: ${entry.title}`
+    : `${entry.issueID}: ${entry.title}`
 
   return (
-    <div
-      className={`flex items-center gap-3 px-2 py-px hover:bg-slate/30 cursor-pointer rounded transition-colors ${indent}`}
-      onClick={handleClick}
+    <Row
+      onActivate={url ? () => OpenInBrowser(url) : undefined}
+      disabled={!url}
+      ariaLabel={ariaLabel}
+      className={indent}
     >
-      <span className={`text-[10px] font-bold ${prefixColor} shrink-0`}>{prefix}</span>
-      <span className="font-bold text-[10px] shrink-0 whitespace-nowrap" style={{ color: '#7eb8da' }}>{entry.issueID}</span>
-      <span className="text-lightgray text-[10px] flex-1 min-w-0 truncate">{entry.title}</span>
-      <span className="text-midgray text-[10px] shrink-0">{timeAgo(entry.completedAt)}</span>
-    </div>
+      <span aria-hidden="true" className={`text-sm font-semibold w-4 text-center shrink-0 ${prefixColor}`}>
+        {prefix}
+      </span>
+      <span className="font-semibold text-meta tabular-nums shrink-0 whitespace-nowrap text-accent">
+        {entry.issueID}
+      </span>
+      <span className="text-secondary text-sm flex-1 min-w-0 truncate">{entry.title}</span>
+      <span className="text-muted text-meta shrink-0 tabular-nums">{timeAgo(entry.completedAt)}</span>
+    </Row>
   )
 }
 
@@ -54,42 +62,49 @@ function EpicGroup({ entry }: EpicGroupProps) {
   const total = subIssues.length
   const done = subIssues.filter((s) => s.status === 'completed').length
   const allDone = done === total && total > 0
-  const prefix = allDone ? '+' : '~'
-  const prefixColor = allDone ? 'text-sage' : 'text-steel'
+  const prefix = allDone ? '✓' : '~'
+  const prefixColor = allDone ? 'text-success' : 'text-accent'
 
   return (
-    <div className="space-y-0">
-      <div className="flex items-center gap-3 px-2 py-px">
-        <span className={`text-[10px] font-bold ${prefixColor} shrink-0`}>{prefix}</span>
-        <span className="font-bold text-[10px] shrink-0 whitespace-nowrap" style={{ color: '#7eb8da' }}>{entry.issueID}</span>
-        <span className="text-lightgray text-[10px] flex-1 min-w-0 truncate">{entry.title}</span>
-        <span className="text-midgray text-[10px] shrink-0">[{done}/{total}]</span>
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-center gap-3 px-2.5 py-1.5 h-8">
+        <span aria-hidden="true" className={`text-sm font-semibold w-4 text-center shrink-0 ${prefixColor}`}>
+          {prefix}
+        </span>
+        <span className="font-semibold text-meta tabular-nums shrink-0 whitespace-nowrap text-accent">
+          {entry.issueID}
+        </span>
+        <span className="text-secondary text-sm flex-1 min-w-0 truncate">{entry.title}</span>
+        <span className="text-muted text-meta shrink-0 tabular-nums">[{done}/{total}]</span>
       </div>
-      {!allDone && subIssues.map((sub) => (
-        <HistoryRow key={sub.id} entry={sub} isSubIssue />
-      ))}
+      {!allDone && subIssues.map((sub) => <HistoryRow key={sub.id} entry={sub} isSubIssue />)}
     </div>
   )
 }
 
 interface HistoryPanelProps {
   entries: HistoryEntry[]
+  loaded: boolean
 }
 
-export function HistoryPanel({ entries }: HistoryPanelProps) {
+export function HistoryPanel({ entries, loaded }: HistoryPanelProps) {
   return (
-    <Card title="HISTORY" className="shrink-0">
-      <div className="overflow-y-auto h-full log-scroll">
-        {entries.length === 0 ? (
-          <div className="text-gray text-[10px]">no completed tasks</div>
+    <Card title="History" className="shrink-0">
+      <div className="overflow-y-auto h-full log-scroll -mx-1.5">
+        {!loaded ? (
+          <Skeleton rows={3} />
+        ) : entries.length === 0 ? (
+          <EmptyState message="No completed tasks" />
         ) : (
-          entries.map((entry) =>
-            entry.subIssues && entry.subIssues.length > 0 ? (
-              <EpicGroup key={entry.id} entry={entry} />
-            ) : (
-              <HistoryRow key={entry.id} entry={entry} />
-            ),
-          )
+          <div className="flex flex-col gap-0.5">
+            {entries.map((entry) =>
+              entry.subIssues && entry.subIssues.length > 0 ? (
+                <EpicGroup key={entry.id} entry={entry} />
+              ) : (
+                <HistoryRow key={entry.id} entry={entry} />
+              ),
+            )}
+          </div>
         )}
       </div>
     </Card>

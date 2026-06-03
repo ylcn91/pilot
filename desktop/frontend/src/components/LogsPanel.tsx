@@ -1,13 +1,15 @@
 import React, { useRef, useEffect } from 'react'
 import { Card } from './ui/Card'
+import { Skeleton } from './ui/Skeleton'
+import { EmptyState } from './ui/EmptyState'
 import type { LogEntry } from '../types'
 
 export type { LogEntry }
 
 const LEVEL_COLORS: Record<string, string> = {
-  info: 'text-lightgray',
-  warn: 'text-amber',
-  error: 'text-rose',
+  info: 'text-secondary',
+  warn: 'text-warning',
+  error: 'text-danger',
 }
 
 /** Extract [GH-XXXX] or [PROJ-NNN] style task ID from component or message */
@@ -30,9 +32,10 @@ function stripTaskPrefix(message: string): string {
 
 interface LogsPanelProps {
   entries: LogEntry[]
+  loaded: boolean
 }
 
-export function LogsPanel({ entries }: LogsPanelProps) {
+export function LogsPanel({ entries, loaded }: LogsPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -42,25 +45,29 @@ export function LogsPanel({ entries }: LogsPanelProps) {
   }, [entries])
 
   return (
-    <Card title="LOGS" className="flex-1 min-h-0">
-      <div ref={scrollRef} className="overflow-y-auto h-full log-scroll">
-        {entries.length === 0 ? (
-          <div className="text-gray text-[10px]">no log entries</div>
+    <Card title="Logs" className="flex-1 min-h-0">
+      <div
+        ref={scrollRef}
+        role="log"
+        aria-live="polite"
+        aria-label="Activity log"
+        className="overflow-y-auto h-full log-scroll selectable"
+      >
+        {!loaded ? (
+          <Skeleton rows={8} />
+        ) : entries.length === 0 ? (
+          <EmptyState message="No log entries" />
         ) : (
           entries.map((e, i) => {
             const taskID = extractTaskID(e)
             const message = taskID ? stripTaskPrefix(e.message) : e.message
             return (
-              <div key={i} className="flex gap-3 text-[10px] leading-tight py-px px-2">
-                <span className="text-gray shrink-0">{e.ts}</span>
+              <div key={i} className="flex gap-3 text-sm leading-snug py-0.5 px-1">
+                <span className="text-muted text-meta tabular-nums shrink-0">{e.ts}</span>
                 {taskID && (
-                  <span className="shrink-0 font-bold" style={{ color: '#7eb8da' }}>
-                    [{taskID}]
-                  </span>
+                  <span className="shrink-0 font-semibold tabular-nums text-accent">[{taskID}]</span>
                 )}
-                <span className={LEVEL_COLORS[e.level ?? 'info'] ?? 'text-lightgray'}>
-                  {message}
-                </span>
+                <span className={LEVEL_COLORS[e.level ?? 'info'] ?? 'text-secondary'}>{message}</span>
               </div>
             )
           })

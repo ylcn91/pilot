@@ -1,14 +1,17 @@
 import React, { useRef, useEffect, useState } from 'react'
 import { Card } from './ui/Card'
+import { EmptyState } from './ui/EmptyState'
+import { COLORS } from './ui/colors'
 import type { GitGraphData, GitGraphLine } from '../types'
 
-// Track colors matching TUI gitgraph.go palette
-const TRACK_COLORS = ['#7eb8da', '#7ec699', '#d4a054', '#d48a8a', '#8b949e']
+// Track colors mirror the TUI gitgraph.go palette. Track 0 and the HEAD/branch
+// ref badges reuse the shared design tokens so the accent stays in lockstep
+// with the rest of the desktop chrome (no inline hex re-declarations).
+const TRACK_COLORS = [COLORS.accent, COLORS.success, COLORS.warning, COLORS.danger, COLORS.muted]
 
-// Ref badge colors
-const HEAD_COLOR = '#7eb8da'
-const TAG_COLOR = '#d4a054'
-const BRANCH_COLOR = '#7ec699'
+const HEAD_COLOR = COLORS.accent
+const TAG_COLOR = COLORS.warning
+const BRANCH_COLOR = COLORS.success
 
 // Graph characters that indicate track boundaries
 const GRAPH_CHARS = new Set(['*', '●', '|', '│', '\\', '/', '╮', '╯', '╰', '╭', '─', '╌'])
@@ -58,17 +61,17 @@ function renderRefs(refs: string): React.ReactNode {
     // Clean prefixes
     part = part.replace(/^refs\/remotes\//, '').replace(/^refs\/heads\//, '').replace(/^refs\//, '')
 
-    if (i > 0) nodes.push(<span key={`sep-${i}`} className="text-gray">{', '}</span>)
+    if (i > 0) nodes.push(<span key={`sep-${i}`} className="text-muted">{', '}</span>)
 
     if (part.startsWith('HEAD')) {
       nodes.push(
-        <span key={i} style={{ color: HEAD_COLOR, fontWeight: 'bold' }}>
+        <span key={i} style={{ color: HEAD_COLOR, fontWeight: 600 }}>
           {part}
         </span>
       )
     } else if (part.startsWith('tag:')) {
       nodes.push(
-        <span key={i} style={{ color: TAG_COLOR, fontWeight: 'bold' }}>
+        <span key={i} style={{ color: TAG_COLOR, fontWeight: 600 }}>
           {part}
         </span>
       )
@@ -83,9 +86,9 @@ function renderRefs(refs: string): React.ReactNode {
 
   return (
     <span>
-      <span className="text-gray">{'('}</span>
+      <span className="text-muted">{'('}</span>
       {nodes}
-      <span className="text-gray">{')'}</span>
+      <span className="text-muted">{')'}</span>
       {' '}
     </span>
   )
@@ -93,14 +96,23 @@ function renderRefs(refs: string): React.ReactNode {
 
 function GraphLine({ line }: { line: GitGraphLine }) {
   return (
-    <div className="flex gap-0 leading-tight whitespace-pre py-px">
+    <div className="flex gap-0 leading-snug whitespace-pre py-0.5">
       <span className="shrink-0">{renderGraphChars(line.graph_chars)}</span>
       {line.refs && <span className="shrink-0 ml-1">{renderRefs(line.refs)}</span>}
-      {line.message && <span className="text-lightgray ml-1 truncate">{line.message}</span>}
-      {line.sha && <span className="text-gray ml-2 shrink-0">{line.sha}</span>}
-      {line.author && <span className="text-midgray ml-2 shrink-0">{line.author}</span>}
+      {line.message && <span className="text-secondary ml-1 truncate">{line.message}</span>}
+      {line.sha && <span className="text-muted ml-2 shrink-0 tabular-nums">{line.sha}</span>}
+      {line.author && <span className="text-faint ml-2 shrink-0">{line.author}</span>}
     </div>
   )
+}
+
+/** Plain-text commit summary for assistive tech, since the colored glyph art
+ * itself is decorative (aria-hidden). */
+function commitSummary(lines: GitGraphLine[]): string {
+  return lines
+    .filter((l) => l.message || l.sha)
+    .map((l) => [l.sha, l.message, l.author].filter(Boolean).join(' '))
+    .join('; ')
 }
 
 export function GitGraphPanel({ data }: GitGraphPanelProps) {
@@ -113,7 +125,7 @@ export function GitGraphPanel({ data }: GitGraphPanelProps) {
 
     function updateCounter() {
       if (!el) return
-      const lineH = 16 // approx line height at text-[11px]
+      const lineH = 21 // approx line height at text-sm
       const end = Math.min(
         Math.ceil((el.scrollTop + el.clientHeight) / lineH),
         data.lines.length
@@ -127,20 +139,28 @@ export function GitGraphPanel({ data }: GitGraphPanelProps) {
   }, [data.lines.length])
 
   return (
-    <Card title="GIT GRAPH" className="flex-1 min-h-0">
+    <Card title="Git Graph" className="flex-1 min-h-0">
       <div className="flex flex-col h-full min-h-0">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto log-scroll text-[11px] min-h-0">
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto log-scroll text-sm min-h-0 selectable"
+        >
           {data.lines.length === 0 ? (
-            <div className="text-gray text-[10px]">
-              {data.error ? data.error : 'no git graph data'}
-            </div>
+            <EmptyState message={data.error ? data.error : 'No git graph data'} />
           ) : (
-            data.lines.map((line, i) => <GraphLine key={i} line={line} />)
+            <>
+              <span className="sr-only">{commitSummary(data.lines)}</span>
+              <div aria-hidden="true">
+                {data.lines.map((line, i) => (
+                  <GraphLine key={i} line={line} />
+                ))}
+              </div>
+            </>
           )}
         </div>
         {data.total_count > 0 && (
-          <div className="shrink-0 text-gray text-[10px] border-t border-border pt-0.5 mt-0.5">
-            [{visibleEnd} of {data.total_count}]
+          <div className="shrink-0 text-faint text-meta tabular-nums border-t border-border pt-1.5 mt-1.5">
+            {visibleEnd} of {data.total_count}
           </div>
         )}
       </div>

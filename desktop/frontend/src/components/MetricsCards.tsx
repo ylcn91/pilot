@@ -1,5 +1,7 @@
 import React from 'react'
+import { Card } from './ui/Card'
 import { Sparkline } from './ui/Sparkline'
+import { COLORS } from './ui/colors'
 import type { DashboardMetrics } from '../types'
 
 function formatTokens(n: number): string {
@@ -25,21 +27,19 @@ interface MetricCardProps {
 
 function MetricCard({ title, value, detail1, detail2, sparklineData, sparklineColor }: MetricCardProps) {
   return (
-    <div className="flex-1 border border-border rounded bg-card flex flex-col min-w-0">
-      <div className="flex items-center justify-between px-2 py-1 border-b border-border">
-        <span className="text-midgray uppercase tracking-wider text-[10px]">{title}</span>
-        <span className="text-lightgray font-bold text-xs">{value}</span>
-      </div>
-      <div className="px-2 py-1 flex-1 flex flex-col justify-between">
-        <div className="space-y-0.5">
-          <div className="text-gray text-[10px]">{detail1}</div>
-          <div className="text-gray text-[10px]">{detail2}</div>
+    <Card
+      title={title}
+      action={<span className="text-fg text-metric font-semibold tabular-nums">{value}</span>}
+      className="min-w-0"
+    >
+      <div className="flex flex-col justify-between gap-2 h-full">
+        <div className="flex flex-col gap-0.5">
+          <div className="text-muted text-sm tabular-nums">{detail1}</div>
+          <div className="text-muted text-sm tabular-nums">{detail2}</div>
         </div>
-        <div className="mt-1">
-          <Sparkline data={sparklineData} color={sparklineColor} width={100} height={20} />
-        </div>
+        <Sparkline data={sparklineData} color={sparklineColor} width={120} height={24} />
       </div>
-    </div>
+    </Card>
   )
 }
 
@@ -49,35 +49,33 @@ interface MetricsCardsProps {
 
 export function MetricsCards({ metrics }: MetricsCardsProps) {
   const costPerTask =
-    metrics.totalTasks > 0
-      ? formatCost(metrics.totalCostUSD / metrics.totalTasks)
-      : '$0.000'
+    metrics.totalTasks > 0 ? formatCost(metrics.totalCostUSD / metrics.totalTasks) : '$0.000'
 
   return (
-    <div className="flex gap-1.5">
+    <div className="grid grid-cols-3 gap-3">
       <MetricCard
-        title="TOKENS"
+        title="Tokens"
         value={formatTokens(metrics.totalTokens)}
         detail1={`↑ ${formatTokens(metrics.inputTokens)} input`}
         detail2={`↓ ${formatTokens(metrics.outputTokens)} output`}
         sparklineData={metrics.tokenSparkline}
-        sparklineColor="#7eb8da"
+        sparklineColor={COLORS.accent}
       />
       <MetricCard
-        title="COST"
+        title="Cost"
         value={formatCost(metrics.totalCostUSD)}
         detail1={`${costPerTask}/task`}
         detail2={`${metrics.totalTasks} total tasks`}
         sparklineData={metrics.costSparkline}
-        sparklineColor="#7ec699"
+        sparklineColor={COLORS.success}
       />
       <MetricCard
-        title="QUEUE"
+        title="Queue"
         value={String(metrics.totalTasks)}
         detail1={`✓ ${metrics.succeededTasks} done`}
         detail2={`✗ ${metrics.failedTasks} failed`}
         sparklineData={metrics.queueSparkline}
-        sparklineColor="#8b949e"
+        sparklineColor={COLORS.muted}
       />
     </div>
   )

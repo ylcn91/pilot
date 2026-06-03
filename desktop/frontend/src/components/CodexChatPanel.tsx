@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Card } from './ui/Card'
+import { Button } from './ui/Button'
+import { EmptyState } from './ui/EmptyState'
 import { useCodexRuntime } from '../hooks/useCodexRuntime'
 import type { RuntimeApprovalRequest, RuntimeSandbox } from '../types'
 
@@ -10,11 +12,12 @@ interface CodexChatPanelProps {
 
 const SANDBOX_OPTIONS: RuntimeSandbox[] = ['read-only', 'workspace-write', 'danger-full-access']
 
+// running is in-progress → accent (steel); error → rose; idle → sage.
 function statusColor(status: string, connected: boolean): string {
-  if (!connected) return 'bg-gray'
-  if (status === 'running') return 'bg-amber pulse'
-  if (status === 'error') return 'bg-rose'
-  return 'bg-sage'
+  if (!connected) return 'bg-faint'
+  if (status === 'running') return 'bg-accent pulse'
+  if (status === 'error') return 'bg-danger'
+  return 'bg-success'
 }
 
 function ApprovalRequest({
@@ -25,21 +28,16 @@ function ApprovalRequest({
   onChoice: (request: RuntimeApprovalRequest, choice: string) => void
 }) {
   return (
-    <div className="border border-border bg-bg px-2 py-1.5 text-[10px]">
+    <div className="border border-border rounded-md bg-bg px-3 py-2 text-sm">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-amber truncate">{request.method}</span>
-        <span className="text-gray shrink-0">#{request.requestId}</span>
+        <span className="text-warning truncate">{request.method}</span>
+        <span className="text-faint text-meta shrink-0 tabular-nums">#{request.requestId}</span>
       </div>
-      <div className="flex flex-wrap gap-1 mt-1">
+      <div className="flex flex-wrap gap-1.5 mt-2">
         {request.choices.map((choice) => (
-          <button
-            key={choice}
-            className="px-1.5 py-0.5 border border-border bg-card text-lightgray hover:border-steel hover:text-white"
-            type="button"
-            onClick={() => onChoice(request, choice)}
-          >
+          <Button key={choice} variant="secondary" size="sm" onClick={() => onChoice(request, choice)}>
             {choice}
-          </button>
+          </Button>
         ))}
       </div>
     </div>
@@ -72,46 +70,57 @@ export function CodexChatPanel({ gatewayURL, projectPath }: CodexChatPanelProps)
     if (sent) setPrompt('')
   }
 
+  const transcriptEmpty = runtime.messages.length === 0 && runtime.reasoning === ''
+
   return (
-    <Card title="CODEX" className="flex-[0_0_36%] min-h-[230px]">
-      <div className="flex flex-col h-full min-h-0 gap-1.5">
-        <div className="flex items-center gap-2 text-[10px] shrink-0">
-          <span className={`w-2 h-2 rounded-full ${statusColor(runtime.status, runtime.connected)}`} />
-          <span className="text-midgray uppercase">{runtime.status}</span>
-          {runtime.hasSession && <span className="text-gray">session</span>}
-          {runtime.error && <span className="text-rose truncate">{runtime.error}</span>}
-          <button
-            className="ml-auto px-1.5 py-0.5 border border-border bg-card text-gray hover:border-steel hover:text-lightgray disabled:hover:border-border disabled:text-slate"
-            disabled={!runtime.hasSession || runtime.status === 'running'}
-            type="button"
-            onClick={runtime.resetSession}
-          >
-            New
-          </button>
+    <Card
+      title="Codex"
+      className="flex-1 min-h-0"
+      action={
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={!runtime.hasSession || runtime.status === 'running'}
+          onClick={runtime.resetSession}
+        >
+          New
+        </Button>
+      }
+    >
+      <div className="flex flex-col h-full min-h-0 gap-3">
+        <div className="flex items-center gap-2 text-sm shrink-0" role="status">
+          <span className={`w-2 h-2 rounded-full shrink-0 ${statusColor(runtime.status, runtime.connected)}`} />
+          <span className="text-muted uppercase tracking-wide">{runtime.status}</span>
+          {runtime.hasSession && <span className="text-faint">session</span>}
+          {runtime.error && <span className="text-danger truncate selectable">{runtime.error}</span>}
         </div>
 
-        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto log-scroll border border-border bg-bg px-2 py-1.5">
-          {runtime.messages.length === 0 && runtime.reasoning === '' ? (
-            <div className="text-gray text-[10px]">no codex turns</div>
+        <div
+          ref={scrollRef}
+          role="log"
+          aria-live="polite"
+          aria-label="Codex transcript"
+          className="codex-transcript flex-1 min-h-0 overflow-y-auto log-scroll border border-border rounded-md bg-bg px-3 py-2"
+        >
+          {transcriptEmpty ? (
+            <EmptyState message="No Codex turns yet" />
           ) : (
-            <div className="space-y-2">
+            <div className="flex flex-col gap-3">
               {runtime.messages.map((message) => (
-                <div key={message.id} className="text-[11px] leading-snug">
-                  <div className="text-gray uppercase text-[9px]">{message.role}</div>
-                  <div className="whitespace-pre-wrap text-lightgray">{message.text}</div>
+                <div key={message.id} className="text-sm leading-snug">
+                  <div className="text-faint uppercase text-meta tracking-wide">{message.role}</div>
+                  <div className="whitespace-pre-wrap text-secondary">{message.text}</div>
                 </div>
               ))}
               {runtime.reasoning && (
-                <div className="text-[10px] leading-snug text-midgray whitespace-pre-wrap">
-                  {runtime.reasoning}
-                </div>
+                <div className="text-sm leading-snug text-muted whitespace-pre-wrap">{runtime.reasoning}</div>
               )}
             </div>
           )}
         </div>
 
         {runtime.approvals.length > 0 && (
-          <div className="shrink-0 space-y-1 max-h-24 overflow-y-auto log-scroll">
+          <div role="alert" className="shrink-0 flex flex-col gap-1.5 max-h-28 overflow-y-auto log-scroll">
             {runtime.approvals.map((request) => (
               <ApprovalRequest
                 key={`${request.method}-${request.requestId}`}
@@ -122,9 +131,10 @@ export function CodexChatPanel({ gatewayURL, projectPath }: CodexChatPanelProps)
           </div>
         )}
 
-        <div className="grid grid-cols-[1fr_140px] gap-1.5 shrink-0">
+        <div className="grid grid-cols-[1fr_150px] gap-2 shrink-0">
           <input
-            className="bg-bg border border-border px-2 py-1 text-[11px] text-lightgray outline-none focus:border-steel min-w-0"
+            aria-label="Working directory"
+            className="bg-bg border border-border rounded-md px-2.5 h-8 text-sm text-secondary outline-none focus:border-accent min-w-0 selectable"
             value={cwd}
             onChange={(event) => {
               cwdEdited.current = true
@@ -132,7 +142,8 @@ export function CodexChatPanel({ gatewayURL, projectPath }: CodexChatPanelProps)
             }}
           />
           <select
-            className="bg-bg border border-border px-2 py-1 text-[11px] text-lightgray outline-none focus:border-steel"
+            aria-label="Sandbox mode"
+            className="bg-bg border border-border rounded-md px-2.5 h-8 text-sm text-secondary outline-none focus:border-accent"
             value={sandbox}
             onChange={(event) => setSandbox(event.target.value as RuntimeSandbox)}
           >
@@ -144,20 +155,23 @@ export function CodexChatPanel({ gatewayURL, projectPath }: CodexChatPanelProps)
           </select>
         </div>
 
-        <div className="flex gap-1.5 shrink-0">
+        <div className="flex gap-2 shrink-0">
           <textarea
-            className="flex-1 min-h-[52px] max-h-[88px] resize-none bg-bg border border-border px-2 py-1 text-[11px] text-lightgray outline-none focus:border-steel"
+            aria-label="Codex prompt"
+            placeholder="Ask Codex to make a change…"
+            className="flex-1 min-h-[56px] max-h-[96px] resize-none bg-bg border border-border rounded-md px-2.5 py-1.5 text-sm text-secondary outline-none focus:border-accent selectable"
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
           />
-          <button
-            className="w-16 border border-border bg-card text-lightgray text-[11px] hover:border-steel hover:text-white disabled:text-gray disabled:hover:border-border"
+          <Button
+            variant="primary"
+            size="sm"
+            className="w-16"
             disabled={!runtime.connected || runtime.status === 'running' || prompt.trim() === ''}
-            type="button"
             onClick={submit}
           >
             Run
-          </button>
+          </Button>
         </div>
       </div>
     </Card>

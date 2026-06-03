@@ -14,6 +14,7 @@ export interface DashboardState {
   server: ServerStatus
   serverStarting: boolean
   logs: LogEntry[]
+  loaded: boolean
   ensureGatewayRunning: () => Promise<void>
 }
 
@@ -51,6 +52,7 @@ export function useDashboard(): DashboardState {
   const [findings, setFindings] = useState<Finding[]>([])
   const [server, setServer] = useState<ServerStatus>(defaultServer)
   const [serverStarting, setServerStarting] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
   // Logs are streamed via WebSocket (falls back to polling in Wails mode).
   const logs = useDashboardLogs()
@@ -78,6 +80,10 @@ export function useDashboard(): DashboardState {
         if (fnd) setFindings(fnd)
       } catch {
         // Graceful degradation — keep previous values
+      } finally {
+        // First poll resolved (success or degraded): leave the loading phase
+        // so panels swap skeletons for either data or canonical empty states.
+        setLoaded(true)
       }
 
       // Server status: every 5 seconds
@@ -110,5 +116,5 @@ export function useDashboard(): DashboardState {
     }
   }
 
-  return { metrics, queueTasks, history, autopilot, findings, server, serverStarting, logs, ensureGatewayRunning }
+  return { metrics, queueTasks, history, autopilot, findings, server, serverStarting, logs, loaded, ensureGatewayRunning }
 }

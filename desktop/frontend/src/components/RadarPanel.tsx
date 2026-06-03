@@ -1,14 +1,16 @@
-import React, { useState } from 'react'
+import React, { useId, useState } from 'react'
 import { Card } from './ui/Card'
+import { Skeleton } from './ui/Skeleton'
+import { EmptyState } from './ui/EmptyState'
 import type { Finding, RiskLevel } from '../types'
 
-// Risk badge colors mirror the autopilot stage palette: cool tones for low
-// severity, warm/red for the dangerous end. Unknown levels fall back to gray.
+// Risk badge colors: cool/success for low severity, amber for the
+// needs-attention middle, rose for the dangerous end.
 const RISK_COLORS: Record<string, string> = {
-  low: 'text-sage',
-  medium: 'text-amber',
-  high: 'text-rose',
-  'release-blocker': 'text-rose',
+  low: 'text-success',
+  medium: 'text-warning',
+  high: 'text-danger',
+  'release-blocker': 'text-danger',
 }
 
 const RISK_LABELS: Record<string, string> = {
@@ -27,7 +29,7 @@ const RISK_ORDER: Record<string, number> = {
 }
 
 function riskColor(risk: RiskLevel | string): string {
-  return RISK_COLORS[risk] ?? 'text-midgray'
+  return RISK_COLORS[risk] ?? 'text-muted'
 }
 
 function riskLabel(risk: RiskLevel | string): string {
@@ -44,52 +46,56 @@ function FindingRow({ finding, expanded, onToggle }: FindingRowProps) {
   const color = riskColor(finding.risk)
   const prPieces = finding.suggested_pr_pieces ?? []
   const files = finding.files ?? []
+  const bodyId = useId()
 
   return (
     <div className="border-b border-border/50 last:border-b-0">
-      <div
-        className="flex items-center gap-1.5 cursor-pointer hover:bg-slate/30 rounded px-1 py-px transition-colors"
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={bodyId}
         onClick={onToggle}
+        className="group flex items-center gap-2 w-full text-left px-2.5 py-1.5 h-8 rounded-md bg-transparent hover:bg-raised active:bg-raised/80 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-card cursor-pointer"
       >
-        <span className={`text-[9px] font-bold w-9 shrink-0 ${color}`}>
-          {riskLabel(finding.risk)}
+        <span className={`text-meta font-semibold w-10 shrink-0 ${color}`}>{riskLabel(finding.risk)}</span>
+        {finding.kind && <span className="text-accent text-meta shrink-0">[{finding.kind}]</span>}
+        <span className="text-secondary text-sm truncate flex-1 min-w-0">{finding.title}</span>
+        <span aria-hidden="true" className="text-muted text-sm shrink-0">
+          {expanded ? '−' : '+'}
         </span>
-        {finding.kind && (
-          <span className="text-steel text-[10px] shrink-0">[{finding.kind}]</span>
-        )}
-        <span className="text-lightgray text-[10px] truncate flex-1 min-w-0">
-          {finding.title}
-        </span>
-        <span className="text-midgray text-[10px] shrink-0">{expanded ? '−' : '+'}</span>
-      </div>
+      </button>
 
       {expanded && (
-        <div className="px-2 pb-1 pt-0.5 space-y-0.5">
+        <div id={bodyId} className="px-2.5 pb-2 pt-1 flex flex-col gap-1.5">
           {finding.why_it_matters && (
-            <p className="text-midgray text-[10px] leading-snug">{finding.why_it_matters}</p>
+            <p className="text-muted text-sm leading-snug">{finding.why_it_matters}</p>
           )}
           {prPieces.length > 0 && (
-            <div className="text-[10px]">
-              <span className="text-gray">PR pieces:</span>
-              <ul className="list-disc list-inside text-midgray">
+            <div className="text-sm">
+              <span className="text-faint">PR pieces:</span>
+              <ul className="list-disc list-inside text-muted">
                 {prPieces.map((piece, i) => (
-                  <li key={i} className="truncate">{piece}</li>
+                  <li key={i} className="truncate">
+                    {piece}
+                  </li>
                 ))}
               </ul>
             </div>
           )}
           {finding.test_plan && (
-            <div className="text-[10px]">
-              <span className="text-gray">Test plan: </span>
-              <span className="text-midgray">{finding.test_plan}</span>
+            <div className="text-sm">
+              <span className="text-faint">Test plan: </span>
+              <span className="text-muted">{finding.test_plan}</span>
             </div>
           )}
           {files.length > 0 && (
-            <div className="text-[10px]">
-              <span className="text-gray">Files:</span>
-              <ul className="text-steel">
+            <div className="text-sm">
+              <span className="text-faint">Files:</span>
+              <ul className="text-accent selectable">
                 {files.map((file, i) => (
-                  <li key={i} className="truncate">{file}</li>
+                  <li key={i} className="truncate">
+                    {file}
+                  </li>
                 ))}
               </ul>
             </div>
@@ -102,9 +108,10 @@ function FindingRow({ finding, expanded, onToggle }: FindingRowProps) {
 
 interface RadarPanelProps {
   findings: Finding[]
+  loaded: boolean
 }
 
-export function RadarPanel({ findings }: RadarPanelProps) {
+export function RadarPanel({ findings, loaded }: RadarPanelProps) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
 
   const sorted = [...findings].sort((a, b) => {
@@ -126,12 +133,14 @@ export function RadarPanel({ findings }: RadarPanelProps) {
   }
 
   return (
-    <Card title={`ARCHITECT  ${findings.length}`} className="shrink-0">
-      <div className="overflow-y-auto h-full log-scroll">
-        {sorted.length === 0 ? (
-          <div className="text-gray text-[10px] px-1 py-1">no findings</div>
+    <Card title={`Architect · ${findings.length}`} className="shrink-0">
+      <div className="overflow-y-auto h-full log-scroll -mx-1.5">
+        {!loaded ? (
+          <Skeleton rows={3} />
+        ) : sorted.length === 0 ? (
+          <EmptyState message="No findings" />
         ) : (
-          <div className="space-y-0">
+          <div className="flex flex-col">
             {sorted.map((finding, index) => (
               <FindingRow
                 key={index}

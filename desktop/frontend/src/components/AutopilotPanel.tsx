@@ -1,5 +1,8 @@
 import React from 'react'
 import { Card } from './ui/Card'
+import { Row } from './ui/Row'
+import { Skeleton } from './ui/Skeleton'
+import { EmptyState } from './ui/EmptyState'
 import { api } from '../provider'
 
 const { OpenInBrowser } = api
@@ -8,23 +11,25 @@ import type { AutopilotStatus, ActivePR } from '../types'
 const STAGE_ICONS: Record<string, string> = {
   created: '+',
   waiting_ci: '~',
-  ci_passed: '*',
-  ci_failed: 'x',
+  ci_passed: '✓',
+  ci_failed: '✗',
   awaiting_approval: '?',
-  merging: '>',
-  releasing: '^',
+  merging: '›',
+  releasing: '↑',
   failed: '!',
 }
 
+// In-progress stages read accent (steel); amber is reserved for the one
+// needs-attention stage (awaiting_approval); rose for terminal failures.
 const STAGE_COLORS: Record<string, string> = {
-  created: 'text-midgray',
-  waiting_ci: 'text-amber',
-  ci_passed: 'text-sage',
-  ci_failed: 'text-rose',
-  awaiting_approval: 'text-amber',
-  merging: 'text-steel',
-  releasing: 'text-steel',
-  failed: 'text-rose',
+  created: 'text-muted',
+  waiting_ci: 'text-accent',
+  ci_passed: 'text-success',
+  ci_failed: 'text-danger',
+  awaiting_approval: 'text-warning',
+  merging: 'text-accent',
+  releasing: 'text-accent',
+  failed: 'text-danger',
 }
 
 interface PRRowProps {
@@ -33,58 +38,79 @@ interface PRRowProps {
 
 function PRRow({ pr }: PRRowProps) {
   const icon = STAGE_ICONS[pr.stage] ?? '?'
-  const color = STAGE_COLORS[pr.stage] ?? 'text-midgray'
+  const color = STAGE_COLORS[pr.stage] ?? 'text-muted'
+  const stageLabel = pr.stage.replace('_', ' ')
 
   return (
-    <div
-      className="flex items-center gap-1 cursor-pointer hover:bg-slate/30 rounded px-1 py-px transition-colors"
-      onClick={() => pr.url && OpenInBrowser(pr.url)}
+    <Row
+      onActivate={pr.url ? () => OpenInBrowser(pr.url) : undefined}
+      disabled={!pr.url}
+      ariaLabel={`Open PR #${pr.number} for ${pr.branchName} — ${stageLabel}`}
     >
-      <span className={`text-[10px] font-bold ${color}`}>{icon}</span>
-      <span className="text-steel text-[10px]">#{pr.number}</span>
-      <span className="text-midgray text-[10px] truncate flex-1">{pr.branchName}</span>
-      <span className={`text-[10px] ${color}`}>{pr.stage.replace('_', ' ')}</span>
-    </div>
+      <span aria-hidden="true" className={`text-sm font-semibold w-4 text-center shrink-0 ${color}`}>
+        {icon}
+      </span>
+      <span className="text-accent text-meta tabular-nums shrink-0">#{pr.number}</span>
+      <span className="text-secondary text-sm truncate flex-1 min-w-0">{pr.branchName}</span>
+      <span className={`text-meta shrink-0 ${color}`}>{stageLabel}</span>
+    </Row>
   )
 }
 
-function DotLeaderRow({ label, value, valueColor = 'text-lightgray' }: { label: string; value: string; valueColor?: string }) {
+function DotLeaderRow({
+  label,
+  value,
+  valueColor = 'text-secondary',
+}: {
+  label: string
+  value: string
+  valueColor?: string
+}) {
   return (
-    <div className="flex items-baseline text-[10px] leading-tight">
-      <span className="text-midgray shrink-0">{label}</span>
-      <span className="flex-1 overflow-hidden whitespace-nowrap text-slate mx-0.5" style={{ lineHeight: '1' }}>
+    <div className="flex items-baseline text-sm px-2.5">
+      <span className="text-faint shrink-0">{label}</span>
+      <span
+        className="flex-1 overflow-hidden whitespace-nowrap text-fill mx-1.5"
+        style={{ lineHeight: '1' }}
+        aria-hidden="true"
+      >
         {'·'.repeat(80)}
       </span>
-      <span className={`shrink-0 ${valueColor}`}>{value}</span>
+      <span className={`shrink-0 tabular-nums ${valueColor}`}>{value}</span>
     </div>
   )
 }
 
 interface AutopilotPanelProps {
   status: AutopilotStatus
+  loaded: boolean
 }
 
-export function AutopilotPanel({ status }: AutopilotPanelProps) {
+export function AutopilotPanel({ status, loaded }: AutopilotPanelProps) {
+  const inactive = !status.enabled && status.activePRs.length === 0
+
   return (
-    <Card title="AUTOPILOT" className="shrink-0">
+    <Card title="Autopilot" className="shrink-0">
       <div className="overflow-y-auto h-full log-scroll">
-        {!status.enabled && status.activePRs.length === 0 ? (
-          <div className="text-gray text-[10px]">autopilot inactive</div>
+        {!loaded ? (
+          <Skeleton rows={4} />
+        ) : inactive ? (
+          <EmptyState message="Autopilot inactive" />
         ) : (
-          <div className="space-y-0.5">
+          <div className="flex flex-col gap-1">
             <DotLeaderRow label="Environment" value={status.environment || 'dev'} />
             <DotLeaderRow label="Post-merge" value={status.autoRelease ? 'auto-release' : 'none'} />
             <DotLeaderRow
               label="Auto-release"
               value={status.autoRelease ? 'enabled' : 'disabled'}
-              valueColor={status.autoRelease ? 'text-sage' : 'text-gray'}
+              valueColor={status.autoRelease ? 'text-success' : 'text-faint'}
             />
             <DotLeaderRow label="Active PRs" value={String(status.activePRs.length)} />
             {status.failureCount > 0 && (
-              <DotLeaderRow label="Failures" value={String(status.failureCount)} valueColor="text-amber" />
+              <DotLeaderRow label="Failures" value={String(status.failureCount)} valueColor="text-warning" />
             )}
             {status.activePRs.length > 0 && (
-              <div className="mt-1 space-y-0.5 border-t border-border pt-1">
+              <div className="mt-1.5 flex flex-col gap-0.5 border-t border-border pt-1.5 -mx-1.5">
                 {status.activePRs.map((pr) => (
                   <PRRow key={pr.number} pr={pr} />
                 ))}
