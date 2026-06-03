@@ -178,6 +178,7 @@ func (r *Runner) executeWithOptions(ctx context.Context, task *Task, allowWorktr
 
 	if err != nil {
 		result.Success = false
+		retrySucceeded := false
 
 		// GH-539: Check if this was a per-task budget limit breach (~231-277).
 		if res := r.executeBudgetGuard(s); res != nil {
@@ -259,7 +260,7 @@ func (r *Runner) executeWithOptions(ctx context.Context, task *Task, allowWorktr
 							// Update results from retry
 							backendResult = retryResult
 							err = nil
-							goto retrySucceeded
+							retrySucceeded = true
 						}
 						// Retry failed, continue to emit alerts
 						log.Warn("Smart retry failed",
@@ -271,74 +272,77 @@ func (r *Runner) executeWithOptions(ctx context.Context, task *Task, allowWorktr
 				}
 			}
 
-			// GH-1716: If execution was killed and decompose_on_kill is enabled,
-			// attempt decomposition as last resort before failing.
-			if r.retrier != nil && r.retrier.config.DecomposeOnKill && r.decomposer != nil {
-				if beErr, ok := err.(BackendError); ok && beErr.ErrorType() == "timeout" {
-					log.Info("Execution killed, attempting decomposition fallback",
-						slog.String("task_id", task.ID))
+			if !retrySucceeded {
+				// GH-1716: If execution was killed and decompose_on_kill is enabled,
+				// attempt decomposition as last resort before failing.
+				if r.retrier != nil && r.retrier.config.DecomposeOnKill && r.decomposer != nil {
+					if beErr, ok := err.(BackendError); ok && beErr.ErrorType() == "timeout" {
+						log.Info("Execution killed, attempting decomposition fallback",
+							slog.String("task_id", task.ID))
 
-					decompResult := r.decomposer.DecomposeForRetry(ctx, task)
-					if decompResult.Decomposed && len(decompResult.Subtasks) > 1 {
-						log.Info("Decomposition fallback succeeded",
-							slog.String("task_id", task.ID),
-							slog.Int("subtask_count", len(decompResult.Subtasks)))
-						return r.executeDecomposedTask(ctx, task, decompResult.Subtasks, executionPath)
+						decompResult := r.decomposer.DecomposeForRetry(ctx, task)
+						if decompResult.Decomposed && len(decompResult.Subtasks) > 1 {
+							log.Info("Decomposition fallback succeeded",
+								slog.String("task_id", task.ID),
+								slog.Int("subtask_count", len(decompResult.Subtasks)))
+							return r.executeDecomposedTask(ctx, task, decompResult.Subtasks, executionPath)
+						}
 					}
 				}
-			}
 
-			// GH-917-5: Include stderr in alert metadata for debugging
-			metadata := map[string]string{
-				"error_category": errorCategory,
-			}
-			if stderrOutput != "" {
-				metadata["stderr"] = stderrOutput
-			}
+				// GH-917-5: Include stderr in alert metadata for debugging
+				metadata := map[string]string{
+					"error_category": errorCategory,
+				}
+				if stderrOutput != "" {
+					metadata["stderr"] = stderrOutput
+				}
 
-			// Emit alert event with error category metadata
-			r.emitAlertEvent(AlertEvent{
-				Type:      alertType,
-				TaskID:    task.ID,
-				TaskTitle: task.Title,
-				Project:   task.ProjectPath,
-				Error:     result.Error,
-				Metadata:  metadata,
-				Timestamp: time.Now(),
-			})
+				// Emit alert event with error category metadata
+				r.emitAlertEvent(AlertEvent{
+					Type:      alertType,
+					TaskID:    task.ID,
+					TaskTitle: task.Title,
+					Project:   task.ProjectPath,
+					Error:     result.Error,
+					Metadata:  metadata,
+					Timestamp: time.Now(),
+				})
 
-			// Dispatch webhook for task failed (non-timeout)
-			r.dispatchWebhook(ctx, webhooks.EventTaskFailed, webhooks.TaskFailedData{
-				TaskID:   task.ID,
-				Title:    task.Title,
-				Project:  task.ProjectPath,
-				Duration: duration,
-				Error:    result.Error,
-				Phase:    state.phase,
-			})
-		}
-
-		// GH-1599: Log task failed milestone
-		r.saveLogEntry(task.ID, "error", "Task failed: "+result.Error)
-
-		// GH-2328: persist stderr + final assistant message + error type so
-		// "unknown: exit status 1" is actually diagnosable. Without this,
-		// failures look identical regardless of whether Claude refused, hit a
-		// rate limit, was OOM-killed, or crashed silently.
-		r.persistBackendDiagnostics(task.ID, backendResult)
-
-		// Finish recording with failed status
-		if recorder != nil {
-			recorder.SetModel(state.modelName)
-			recorder.SetNavigator(state.hasNavigator)
-			if finErr := recorder.Finish("failed"); finErr != nil {
-				log.Warn("Failed to finish recording", slog.Any("error", finErr))
+				// Dispatch webhook for task failed (non-timeout)
+				r.dispatchWebhook(ctx, webhooks.EventTaskFailed, webhooks.TaskFailedData{
+					TaskID:   task.ID,
+					Title:    task.Title,
+					Project:  task.ProjectPath,
+					Duration: duration,
+					Error:    result.Error,
+					Phase:    state.phase,
+				})
 			}
 		}
-		return result, nil
+
+		if !retrySucceeded {
+			// GH-1599: Log task failed milestone
+			r.saveLogEntry(task.ID, "error", "Task failed: "+result.Error)
+
+			// GH-2328: persist stderr + final assistant message + error type so
+			// "unknown: exit status 1" is actually diagnosable. Without this,
+			// failures look identical regardless of whether Claude refused, hit a
+			// rate limit, was OOM-killed, or crashed silently.
+			r.persistBackendDiagnostics(task.ID, backendResult)
+
+			// Finish recording with failed status
+			if recorder != nil {
+				recorder.SetModel(state.modelName)
+				recorder.SetNavigator(state.hasNavigator)
+				if finErr := recorder.Finish("failed"); finErr != nil {
+					log.Warn("Failed to finish recording", slog.Any("error", finErr))
+				}
+			}
+			return result, nil
+		}
 	}
 
-retrySucceeded:
 	s.backendResult = backendResult
 	s.duration = duration
 	s.result = result
