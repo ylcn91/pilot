@@ -1,6 +1,9 @@
 package architect
 
-import "github.com/ylcn91/pilot/internal/quality"
+import (
+	"github.com/ylcn91/pilot/internal/memory"
+	"github.com/ylcn91/pilot/internal/quality"
+)
 
 // ScanOptions tunes which deterministic collectors BuildDefaultScanner wires
 // and how they are configured. Zero values fall back to each collector's own
@@ -23,6 +26,21 @@ type ScanOptions struct {
 	// Signals optionally restricts the roster to collectors whose Name is in
 	// this set. Empty includes every default collector.
 	Signals []string
+
+	// FailureSource backs the bug-history collector of the test-gap lens: the
+	// memory store's recurring-failure breakdown. A nil source (the default)
+	// leaves that collector inert, so lenses that read it degrade gracefully
+	// when no memory store is configured.
+	FailureSource failureSource
+
+	// FailureQuery scopes the failure-reason query the bug-history collector
+	// runs (time window + projects). The zero value queries all projects across
+	// all time.
+	FailureQuery memory.MetricsQuery
+
+	// ProjectID tags Signals that originate from memory-backed collectors for
+	// traceability. Empty is acceptable.
+	ProjectID string
 }
 
 // gateRunnerFromQuality adapts a *quality.Runner to the gateRunner slice the

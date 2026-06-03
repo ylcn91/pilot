@@ -31,6 +31,13 @@ type Lens struct {
 	// (collectors do their work lazily in Collect). A lens that ignores the
 	// options (e.g. depdoctor) simply does not read them.
 	Collectors func(projectPath string, opts ScanOptions) []Collector
+
+	// Slant optionally aims the PROPOSE stage at the lens's concern by
+	// overriding the task description and injecting an extra instruction block
+	// into the analysis prompt. A nil Slant (the common case) leaves the
+	// default refactor-analysis prompt untouched, preserving the original
+	// behaviour for the core and depdoctor lenses.
+	Slant *LensSlant
 }
 
 // lensRegistry is the process-wide set of registered lenses, keyed by Name.

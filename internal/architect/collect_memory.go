@@ -8,13 +8,17 @@ import (
 	"github.com/ylcn91/pilot/internal/pilotapi"
 )
 
-// failureSource is the small slice of *memory.Store the churn collector
-// needs: a breakdown of recent failure reasons used as a churn/instability
-// proxy. Declaring it locally lets tests inject a fake and keeps architect
-// from hard-depending on the full Store surface.
-type failureSource interface {
+// FailureSource is the small slice of *memory.Store the churn and bug-history
+// collectors need: a breakdown of recent failure reasons used as a
+// churn/instability proxy. Declaring it locally lets tests inject a fake and
+// keeps architect from hard-depending on the full Store surface. It is exported
+// so the CLI can name it when wiring a memory store into ScanOptions.
+type FailureSource interface {
 	GetFailureReasons(query memory.MetricsQuery, limit int) ([]*memory.FailureReason, error)
 }
+
+// failureSource is the internal alias used across the package's collectors.
+type failureSource = FailureSource
 
 // pitfallSource is the small slice of *memory.KnowledgeStore the pitfall
 // collector needs: experiential pitfalls recorded for the project.

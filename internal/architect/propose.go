@@ -15,6 +15,16 @@ import (
 // the .agent overlay machinery selects SOPs/context relevant to refactor work.
 const proposeTaskDescription = "proactive refactor analysis"
 
+// defaultProposeHeading and defaultProposeIntro are the prompt's framing for the
+// generic (core/depdoctor) lenses. A LensSlant overrides them to aim the
+// analysis at a specific concern.
+const (
+	defaultProposeHeading = "Proactive Refactor Analysis"
+	defaultProposeIntro   = "A deterministic scan of this project produced the signals below. " +
+		"Cluster related signals and propose the highest-value, smallest-blast-radius " +
+		"changes. Rank them so the most important proposal comes first."
+)
+
 // maxSignalsInPrompt caps how many Signals are summarised into the prompt. The
 // SCAN stage is uncapped (it may surface thousands of >400-LOC/TODO hits); the
 // PROPOSE stage only needs the highest-weight ones to reason about, and an
@@ -37,21 +47,42 @@ type Analyzer struct {
 	base     executor.BackendConfig
 	agentDir string
 
+	// slant optionally aims the PROPOSE prompt at a specific lens's concern
+	// (e.g. the test-gap designer). Nil keeps the default refactor framing.
+	slant *LensSlant
+
 	// newBackend resolves the backend for a Propose call. Defaults to
 	// executor.NewStageBackend; tests override it to inject a mock.
 	newBackend backendFactory
 }
 
+// AnalyzerOption configures an Analyzer at construction. Options keep the common
+// NewAnalyzer call site unchanged while letting a lens-aware caller (the CLI)
+// layer in a slant.
+type AnalyzerOption func(*Analyzer)
+
+// WithSlant aims the analyzer's PROPOSE prompt at a lens's concern. A nil slant
+// is a no-op, so callers can pass a lens's (possibly absent) slant
+// unconditionally.
+func WithSlant(slant *LensSlant) AnalyzerOption {
+	return func(a *Analyzer) { a.slant = slant }
+}
+
 // NewAnalyzer builds an Analyzer that resolves its backend from stage (the
 // per-stage override, may be nil) layered over base, and primes prompts with the
-// guidance preamble loaded from agentDir's .agent context.
-func NewAnalyzer(stage *executor.StageConfig, base executor.BackendConfig, agentDir string) *Analyzer {
-	return &Analyzer{
+// guidance preamble loaded from agentDir's .agent context. Options (e.g.
+// WithSlant) further tune the prompt.
+func NewAnalyzer(stage *executor.StageConfig, base executor.BackendConfig, agentDir string, opts ...AnalyzerOption) *Analyzer {
+	a := &Analyzer{
 		stage:      stage,
 		base:       base,
 		agentDir:   agentDir,
 		newBackend: executor.NewStageBackend,
 	}
+	for _, opt := range opts {
+		opt(a)
+	}
+	return a
 }
 
 // Propose runs one backend pass over the given Signals and returns the ranked
@@ -94,17 +125,22 @@ func (a *Analyzer) Propose(ctx context.Context, signals []Signal) ([]pilotapi.Fi
 func (a *Analyzer) buildPrompt(signals []Signal) string {
 	var b strings.Builder
 
-	if preamble := executor.BuildGuidancePreamble(a.agentDir, proposeTaskDescription); preamble != "" {
+	task := a.slant.taskDescriptionOr(proposeTaskDescription)
+	if preamble := executor.BuildGuidancePreamble(a.agentDir, task); preamble != "" {
 		b.WriteString(preamble)
 		b.WriteString("\n\n")
 	}
 
-	b.WriteString("# Proactive Refactor Analysis\n\n")
-	b.WriteString("A deterministic scan of this project produced the signals below. ")
-	b.WriteString("Cluster related signals and propose the highest-value, smallest-blast-radius ")
-	b.WriteString("changes. Rank them so the most important proposal comes first.\n\n")
-	b.WriteString("## Signals\n\n")
+	b.WriteString("# ")
+	b.WriteString(a.slant.headingOr(defaultProposeHeading))
+	b.WriteString("\n\n")
+	b.WriteString(a.slant.introOr(defaultProposeIntro))
+	b.WriteString("\n\n## Signals\n\n")
 	b.WriteString(summarizeSignals(signals))
+	if extra := a.slant.extraInstruction(); extra != "" {
+		b.WriteString("\n\n## Focus\n\n")
+		b.WriteString(extra)
+	}
 	b.WriteString("\n\n## Required Output\n\n")
 	b.WriteString("Reply with ONLY a JSON array of proposal objects and nothing else — ")
 	b.WriteString("no prose, no markdown fences. Each object must match this shape exactly:\n\n")

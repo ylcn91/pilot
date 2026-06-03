@@ -13,6 +13,7 @@ import (
 	"github.com/ylcn91/pilot/internal/architect"
 	"github.com/ylcn91/pilot/internal/config"
 	"github.com/ylcn91/pilot/internal/executor"
+	"github.com/ylcn91/pilot/internal/memory"
 	"github.com/ylcn91/pilot/internal/pilotapi"
 	"github.com/ylcn91/pilot/internal/quality"
 )
@@ -114,10 +115,19 @@ func runArchitect(ctx context.Context, f *architectFlags) error {
 func buildArchitectRunConfig(cfg *config.Config, agentDir string, f *architectFlags) (architect.RunConfig, error) {
 	ac := cfg.Architect
 
+	// Resolve the lens once so its slant can aim the PROPOSE prompt; an unknown
+	// --lens surfaces here before any work is done.
+	lens, err := architect.LensByName(f.lens)
+	if err != nil {
+		return architect.RunConfig{}, err
+	}
+
 	scanner, err := architect.BuildLensScanner(f.lens, agentDir, architect.ScanOptions{
 		QualityRunner: architectQualityRunner(cfg, agentDir),
 		MinCoverage:   ac.Thresholds.MinCoverage,
 		Signals:       ac.Signals,
+		FailureSource: architectFailureSource(cfg),
+		ProjectID:     agentDir,
 	})
 	if err != nil {
 		return architect.RunConfig{}, err
@@ -127,6 +137,7 @@ func buildArchitectRunConfig(cfg *config.Config, agentDir string, f *architectFl
 		architectBackendStage(ac, f.backend),
 		architectBaseBackend(cfg),
 		agentDir,
+		architect.WithSlant(lens.Slant),
 	)
 
 	rc := architect.RunConfig{
@@ -182,6 +193,23 @@ func architectQualityRunner(cfg *config.Config, projectDir string) *quality.Runn
 		return nil
 	}
 	return quality.NewRunner(cfg.Quality, projectDir)
+}
+
+// architectFailureSource opens the memory store backing the test-gap lens's
+// bug-history collector. It is best-effort: a missing memory config or an
+// unopenable store yields a nil source, leaving that collector inert rather
+// than failing the scan. The concrete *memory.Store is returned as the
+// failureSource interface; a nil store is returned as an untyped nil so the
+// collector's nil check fires correctly.
+func architectFailureSource(cfg *config.Config) architect.FailureSource {
+	if cfg.Memory == nil || cfg.Memory.Path == "" {
+		return nil
+	}
+	store, err := memory.NewStore(cfg.Memory.Path)
+	if err != nil || store == nil {
+		return nil
+	}
+	return store
 }
 
 // architectIssueClients builds the issue creator and dedup searcher from the
