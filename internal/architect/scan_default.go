@@ -27,6 +27,22 @@ type ScanOptions struct {
 	// this set. Empty includes every default collector.
 	Signals []string
 
+	// Memory groups the memory-backed configuration the failure-history and
+	// knowledge collectors read. A zero MemoryOptions leaves those collectors
+	// inert, so lenses degrade gracefully when no memory store is configured.
+	Memory MemoryOptions
+
+	// SuggestRules enables the guardrail rule-suggester path: when true (and a
+	// KnowledgeSource is present) the pitfall/decision collectors are wired into
+	// the roster so SuggestRulesFromSignals can mine DRAFT layer rules from their
+	// Signals. It is OFF by default because the suggester's output is advisory,
+	// human-review material — never an enforced rule.
+	SuggestRules bool
+}
+
+// MemoryOptions groups the memory-backed configuration the failure-history and
+// knowledge collectors read. Zero values leave their collectors inert.
+type MemoryOptions struct {
 	// FailureSource backs the bug-history collector of the test-gap lens: the
 	// memory store's recurring-failure breakdown. A nil source (the default)
 	// leaves that collector inert, so lenses that read it degrade gracefully
@@ -47,13 +63,6 @@ type ScanOptions struct {
 	// A nil source (the default) leaves those collectors out of the roster, so
 	// the suggester stays inert when no knowledge store is configured.
 	KnowledgeSource PitfallSource
-
-	// SuggestRules enables the guardrail rule-suggester path: when true (and a
-	// KnowledgeSource is present) the pitfall/decision collectors are wired into
-	// the roster so SuggestRulesFromSignals can mine DRAFT layer rules from their
-	// Signals. It is OFF by default because the suggester's output is advisory,
-	// human-review material — never an enforced rule.
-	SuggestRules bool
 }
 
 // gateRunnerFromQuality adapts a *quality.Runner to the gateRunner slice the
@@ -96,10 +105,10 @@ func coreCollectors(opts ScanOptions) []Collector {
 	// The pitfall/decision collectors only join the roster when the rule
 	// suggester is explicitly enabled AND a real knowledge source is wired:
 	// adding them with a nil source would be dead weight on the default path.
-	if opts.SuggestRules && opts.KnowledgeSource != nil {
+	if opts.SuggestRules && opts.Memory.KnowledgeSource != nil {
 		candidates = append(candidates,
-			NewPitfallCollector(opts.KnowledgeSource, opts.ProjectID),
-			NewDecisionCollector(opts.KnowledgeSource, opts.ProjectID),
+			NewPitfallCollector(opts.Memory.KnowledgeSource, opts.Memory.ProjectID),
+			NewDecisionCollector(opts.Memory.KnowledgeSource, opts.Memory.ProjectID),
 		)
 	}
 	return candidates

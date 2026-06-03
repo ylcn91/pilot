@@ -30,9 +30,11 @@ func suggesterKnowledgeSource() *mockPitfallSource {
 // Signal surfaces from Scan without any change to the runner.
 func TestBuildLensScanner_SuggestRulesSurfacesSuggestion(t *testing.T) {
 	scanner, err := BuildLensScanner("core", t.TempDir(), ScanOptions{
-		SuggestRules:    true,
-		KnowledgeSource: suggesterKnowledgeSource(),
-		ProjectID:       "proj",
+		SuggestRules: true,
+		Memory: MemoryOptions{
+			KnowledgeSource: suggesterKnowledgeSource(),
+			ProjectID:       "proj",
+		},
 	})
 	if err != nil {
 		t.Fatalf("BuildLensScanner: %v", err)
@@ -70,9 +72,11 @@ func TestBuildLensScanner_SuggestRulesSurfacesSuggestion(t *testing.T) {
 // rule_suggestion Signal.
 func TestBuildLensScanner_SuggestRulesOffYieldsNoSuggestion(t *testing.T) {
 	scanner, err := BuildLensScanner("core", t.TempDir(), ScanOptions{
-		SuggestRules:    false,
-		KnowledgeSource: suggesterKnowledgeSource(),
-		ProjectID:       "proj",
+		SuggestRules: false,
+		Memory: MemoryOptions{
+			KnowledgeSource: suggesterKnowledgeSource(),
+			ProjectID:       "proj",
+		},
 	})
 	if err != nil {
 		t.Fatalf("BuildLensScanner: %v", err)
@@ -95,9 +99,11 @@ func TestBuildLensScanner_SuggestRulesOffYieldsNoSuggestion(t *testing.T) {
 // review Finding, with no GitHub creator (dry-run, nothing filed).
 func TestRunConfig_SuggestRulesSurfacesFinding(t *testing.T) {
 	scanner, err := BuildLensScanner("core", t.TempDir(), ScanOptions{
-		SuggestRules:    true,
-		KnowledgeSource: suggesterKnowledgeSource(),
-		ProjectID:       "proj",
+		SuggestRules: true,
+		Memory: MemoryOptions{
+			KnowledgeSource: suggesterKnowledgeSource(),
+			ProjectID:       "proj",
+		},
 	})
 	if err != nil {
 		t.Fatalf("BuildLensScanner: %v", err)

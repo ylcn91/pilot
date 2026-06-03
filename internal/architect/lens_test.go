@@ -91,7 +91,7 @@ func TestRadarLens_BundlesChurnCollector(t *testing.T) {
 		t.Fatalf("radar lens missing: %v", err)
 	}
 	src := &mockFailureSource{}
-	got := l.Collectors(ScanOptions{FailureSource: src})
+	got := l.Collectors(ScanOptions{Memory: MemoryOptions{FailureSource: src}})
 	var churn *ChurnCollector
 	for _, c := range got {
 		if ch, ok := c.(*ChurnCollector); ok {

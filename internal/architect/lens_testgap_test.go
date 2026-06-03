@@ -90,7 +90,7 @@ func TestTestGapLens_WiresFailureSource(t *testing.T) {
 	src := &mockFailureSource{reasons: []*memory.FailureReason{
 		{Reason: "boom", Count: 3},
 	}}
-	got := l.Collectors(ScanOptions{FailureSource: src})
+	got := l.Collectors(ScanOptions{Memory: MemoryOptions{FailureSource: src}})
 	var bug *BugHistoryCollector
 	for _, c := range got {
 		if b, ok := c.(*BugHistoryCollector); ok {

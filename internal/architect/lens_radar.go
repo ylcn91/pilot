@@ -20,7 +20,7 @@ func radarCollectors(opts ScanOptions) []Collector {
 	collectors := coreCollectors(opts)
 	collectors = append(collectors, NewDepsCollector())
 	collectors = append(collectors, NewStaleTestsCollector())
-	collectors = append(collectors, NewChurnCollector(opts.FailureSource, opts.FailureQuery, 0, opts.ProjectID))
+	collectors = append(collectors, NewChurnCollector(opts.Memory.FailureSource, opts.Memory.FailureQuery, 0, opts.Memory.ProjectID))
 	return collectors
 }
 

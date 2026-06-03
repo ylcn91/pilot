@@ -141,7 +141,7 @@ func BuildLensScanner(name, projectPath string, opts ScanOptions) (*Scanner, err
 	// in as a post-collector pass so it mines DRAFT rule_suggestion Signals over
 	// the full scan output and they flow through PROPOSE without touching the
 	// runner. Off by default: the post-pass stays nil unless the flag is set.
-	if opts.SuggestRules && opts.KnowledgeSource != nil {
+	if opts.SuggestRules && opts.Memory.KnowledgeSource != nil {
 		scanner.postPass = func(signals []Signal) []Signal {
 			return SuggestRulesFromSignals(opts, signals)
 		}

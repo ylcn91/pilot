@@ -50,7 +50,7 @@ var testGapSlant = &LensSlant{
 // backing source/runner is absent, so the lens degrades gracefully.
 func testGapCollectors(opts ScanOptions) []Collector {
 	collectors := []Collector{
-		NewBugHistoryCollector(opts.FailureSource, opts.FailureQuery, 0, opts.ProjectID),
+		NewBugHistoryCollector(opts.Memory.FailureSource, opts.Memory.FailureQuery, 0, opts.Memory.ProjectID),
 		NewMissingTestsCollector(),
 	}
 	// Reuse the spine's coverage collector. It is only meaningful with both a

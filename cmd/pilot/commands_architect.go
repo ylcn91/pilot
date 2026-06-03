@@ -156,13 +156,15 @@ func buildArchitectRunConfig(cfg *config.Config, agentDir string, f *architectFl
 	}
 
 	scanner, err := architect.BuildLensScanner(f.lens, agentDir, architect.ScanOptions{
-		QualityRunner:   architectQualityRunner(cfg, agentDir),
-		MinCoverage:     ac.Thresholds.MinCoverage,
-		Signals:         ac.Signals,
-		FailureSource:   architectFailureSource(cfg),
-		ProjectID:       agentDir,
-		SuggestRules:    f.suggestRules,
-		KnowledgeSource: architectKnowledgeSource(cfg),
+		QualityRunner: architectQualityRunner(cfg, agentDir),
+		MinCoverage:   ac.Thresholds.MinCoverage,
+		Signals:       ac.Signals,
+		SuggestRules:  f.suggestRules,
+		Memory: architect.MemoryOptions{
+			FailureSource:   architectFailureSource(cfg),
+			ProjectID:       agentDir,
+			KnowledgeSource: architectKnowledgeSource(cfg),
+		},
 	})
 	if err != nil {
 		return architect.RunConfig{}, err
