@@ -90,7 +90,7 @@ func (a *App) GetQueueTasks() []QueueTask {
 			Title:       exec.TaskTitle,
 			Status:      normalizeStatus(exec.Status),
 			PRURL:       exec.PRUrl,
-			IssueURL:    issueURL(exec.TaskID),
+			IssueURL:    issueURL(exec.TaskID, a.issueRepo),
 			ProjectPath: exec.ProjectPath,
 			CreatedAt:   exec.CreatedAt,
 		}

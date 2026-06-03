@@ -190,17 +190,17 @@ func (m Model) renderBanner() string {
 	gutter := strings.Repeat(" ", innerGutter)
 	wrap := func(s string) string { return gutter + s + gutter }
 
-	pad := buildEmptyLine(tw)
+	pad := buildEmptyLine(tw, slatePanelStyle)
 	var lines []string
-	lines = append(lines, buildTopBorder("PILOT", tw))
+	lines = append(lines, buildTopBorder("PILOT", tw, slatePanelStyle))
 	lines = append(lines, pad)
-	lines = append(lines, buildContentLine(wrap(line1), tw))
+	lines = append(lines, buildContentLine(wrap(line1), tw, slatePanelStyle))
 	lines = append(lines, pad)
-	lines = append(lines, buildContentLine(wrap(line2), tw))
+	lines = append(lines, buildContentLine(wrap(line2), tw, slatePanelStyle))
 	lines = append(lines, pad)
-	lines = append(lines, buildContentLine(wrap(line3), tw))
+	lines = append(lines, buildContentLine(wrap(line3), tw, slatePanelStyle))
 	lines = append(lines, pad)
-	lines = append(lines, buildBottomBorder(tw))
+	lines = append(lines, buildBottomBorder(tw, slatePanelStyle))
 	return strings.Join(lines, "\n")
 }
 

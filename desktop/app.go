@@ -21,6 +21,7 @@ type App struct {
 	store               *memory.Store
 	httpClient          *http.Client
 	gatewayURL          string // e.g. "http://127.0.0.1:9090"
+	issueRepo           string // "owner/repo" used to build GitHub issue URLs
 	mu                  sync.Mutex
 	gatewayCmd          *exec.Cmd
 	gatewayDone         chan error
@@ -65,6 +66,9 @@ func (a *App) startup(ctx context.Context) {
 		a.gatewayURL = fmt.Sprintf("http://%s:%d", cfg.Gateway.Host, cfg.Gateway.Port)
 	} else {
 		a.gatewayURL = "http://127.0.0.1:9090"
+	}
+	if err == nil && cfg.Adapters != nil && cfg.Adapters.GitHub != nil && cfg.Adapters.GitHub.Repo != "" {
+		a.issueRepo = cfg.Adapters.GitHub.Repo
 	}
 	if cfg != nil {
 		a.gatewayProjectPath = resolveConfiguredProjectPath(cfg)

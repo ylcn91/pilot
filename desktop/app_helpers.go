@@ -15,12 +15,21 @@ func issueIDFromTaskID(taskID string) string {
 	return taskID
 }
 
-// issueURL constructs the GitHub issue URL from a task ID.
-func issueURL(taskID string) string {
+// defaultIssueRepo is the "owner/repo" used to build GitHub issue URLs when no
+// repo is configured. Matches the gateway default fallback in startup().
+const defaultIssueRepo = "ylcn91/pilot"
+
+// issueURL constructs the GitHub issue URL from a task ID for the given
+// "owner/repo". An empty repo falls back to defaultIssueRepo so behavior is
+// unchanged when config provides no GitHub repo.
+func issueURL(taskID, repo string) string {
+	if repo == "" {
+		repo = defaultIssueRepo
+	}
 	id := issueIDFromTaskID(taskID)
 	if strings.HasPrefix(id, "GH-") {
 		num := strings.TrimPrefix(id, "GH-")
-		return fmt.Sprintf("https://github.com/ylcn91/pilot/issues/%s", num)
+		return fmt.Sprintf("https://github.com/%s/issues/%s", repo, num)
 	}
 	return ""
 }

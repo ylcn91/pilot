@@ -6,34 +6,58 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// renderPanel builds a panel manually with guaranteed width.
+// panelStyle bundles the border and title styles used to render a panel,
+// letting a single renderer produce both the slate and orange variants.
+type panelStyle struct {
+	border lipgloss.Style
+	label  lipgloss.Style
+}
+
+var (
+	slatePanelStyle  = panelStyle{border: borderStyle, label: labelStyle}
+	orangePanelStyle = panelStyle{border: orangeBorderStyle, label: orangeLabelStyle}
+)
+
+// renderPanel builds a slate-bordered panel with guaranteed width.
 // tw specifies the total visual width including borders.
 // Structure: ╭─ TITLE ─...─╮ / │ (space) content (space) │ / ╰─...─╯
 func renderPanel(title string, content string, tw int) string {
+	return renderStyledPanel(title, content, tw, slatePanelStyle)
+}
+
+// renderOrangePanel renders a panel with orange borders and title (for update notifications).
+func renderOrangePanel(title string, content string, tw int) string {
+	return renderStyledPanel(title, content, tw, orangePanelStyle)
+}
+
+// renderStyledPanel builds a panel manually with guaranteed width using the
+// supplied style. Both color variants produce identical layout, differing only
+// in the border/label styling.
+func renderStyledPanel(title string, content string, tw int, sty panelStyle) string {
 	var lines []string
 
 	// Top border: ╭─ TITLE ─────────────────────────────────────────────────────╮
-	lines = append(lines, buildTopBorder(title, tw))
+	lines = append(lines, buildTopBorder(title, tw, sty))
 
 	// Empty line padding
-	lines = append(lines, buildEmptyLine(tw))
+	lines = append(lines, buildEmptyLine(tw, sty))
 
 	// Content lines
 	for _, line := range strings.Split(content, "\n") {
-		lines = append(lines, buildContentLine(line, tw))
+		lines = append(lines, buildContentLine(line, tw, sty))
 	}
 
 	// Empty line padding
-	lines = append(lines, buildEmptyLine(tw))
+	lines = append(lines, buildEmptyLine(tw, sty))
 
 	// Bottom border
-	lines = append(lines, buildBottomBorder(tw))
+	lines = append(lines, buildBottomBorder(tw, sty))
 
 	return strings.Join(lines, "\n")
 }
 
 // buildTopBorder creates: ╭─ TITLE ─────...─────╮ with exact tw width
-func buildTopBorder(title string, tw int) string {
+func buildTopBorder(title string, tw int, sty panelStyle) string {
 	// Characters: ╭ (1) + ─ (1) + space (1) + TITLE + space (1) + dashes + ╮ (1)
 	titleUpper := strings.ToUpper(title)
 	prefix := "╭─ "
@@ -46,27 +70,27 @@ func buildTopBorder(title string, tw int) string {
 	}
 
 	// Style border chars dim, title bright
-	return borderStyle.Render(prefix) + labelStyle.Render(titleUpper) + borderStyle.Render(" "+strings.Repeat("─", dashCount)+"╮")
+	return sty.border.Render(prefix) + sty.label.Render(titleUpper) + sty.border.Render(" "+strings.Repeat("─", dashCount)+"╮")
 }
 
 // buildBottomBorder creates: ╰─────────────────────────────────────────────────╯
-func buildBottomBorder(tw int) string {
+func buildBottomBorder(tw int, sty panelStyle) string {
 	// ╰ + dashes + ╯
 	dashCount := tw - 2
 	line := "╰" + strings.Repeat("─", dashCount) + "╯"
-	return borderStyle.Render(line)
+	return sty.border.Render(line)
 }
 
 // buildEmptyLine creates: │                                                                 │
-func buildEmptyLine(tw int) string {
+func buildEmptyLine(tw int, sty panelStyle) string {
 	// │ + spaces + │
 	spaceCount := tw - 2
-	border := borderStyle.Render("│")
+	border := sty.border.Render("│")
 	return border + strings.Repeat(" ", spaceCount) + border
 }
 
 // buildContentLine creates: │ (space) content padded/truncated (space) │
-func buildContentLine(content string, tw int) string {
+func buildContentLine(content string, tw int, sty panelStyle) string {
 	// Available width for content = tw - 4 (│ + space + space + │)
 	contentWidth := tw - 4
 
@@ -74,67 +98,7 @@ func buildContentLine(content string, tw int) string {
 	adjusted := padOrTruncate(content, contentWidth)
 
 	// Only style borders, not content
-	border := borderStyle.Render("│")
-	return border + " " + adjusted + " " + border
-}
-
-// renderOrangePanel renders a panel with orange borders and title (for update notifications)
-func renderOrangePanel(title string, content string, tw int) string {
-	var lines []string
-
-	// Top border
-	lines = append(lines, buildOrangeTopBorder(title, tw))
-
-	// Empty line padding
-	lines = append(lines, buildOrangeEmptyLine(tw))
-
-	// Content lines
-	for _, line := range strings.Split(content, "\n") {
-		lines = append(lines, buildOrangeContentLine(line, tw))
-	}
-
-	// Empty line padding
-	lines = append(lines, buildOrangeEmptyLine(tw))
-
-	// Bottom border
-	lines = append(lines, buildOrangeBottomBorder(tw))
-
-	return strings.Join(lines, "\n")
-}
-
-// buildOrangeTopBorder creates orange top border: ╭─ TITLE ─────...─────╮
-func buildOrangeTopBorder(title string, tw int) string {
-	titleUpper := strings.ToUpper(title)
-	prefix := "╭─ "
-	prefixWidth := lipgloss.Width(prefix + titleUpper + " ")
-
-	dashCount := tw - prefixWidth - 1
-	if dashCount < 0 {
-		dashCount = 0
-	}
-
-	return orangeBorderStyle.Render(prefix) + orangeLabelStyle.Render(titleUpper) + orangeBorderStyle.Render(" "+strings.Repeat("─", dashCount)+"╮")
-}
-
-// buildOrangeBottomBorder creates orange bottom border: ╰─────────────────────────────────────────────────╯
-func buildOrangeBottomBorder(tw int) string {
-	dashCount := tw - 2
-	line := "╰" + strings.Repeat("─", dashCount) + "╯"
-	return orangeBorderStyle.Render(line)
-}
-
-// buildOrangeEmptyLine creates orange bordered empty line: │                                                                 │
-func buildOrangeEmptyLine(tw int) string {
-	spaceCount := tw - 2
-	border := orangeBorderStyle.Render("│")
-	return border + strings.Repeat(" ", spaceCount) + border
-}
-
-// buildOrangeContentLine creates orange bordered content line: │ (space) content padded/truncated (space) │
-func buildOrangeContentLine(content string, tw int) string {
-	contentWidth := tw - 4
-	adjusted := padOrTruncate(content, contentWidth)
-	border := orangeBorderStyle.Render("│")
+	border := sty.border.Render("│")
 	return border + " " + adjusted + " " + border
 }
 

@@ -181,7 +181,9 @@ func (m Model) renderGitGraph(opts ...int) string {
 }
 
 // renderGraphPanel builds a bordered panel at the given total width.
-// Focused state uses steel blue border; unfocused uses slate.
+// Focused state uses steel blue border; unfocused uses slate. It reuses the
+// shared panel primitives from tui_panels.go via a style-parameterized
+// panelStyle, keeping the title bright (labelStyle) like the slate panels.
 func (m Model) renderGraphPanel(title string, contentLines []string, totalWidth int) string {
 	var borderSty lipgloss.Style
 	if m.gitGraphFocus {
@@ -189,38 +191,16 @@ func (m Model) renderGraphPanel(title string, contentLines []string, totalWidth 
 	} else {
 		borderSty = lipgloss.NewStyle().Foreground(lipgloss.Color("#3d4450")) // slate
 	}
+	sty := panelStyle{border: borderSty, label: labelStyle}
 
-	innerWidth := totalWidth - 4 // border + space + space + border
-	titleUpper := strings.ToUpper(title)
-
-	// Top border
-	prefixStr := "╭─ " + titleUpper + " "
-	prefixWidth := lipgloss.Width(prefixStr)
-	dashCount := totalWidth - prefixWidth - 1
-	if dashCount < 0 {
-		dashCount = 0
-	}
-	topBorder := borderSty.Render("╭─ ") + labelStyle.Render(titleUpper) +
-		borderSty.Render(" "+strings.Repeat("─", dashCount)+"╮")
-
-	// Empty line
-	emptyLine := borderSty.Render("│") + strings.Repeat(" ", totalWidth-2) + borderSty.Render("│")
-
-	// Content lines
-	border := borderSty.Render("│")
 	var renderedLines []string
-	renderedLines = append(renderedLines, topBorder)
-	renderedLines = append(renderedLines, emptyLine)
+	renderedLines = append(renderedLines, buildTopBorder(title, totalWidth, sty))
+	renderedLines = append(renderedLines, buildEmptyLine(totalWidth, sty))
 	for _, line := range contentLines {
-		adjusted := padOrTruncate(line, innerWidth)
-		renderedLines = append(renderedLines, border+" "+adjusted+" "+border)
+		renderedLines = append(renderedLines, buildContentLine(line, totalWidth, sty))
 	}
-	renderedLines = append(renderedLines, emptyLine)
-
-	// Bottom border
-	dashCount = totalWidth - 2
-	bottomBorder := borderSty.Render("╰" + strings.Repeat("─", dashCount) + "╯")
-	renderedLines = append(renderedLines, bottomBorder)
+	renderedLines = append(renderedLines, buildEmptyLine(totalWidth, sty))
+	renderedLines = append(renderedLines, buildBottomBorder(totalWidth, sty))
 
 	return strings.Join(renderedLines, "\n")
 }
