@@ -1,11 +1,75 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"path/filepath"
 	"testing"
 
 	"github.com/ylcn91/pilot/internal/codexruntime"
 )
+
+func TestRunRuntimeSessionUsesInjectedStart(t *testing.T) {
+	server := NewServer(&Config{
+		Host: "127.0.0.1",
+		Port: 9090,
+		CodexRuntime: &CodexRuntimeConfig{
+			Command: "/opt/bin/codex",
+			Args:    []string{"app-server", "--stdio"},
+		},
+	})
+
+	startErr := errors.New("fake codex unavailable")
+	var gotCfg codexruntime.Config
+	called := 0
+	server.codex.start = func(_ context.Context, cfg codexruntime.Config) (*codexruntime.Client, error) {
+		called++
+		gotCfg = cfg
+		return nil, startErr
+	}
+
+	err := server.runRuntimeSession(context.Background(), &Session{ID: "s1"}, runtimeTaskPayload{
+		Action: runtimeActionStart,
+		Prompt: "do the thing",
+		Cwd:    ".",
+	})
+	if !errors.Is(err, startErr) {
+		t.Fatalf("err = %v, want %v", err, startErr)
+	}
+	if called != 1 {
+		t.Fatalf("start called %d times, want 1", called)
+	}
+	if gotCfg.Command != "/opt/bin/codex" {
+		t.Fatalf("command = %q", gotCfg.Command)
+	}
+	if len(gotCfg.Args) != 2 || gotCfg.Args[0] != "app-server" {
+		t.Fatalf("args = %v", gotCfg.Args)
+	}
+	if !filepath.IsAbs(gotCfg.Cwd) {
+		t.Fatalf("cwd = %q, want absolute path", gotCfg.Cwd)
+	}
+}
+
+func TestRunRuntimeSessionRequiresPrompt(t *testing.T) {
+	server := NewServer(&Config{Host: "127.0.0.1", Port: 9090})
+
+	called := false
+	server.codex.start = func(_ context.Context, _ codexruntime.Config) (*codexruntime.Client, error) {
+		called = true
+		return nil, nil
+	}
+
+	err := server.runRuntimeSession(context.Background(), &Session{ID: "s1"}, runtimeTaskPayload{
+		Action: runtimeActionStart,
+	})
+	if err == nil {
+		t.Fatal("expected error for empty prompt")
+	}
+	if called {
+		t.Fatal("start should not be called when prompt is empty")
+	}
+}
 
 func TestParseRuntimeSandbox(t *testing.T) {
 	got, err := parseRuntimeSandbox("workspace-write")

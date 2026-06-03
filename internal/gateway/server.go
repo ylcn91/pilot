@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/ylcn91/pilot/internal/codexruntime"
 	"github.com/ylcn91/pilot/internal/logging"
 	"github.com/ylcn91/pilot/internal/pilotapi"
 )
@@ -99,12 +100,20 @@ type dashboardState struct {
 }
 
 // codexRuntimeState groups the Codex app-server runtime registries used by the
-// gateway WebSocket sessions. Both are set once at construction and read
+// gateway WebSocket sessions. All fields are set once at construction and read
 // without locking.
 type codexRuntimeState struct {
 	approvals *runtimeApprovalRegistry
 	sessions  *runtimeSessionRegistry
+	// start spawns the Codex app-server client. It defaults to
+	// codexruntime.Start and is overridable in tests to inject a fake client
+	// without launching a real subprocess.
+	start runtimeStartFunc
 }
+
+// runtimeStartFunc launches a Codex app-server client. It mirrors
+// codexruntime.Start so the latter can be used as the default.
+type runtimeStartFunc func(ctx context.Context, cfg codexruntime.Config) (*codexruntime.Client, error)
 
 // Server is the main gateway server handling WebSocket and HTTP connections.
 // It provides a control plane for managing Pilot via WebSocket, receives webhooks
@@ -198,6 +207,7 @@ func NewServerWithAuth(config *Config, authConfig *AuthConfig) *Server {
 		codex: codexRuntimeState{
 			approvals: newRuntimeApprovalRegistry(),
 			sessions:  newRuntimeSessionRegistry(),
+			start:     codexruntime.Start,
 		},
 		liveness: &livenessState{
 			maxGoroutines:   1000,

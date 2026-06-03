@@ -175,7 +175,7 @@ func (s *Server) runRuntimeSession(ctx context.Context, session *Session, task r
 		return err
 	}
 
-	client, err := codexruntime.Start(ctx, codexruntime.Config{
+	client, err := s.codex.start(ctx, codexruntime.Config{
 		Command: runtimeConfig.Command,
 		Args:    runtimeConfig.Args,
 		Cwd:     absCwd,
