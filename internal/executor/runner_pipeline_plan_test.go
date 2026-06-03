@@ -175,6 +175,34 @@ func TestExecutePipelinePlan_FailureNonFatal(t *testing.T) {
 	}
 }
 
+// TestExecutePipelinePlan_RejectsInertSpec verifies a whitespace-only spec is
+// treated exactly like a plan failure: non-fatal, planOutput stays empty, the
+// typed artifact stays at its zero value, and injectPlanOutput leaves the base
+// prompt unchanged (no empty "## Implementation Plan" section is injected).
+func TestExecutePipelinePlan_RejectsInertSpec(t *testing.T) {
+	r := newTestRunner("claude")
+	r.config.Pipeline = &PipelineConfig{Plan: &StageConfig{Type: BackendTypeClaudeCode}}
+	r.planPipelineFn = func() (string, error) { return "   \n\t  \n", nil }
+
+	s := &executeState{task: &Task{ID: "GH-inert-1", Title: "do work"}, ctx: context.Background()}
+	r.executePipelinePlan(s)
+
+	if s.planOutput != "" {
+		t.Fatalf("planOutput = %q, want empty after inert spec", s.planOutput)
+	}
+	if s.planArtifact != (pilotapi.HandoffArtifact{}) {
+		t.Fatalf("planArtifact = %+v, want zero value after inert spec", s.planArtifact)
+	}
+
+	prompt := injectPlanOutput("base prompt", s.planOutput)
+	if prompt != "base prompt" {
+		t.Fatalf("prompt mutated by inert spec: %q", prompt)
+	}
+	if strings.Contains(prompt, "## Implementation Plan") {
+		t.Fatalf("prompt unexpectedly contains plan section:\n%s", prompt)
+	}
+}
+
 // TestExecutePipelinePlan_RunsOnConfiguredBackend verifies the any-to-any plan
 // path: with a configured plan stage and no test override, the stage drives the
 // resolved planBackend (not the claude `--print` subprocess), passing the
