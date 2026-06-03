@@ -236,10 +236,14 @@ func TestService_ResolveSlackIdentity(t *testing.T) {
 		t.Fatalf("CreateTeam failed: %v", err)
 	}
 
-	// Add a member
+	// Add a member with a Slack user ID
 	dev, err := svc.AddMember(team.ID, owner.ID, "dev@example.com", RoleDeveloper, nil)
 	if err != nil {
 		t.Fatalf("AddMember failed: %v", err)
+	}
+	dev.SlackUserID = "U12345678"
+	if err := store.UpdateMember(dev); err != nil {
+		t.Fatalf("UpdateMember failed: %v", err)
 	}
 
 	tests := []struct {
@@ -256,16 +260,16 @@ func TestService_ResolveSlackIdentity(t *testing.T) {
 			wantID:      dev.ID,
 		},
 		{
-			name:        "slackUserID ignored for now, email resolves",
+			name:        "email takes priority over slackUserID",
 			slackUserID: "U12345678",
 			email:       "dev@example.com",
 			wantID:      dev.ID,
 		},
 		{
-			name:        "slackUserID alone does not resolve (not implemented yet)",
+			name:        "resolve by slackUserID fallback",
 			slackUserID: "U12345678",
 			email:       "",
-			wantID:      "",
+			wantID:      dev.ID,
 		},
 		{
 			name:        "no match returns empty",
