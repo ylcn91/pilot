@@ -105,6 +105,13 @@ func (m Model) renderDashboard() string {
 	b.WriteString(m.autopilotPanel.View())
 	b.WriteString("\n")
 
+	// Findings panel (Architect findings: Radar / Dependency-Doctor). Shown
+	// only when there are findings to surface, mirroring the update panel.
+	if m.showFindings && len(m.findings) > 0 {
+		b.WriteString(m.renderFindings())
+		b.WriteString("\n")
+	}
+
 	// History
 	b.WriteString(m.renderHistory())
 	b.WriteString("\n")
@@ -127,7 +134,7 @@ func (m Model) renderHelp() string {
 	switch {
 	case m.gitGraphMode == GitGraphHidden:
 		// Graph hidden: show navigation and graph-open key
-		parts = []string{"q: quit", "l: logs", "b: banner", "g: graph", "j/k: select"}
+		parts = []string{"q: quit", "l: logs", "f: findings", "b: banner", "g: graph", "j/k: select"}
 	case m.gitGraphFocus:
 		// Graph visible, graph panel focused
 		parts = []string{"q: quit", "b: banner", "g: close", "tab: dashboard"}
