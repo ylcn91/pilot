@@ -54,6 +54,7 @@ type Config struct {
 	TeamID         string                  `yaml:"team_id"` // Optional team ID for scoping execution
 	Team           *TeamConfig             `yaml:"team"`
 	Architect      *ArchitectConfig        `yaml:"architect,omitempty"` // Proactive Architect pipeline (SCAN/PROPOSE/EMIT)
+	Guardrails     *GuardrailsConfig       `yaml:"guardrails,omitempty"` // Per-PR architectural guardrails (report-only by default)
 }
 
 // DefaultConfig returns a new Config instance with sensible default values.
