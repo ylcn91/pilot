@@ -304,6 +304,79 @@ func TestArchitectEndpointRequiresAuth(t *testing.T) {
 	}
 }
 
+// TestArchitectEndpointE2E exercises the full web data path: a real
+// httptest.NewServer wrapping the production buildHandler() routing, a fake
+// ArchitectProvider seeded with two findings, and an HTTP GET to
+// /api/v1/architect. It asserts the decoded JSON body carries BOTH finding
+// titles and their risk values, proving findings flow end-to-end from the
+// provider through the gateway mux to the wire — not just through a directly
+// invoked handler.
+func TestArchitectEndpointE2E(t *testing.T) {
+	server := NewServer(&Config{Host: "127.0.0.1", Port: 0})
+	server.SetArchitectProvider(&mockArchitectProvider{findings: []pilotapi.Finding{
+		{
+			Title:        "Unbounded goroutine leak in poller",
+			Kind:         "bug",
+			Risk:         pilotapi.RiskReleaseBlocker,
+			WhyItMatters: "exhausts file descriptors after hours",
+			Files:        []string{"internal/poller/loop.go"},
+		},
+		{
+			Title:        "Vendor SDK two majors behind",
+			Kind:         "proposal",
+			Risk:         pilotapi.RiskMedium,
+			WhyItMatters: "missing upstream security fixes",
+		},
+	}})
+
+	ts := httptest.NewServer(server.buildHandler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/v1/architect")
+	if err != nil {
+		t.Fatalf("GET /api/v1/architect failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Expected Content-Type application/json, got %q", ct)
+	}
+
+	var body struct {
+		Count    int                `json:"count"`
+		Findings []pilotapi.Finding `json:"findings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("Failed to decode end-to-end body: %v", err)
+	}
+
+	if body.Count != 2 {
+		t.Errorf("Expected count=2, got %d", body.Count)
+	}
+	if len(body.Findings) != 2 {
+		t.Fatalf("Expected 2 findings over the wire, got %d", len(body.Findings))
+	}
+
+	// Both titles must survive the round-trip, in order.
+	if body.Findings[0].Title != "Unbounded goroutine leak in poller" {
+		t.Errorf("first title mismatch: %q", body.Findings[0].Title)
+	}
+	if body.Findings[1].Title != "Vendor SDK two majors behind" {
+		t.Errorf("second title mismatch: %q", body.Findings[1].Title)
+	}
+
+	// Both risk values must round-trip to their canonical strings.
+	if body.Findings[0].Risk != pilotapi.RiskReleaseBlocker {
+		t.Errorf("first risk mismatch: %q", body.Findings[0].Risk)
+	}
+	if body.Findings[1].Risk != pilotapi.RiskMedium {
+		t.Errorf("second risk mismatch: %q", body.Findings[1].Risk)
+	}
+}
+
 // contains is a tiny substring helper to avoid pulling strings into a test
 // that otherwise has no use for it.
 func contains(haystack, needle string) bool {
