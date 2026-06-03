@@ -90,6 +90,13 @@ func runArchitect(ctx context.Context, f *architectFlags) error {
 		return fmt.Errorf("resolve project root: %w", err)
 	}
 
+	// The RFC-generator lens produces a document, not a list of issues, so it
+	// takes its own render/write path rather than the SCAN->PROPOSE->EMIT
+	// pipeline.
+	if architect.IsRFCLens(f.lens) {
+		return runArchitectRFC(ctx, cfg, agentDir, f)
+	}
+
 	runCfg, err := buildArchitectRunConfig(cfg, agentDir, f)
 	if err != nil {
 		return err
