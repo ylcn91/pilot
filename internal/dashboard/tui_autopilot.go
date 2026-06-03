@@ -206,10 +206,9 @@ func (p *AutopilotPanel) formatDuration(d time.Duration) string {
 	return formatDurationShort(d)
 }
 
-// truncateString truncates a string to maxLen, adding "..." if truncated.
+// truncateString truncates a string to maxLen visual columns, adding "..." if
+// truncated. It delegates to truncateVisual so multi-byte/wide Unicode is
+// measured by display width rather than raw byte length.
 func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
+	return truncateVisual(s, maxLen)
 }
