@@ -1,5 +1,78 @@
 package replay
 
+import "strings"
+
+// htmlDocument holds the per-exporter pieces that vary between the two
+// standalone HTML exporters (ExportToHTML and ExportHTMLReport). The
+// surrounding document scaffold (<!DOCTYPE>, <head>, <style>, <body>, and
+// the closing tags) is identical and rendered by writeHTMLDocumentOpen /
+// writeHTMLDocumentClose.
+type htmlDocument struct {
+	// htmlTag is the opening <html ...> element, e.g. "<html>" or
+	// "<html lang=\"en\">".
+	htmlTag string
+	// headExtra holds additional <head> lines emitted after the charset
+	// meta and before the <title> (e.g. the viewport meta). Each entry is
+	// written verbatim followed by a newline.
+	headExtra []string
+	// title is the full text placed inside the <title> element.
+	title string
+	// styles is the CSS placed inside the <style> block.
+	styles string
+}
+
+// writeHTMLDocumentOpen writes the shared opening scaffold (doctype, head,
+// style block, body open) for a standalone HTML export.
+func writeHTMLDocumentOpen(sb *strings.Builder, doc htmlDocument) {
+	sb.WriteString("<!DOCTYPE html>\n")
+	sb.WriteString(doc.htmlTag)
+	sb.WriteString("\n<head>\n")
+	sb.WriteString("<meta charset=\"UTF-8\">\n")
+	for _, line := range doc.headExtra {
+		sb.WriteString(line)
+		sb.WriteString("\n")
+	}
+	sb.WriteString("<title>")
+	sb.WriteString(doc.title)
+	sb.WriteString("</title>\n")
+	sb.WriteString("<style>\n")
+	sb.WriteString(doc.styles)
+	sb.WriteString("</style>\n</head>\n<body>\n")
+}
+
+// writeHTMLDocumentClose writes the shared closing scaffold for a
+// standalone HTML export.
+func writeHTMLDocumentClose(sb *strings.Builder) {
+	sb.WriteString("</body>\n</html>")
+}
+
+// recordingExportStyles returns the CSS used by the compact recording
+// exporter (ExportToHTML).
+func recordingExportStyles() string {
+	return `
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 40px; background: #1a1a2e; color: #eee; }
+.header { background: #16213e; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+.header h1 { margin: 0 0 10px 0; color: #0f4c75; }
+.meta { display: flex; gap: 20px; flex-wrap: wrap; }
+.meta-item { background: #0f3460; padding: 8px 16px; border-radius: 4px; }
+.meta-label { color: #888; font-size: 12px; }
+.meta-value { font-weight: bold; }
+.event { padding: 12px 16px; border-left: 3px solid #333; margin: 8px 0; background: #16213e; border-radius: 0 4px 4px 0; }
+.event:hover { background: #1a1a3e; }
+.event-tool { border-left-color: #4a9eff; }
+.event-text { border-left-color: #50c878; }
+.event-result { border-left-color: #ffd700; }
+.event-error { border-left-color: #ff4444; background: #2a1a1a; }
+.timestamp { color: #666; font-size: 12px; margin-right: 10px; }
+.sequence { color: #888; font-size: 11px; }
+.tool-name { color: #4a9eff; font-weight: bold; }
+.tool-detail { color: #aaa; margin-left: 8px; }
+pre { background: #0a0a1a; padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 13px; }
+.section { margin: 24px 0; }
+.section h2 { color: #0f4c75; border-bottom: 1px solid #333; padding-bottom: 8px; }
+`
+}
+
 func htmlReportStyles() string {
 	return `
 :root {

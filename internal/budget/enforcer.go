@@ -144,12 +144,7 @@ func (e *Enforcer) GetStatus(ctx context.Context, teamID, userID string) (*Statu
 		return nil, fmt.Errorf("failed to get monthly usage: %w", err)
 	}
 
-	e.mu.RLock()
-	paused := e.paused
-	pauseReason := e.pauseReason
-	blockedTasks := e.blockedTasks
-	e.mu.RUnlock()
-
+	e.mu.Lock()
 	status := &Status{
 		DailySpent:     dailySummary.TotalCost,
 		DailyLimit:     e.config.DailyLimit,
@@ -157,13 +152,11 @@ func (e *Enforcer) GetStatus(ctx context.Context, teamID, userID string) (*Statu
 		MonthlySpent:   monthlySummary.TotalCost,
 		MonthlyLimit:   e.config.MonthlyLimit,
 		MonthlyPercent: percentOf(monthlySummary.TotalCost, e.config.MonthlyLimit),
-		IsPaused:       paused,
-		PauseReason:    pauseReason,
-		BlockedTasks:   blockedTasks,
+		IsPaused:       e.paused,
+		PauseReason:    e.pauseReason,
+		BlockedTasks:   e.blockedTasks,
 		LastUpdated:    now,
 	}
-
-	e.mu.Lock()
 	e.lastStatus = status
 	e.mu.Unlock()
 

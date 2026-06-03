@@ -11,33 +11,11 @@ import (
 func ExportToHTML(recording *Recording, events []*StreamEvent) (string, error) {
 	var sb strings.Builder
 
-	sb.WriteString("<!DOCTYPE html>\n<html>\n<head>\n")
-	sb.WriteString("<meta charset=\"UTF-8\">\n")
-	sb.WriteString(fmt.Sprintf("<title>Execution Recording: %s</title>\n", recording.ID))
-	sb.WriteString("<style>\n")
-	sb.WriteString(`
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 40px; background: #1a1a2e; color: #eee; }
-.header { background: #16213e; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-.header h1 { margin: 0 0 10px 0; color: #0f4c75; }
-.meta { display: flex; gap: 20px; flex-wrap: wrap; }
-.meta-item { background: #0f3460; padding: 8px 16px; border-radius: 4px; }
-.meta-label { color: #888; font-size: 12px; }
-.meta-value { font-weight: bold; }
-.event { padding: 12px 16px; border-left: 3px solid #333; margin: 8px 0; background: #16213e; border-radius: 0 4px 4px 0; }
-.event:hover { background: #1a1a3e; }
-.event-tool { border-left-color: #4a9eff; }
-.event-text { border-left-color: #50c878; }
-.event-result { border-left-color: #ffd700; }
-.event-error { border-left-color: #ff4444; background: #2a1a1a; }
-.timestamp { color: #666; font-size: 12px; margin-right: 10px; }
-.sequence { color: #888; font-size: 11px; }
-.tool-name { color: #4a9eff; font-weight: bold; }
-.tool-detail { color: #aaa; margin-left: 8px; }
-pre { background: #0a0a1a; padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 13px; }
-.section { margin: 24px 0; }
-.section h2 { color: #0f4c75; border-bottom: 1px solid #333; padding-bottom: 8px; }
-`)
-	sb.WriteString("</style>\n</head>\n<body>\n")
+	writeHTMLDocumentOpen(&sb, htmlDocument{
+		htmlTag: "<html>",
+		title:   fmt.Sprintf("Execution Recording: %s", recording.ID),
+		styles:  recordingExportStyles(),
+	})
 
 	// Header
 	sb.WriteString("<div class=\"header\">\n")
@@ -99,7 +77,7 @@ pre { background: #0a0a1a; padding: 12px; border-radius: 4px; overflow-x: auto; 
 	}
 	sb.WriteString("</div>\n")
 
-	sb.WriteString("</body>\n</html>")
+	writeHTMLDocumentClose(&sb)
 
 	return sb.String(), nil
 }
