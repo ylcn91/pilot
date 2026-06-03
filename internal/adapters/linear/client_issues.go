@@ -47,14 +47,14 @@ func (c *Client) GetIssue(ctx context.Context, id string) (*Issue, error) {
 	`
 
 	var result struct {
-		Issue Issue `json:"issue"`
+		Issue issueListItem `json:"issue"`
 	}
 
 	if err := c.Execute(ctx, query, map[string]interface{}{"id": id}, &result); err != nil {
 		return nil, err
 	}
 
-	return &result.Issue, nil
+	return result.Issue.toIssue(), nil
 }
 
 // UpdateIssueState updates an issue's state
@@ -210,15 +210,18 @@ func (c *Client) CreateIssue(ctx context.Context, parentID, title, body string, 
 		}
 	}
 
-	// Create issue using issueCreate mutation
+	// Create issue using issueCreate mutation. parentId is included in the input
+	// so Linear builds a real epic -> sub-issue tree (not just a "Parent:" line in
+	// the body); it is only sent when a non-empty parentID was supplied.
 	mutation := `
-		mutation CreateIssue($teamId: String!, $title: String!, $description: String, $labelIds: [String!], $projectId: String) {
+		mutation CreateIssue($teamId: String!, $title: String!, $description: String, $labelIds: [String!], $projectId: String, $parentId: String) {
 			issueCreate(input: {
 				teamId: $teamId,
 				title: $title,
 				description: $description,
 				labelIds: $labelIds,
-				projectId: $projectId
+				projectId: $projectId,
+				parentId: $parentId
 			}) {
 				success
 				issue {
@@ -235,6 +238,12 @@ func (c *Client) CreateIssue(ctx context.Context, parentID, title, body string, 
 		"title":       title,
 		"description": bodyWithParent,
 		"labelIds":    labelIDs,
+	}
+
+	// Link the new issue under the parent so the tree is real. Set only when a
+	// parent was supplied so existing parentless callers pass through unchanged.
+	if parentID != "" {
+		variables["parentId"] = parentID
 	}
 
 	// Include project if parent has one
@@ -262,4 +271,34 @@ func (c *Client) CreateIssue(ctx context.Context, parentID, title, body string, 
 	}
 
 	return result.IssueCreate.Issue.Identifier, result.IssueCreate.Issue.URL, nil
+}
+
+// SearchIssuesContaining counts issues whose description contains the given
+// literal phrase (the Architect dedup marker). It mirrors the GitHub client's
+// method of the same name so the Architect EMIT stage can dedup across runs
+// against Linear too. The owner/repo arguments are part of the cross-tracker
+// IssueSearcher seam and are ignored here — Linear scopes by API key, not by a
+// GitHub-style owner/repo. The Linear `contains` filter is a substring match, so
+// the hidden marker embedded in a previously-created issue body round-trips.
+func (c *Client) SearchIssuesContaining(ctx context.Context, _, _, phrase string) (int, error) {
+	query := `
+		query SearchIssues($phrase: String!) {
+			issues(filter: { description: { contains: $phrase } }, first: 1) {
+				nodes { id }
+			}
+		}
+	`
+
+	var result struct {
+		Issues struct {
+			Nodes []struct {
+				ID string `json:"id"`
+			} `json:"nodes"`
+		} `json:"issues"`
+	}
+
+	if err := c.Execute(ctx, query, map[string]interface{}{"phrase": phrase}, &result); err != nil {
+		return 0, fmt.Errorf("search Linear issues containing %q: %w", phrase, err)
+	}
+	return len(result.Issues.Nodes), nil
 }
