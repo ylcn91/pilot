@@ -459,6 +459,29 @@ autopilot:
     # required: []                # Only used in manual mode
     discovery_grace_period: 60s   # Wait for CI to start
 
+# Proactive Architect pipeline (SCAN -> PROPOSE -> EMIT).
+# When omitted or enabled=false (default), `pilot architect` is inert.
+# When enabled, `pilot architect` scans the repo for refactor signals (oversized
+# files, TODO/FIXME, lint, low coverage), asks `backend` to propose the
+# highest-value changes, and — only with --create-issues — files them as
+# deduplicated GitHub issues. The command is dry-run by default.
+# `backend` (optional) overrides the PROPOSE backend; it must be a runnable
+# backend (claude-code, codex-exec, qwen-code, anthropic-api, openai-api,
+# opencode). "codex-app-server" is NOT runnable here — use codex-exec instead.
+# A nil backend falls back to the primary `executor.type`.
+# architect:
+#   enabled: true
+#   schedule: "0 8 * * 1"        # optional 5-field cron for unattended runs
+#   timezone: "America/New_York" # IANA zone the schedule is evaluated in
+#   backend:
+#     type: "claude-code"
+#   max_tickets: 10              # cap proposals emitted per run (>= 1)
+#   labels: ["pilot", "architect"]
+#   thresholds:
+#     loc: 400                   # flag Go files at or over this line count
+#     min_coverage: 80           # flag packages below this coverage percentage
+#   signals: ["loc_over_400", "todo_fixme", "lint", "coverage"]
+
 # Dashboard settings
 dashboard:
   refresh_interval: 1000     # ms

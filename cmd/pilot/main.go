@@ -66,6 +66,7 @@ func main() {
 		newOnboardCmd(),
 		newBackendCmd(),
 		newChatCmd(),
+		newArchitectCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

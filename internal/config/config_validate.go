@@ -60,6 +60,12 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Validate optional proactive Architect pipeline (fail fast on a bad
+	// backend / cron / ticket cap). Inert when nil or disabled.
+	if err := c.Architect.Validate(); err != nil {
+		return err
+	}
+
 	// Validate default project exists if specified
 	if c.DefaultProject != "" && len(c.Projects) > 0 {
 		found := false
