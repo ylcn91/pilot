@@ -177,3 +177,13 @@ func WithBoardSync(bs *ProjectBoardSync, inProgressStatus string) PollerOption {
 		p.board.inProgressStatus = inProgressStatus
 	}
 }
+
+// WithBoardBlockedStatus configures the Projects V2 board status that the issue
+// card is moved to when work is rejected pre-flight or fails, so cards don't
+// orphan in the In Progress column (#17). No-op when boardSync is nil or status
+// is "". Uses the same ProjectBoardSync write path configured via WithBoardSync.
+func WithBoardBlockedStatus(blockedStatus string) PollerOption {
+	return func(p *Poller) {
+		p.board.blockedStatus = blockedStatus
+	}
+}

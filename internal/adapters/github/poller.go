@@ -131,6 +131,11 @@ type BoardConfig struct {
 	// label-mode identical.
 	boardSync        *ProjectBoardSync
 	inProgressStatus string
+
+	// blockedStatus moves the issue card OUT of in-progress when work is rejected
+	// pre-flight or fails, so cards don't orphan in the In Progress column (#17).
+	// Empty disables the transition. Reuses boardSync (the same write path).
+	blockedStatus string
 }
 
 // IssueResult is returned by the issue handler with PR information
