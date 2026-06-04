@@ -168,26 +168,6 @@ func (m *Manager) checkRuleTriggers(req *Request) *Rule {
 	return m.ruleEvaluator.EvaluateForStage(ruleCtx, req.Stage)
 }
 
-// CancelPending cancels all pending approval requests for a task
-func (m *Manager) CancelPending(ctx context.Context, taskID string) {
-	m.mu.Lock()
-	toCancel := make([]*pendingRequest, 0)
-	for _, pr := range m.pending {
-		if pr.Request.TaskID == taskID {
-			toCancel = append(toCancel, pr)
-		}
-	}
-	m.mu.Unlock()
-
-	for _, pr := range toCancel {
-		pr.CancelFn()
-		_ = pr.Handler.CancelRequest(ctx, pr.Request.ID)
-		m.log.Debug("Cancelled pending approval",
-			slog.String("request_id", pr.Request.ID),
-			slog.String("task_id", taskID))
-	}
-}
-
 // GetPendingRequests returns all pending approval requests
 func (m *Manager) GetPendingRequests() []*Request {
 	m.mu.RLock()
@@ -292,53 +272,39 @@ func (m *Manager) SubmitApprovalRequest(ctx context.Context, req *Request) (stri
 	m.mu.Unlock()
 
 	defaultAction := stageConfig.DefaultAction
-	go func() {
+	requireAll := stageConfig.RequireAll
+	logging.SafeGo("approval.dispatch-wait", func() {
 		defer cancel()
-		select {
-		case resp, ok := <-responseCh:
-			if ok && resp != nil {
-				m.mu.Lock()
-				_, wasPending := m.pending[req.ID]
-				if wasPending {
-					delete(m.pending, req.ID)
+		approved := make(map[string]struct{})
+		for {
+			select {
+			case resp, ok := <-responseCh:
+				if !ok || resp == nil {
+					return
 				}
-				m.mu.Unlock()
-				// Skip write if RecordDecision already handled this request.
-				if wasPending && m.stateWriter != nil {
-					if werr := m.stateWriter.SetApprovalDecision(context.Background(), req.ID, string(resp.Decision), resp.ApprovedBy); werr != nil {
-						m.log.Warn("async: failed to persist decision",
-							slog.String("request_id", req.ID), slog.Any("error", werr))
+				// require_all: a single approval does not resolve the request;
+				// keep waiting until every designated approver has approved. Any
+				// rejection still resolves immediately.
+				if requireAll && resp.Decision == DecisionApproved {
+					approved[resp.ApprovedBy] = struct{}{}
+					if !m.allApproved(req.Approvers, approved) {
+						m.log.Info("async approval partial (require_all)",
+							slog.String("request_id", req.ID),
+							slog.String("by", resp.ApprovedBy),
+							slog.Int("approved", len(approved)),
+							slog.Int("required", len(req.Approvers)))
+						continue
 					}
 				}
-				if wasPending {
-					m.log.Info("async approval response recorded",
-						slog.String("request_id", req.ID),
-						slog.String("decision", string(resp.Decision)),
-						slog.String("by", resp.ApprovedBy))
-				}
-			}
-		case <-dispatchCtx.Done():
-			_ = handler.CancelRequest(context.Background(), req.ID)
-			m.mu.Lock()
-			_, wasPending := m.pending[req.ID]
-			if wasPending {
-				delete(m.pending, req.ID)
-			}
-			m.mu.Unlock()
-			// Skip write if RecordDecision already resolved this request.
-			if wasPending {
-				if m.stateWriter != nil {
-					if werr := m.stateWriter.SetApprovalDecision(context.Background(), req.ID, string(defaultAction), "system"); werr != nil {
-						m.log.Warn("async: failed to persist timeout decision",
-							slog.String("request_id", req.ID), slog.Any("error", werr))
-					}
-				}
-				m.log.Warn("async approval timed out",
-					slog.String("request_id", req.ID),
-					slog.String("default_action", string(defaultAction)))
+				m.resolveAsync(req.ID, resp.Decision, resp.ApprovedBy)
+				return
+			case <-dispatchCtx.Done():
+				_ = handler.CancelRequest(context.Background(), req.ID)
+				m.resolveAsyncTimeout(req.ID, defaultAction)
+				return
 			}
 		}
-	}()
+	})
 
 	m.log.Info("async approval request submitted",
 		slog.String("request_id", req.ID),
@@ -402,4 +368,67 @@ func (m *Manager) RecordDecision(ctx context.Context, requestID string, decision
 	}
 
 	return nil
+}
+
+// allApproved reports whether every designated approver has approved. With no
+// designated approvers, any single approval is sufficient.
+func (m *Manager) allApproved(approvers []string, approved map[string]struct{}) bool {
+	if len(approvers) == 0 {
+		return len(approved) > 0
+	}
+	for _, a := range approvers {
+		if _, ok := approved[a]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// resolveAsync removes the request from pending and persists the decision via
+// the state writer, unless RecordDecision already resolved it (no double-write).
+func (m *Manager) resolveAsync(requestID string, decision Decision, by string) {
+	m.mu.Lock()
+	_, wasPending := m.pending[requestID]
+	if wasPending {
+		delete(m.pending, requestID)
+	}
+	m.mu.Unlock()
+
+	if !wasPending {
+		return
+	}
+	if m.stateWriter != nil {
+		if werr := m.stateWriter.SetApprovalDecision(context.Background(), requestID, string(decision), by); werr != nil {
+			m.log.Warn("async: failed to persist decision",
+				slog.String("request_id", requestID), slog.Any("error", werr))
+		}
+	}
+	m.log.Info("async approval response recorded",
+		slog.String("request_id", requestID),
+		slog.String("decision", string(decision)),
+		slog.String("by", by))
+}
+
+// resolveAsyncTimeout resolves a request with the stage's default action when
+// the approval window elapses, unless RecordDecision already resolved it.
+func (m *Manager) resolveAsyncTimeout(requestID string, defaultAction Decision) {
+	m.mu.Lock()
+	_, wasPending := m.pending[requestID]
+	if wasPending {
+		delete(m.pending, requestID)
+	}
+	m.mu.Unlock()
+
+	if !wasPending {
+		return
+	}
+	if m.stateWriter != nil {
+		if werr := m.stateWriter.SetApprovalDecision(context.Background(), requestID, string(defaultAction), "system"); werr != nil {
+			m.log.Warn("async: failed to persist timeout decision",
+				slog.String("request_id", requestID), slog.Any("error", werr))
+		}
+	}
+	m.log.Warn("async approval timed out",
+		slog.String("request_id", requestID),
+		slog.String("default_action", string(defaultAction)))
 }
