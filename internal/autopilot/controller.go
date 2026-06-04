@@ -41,7 +41,7 @@ type Controller struct {
 	// time autopilot first sees a PR the card is already past In-Progress, so the
 	// controller never emits it; the field is kept only so WithProjectBoardSync's
 	// status set stays complete for callers.
-	log              *slog.Logger
+	log *slog.Logger
 
 	// State tracking
 	activePRs map[int]*PRState

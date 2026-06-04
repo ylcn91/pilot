@@ -56,7 +56,7 @@ func TestAutoMerger_MergeAllowed_Window(t *testing.T) {
 			name: "expired entries pruned then allowed",
 			cap:  2,
 			preset: []time.Time{
-				now.Add(-2 * time.Hour),  // expired
+				now.Add(-2 * time.Hour),    // expired
 				now.Add(-90 * time.Minute), // expired
 				now.Add(-30 * time.Minute), // in window
 			},

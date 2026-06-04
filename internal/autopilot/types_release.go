@@ -21,12 +21,12 @@ type ReleaseConfig struct {
 // DefaultReleaseConfig returns sensible defaults for release configuration.
 func DefaultReleaseConfig() *ReleaseConfig {
 	return &ReleaseConfig{
-		Enabled:           false,
-		Trigger:           "on_merge",
-		VersionStrategy:   "conventional_commits",
-		TagPrefix:         "v",
-		NotifyOnRelease:   true,
-		RequireCI:         true,
-		GenerateSummary:   true,
+		Enabled:         false,
+		Trigger:         "on_merge",
+		VersionStrategy: "conventional_commits",
+		TagPrefix:       "v",
+		NotifyOnRelease: true,
+		RequireCI:       true,
+		GenerateSummary: true,
 	}
 }
