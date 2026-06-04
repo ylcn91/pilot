@@ -139,17 +139,33 @@ func validateAzureDevOpsWith(client azureWIQLLister) error {
 	return nil
 }
 
-// validateAsanaConn verifies an Asana token. The Asana adapter client is
-// workspace-scoped and exposes no "list my workspaces" endpoint, and the
-// workspace ID is not yet known at this onboarding stage, so a real
-// authenticated call cannot be made here without a new adapter method
-// (see followups). We perform a format check and let workspace selection
-// happen after the ID is entered.
+// validateAsanaConn verifies an Asana token before a workspace ID is known by
+// listing the workspaces the token can see (#11). Returns the workspace names so
+// the operator can confirm the token reaches the expected workspace. A bad token
+// fails here instead of passing a format-only check.
 func validateAsanaConn(token string) ([]string, error) {
 	if token == "" {
 		return nil, fmt.Errorf("token is required")
 	}
-	return []string{}, nil
+	return validateAsanaTokenWith(asana.NewClient(token, ""))
+}
+
+type asanaWorkspaceLister interface {
+	ListWorkspaces(ctx context.Context) ([]asana.Workspace, error)
+}
+
+func validateAsanaTokenWith(client asanaWorkspaceLister) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), validateTimeout)
+	defer cancel()
+	workspaces, err := client.ListWorkspaces(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("token validation failed: %w", err)
+	}
+	names := make([]string, 0, len(workspaces))
+	for _, ws := range workspaces {
+		names = append(names, ws.Name)
+	}
+	return names, nil
 }
 
 // validateAsanaWorkspace verifies an Asana token against a known workspace ID by

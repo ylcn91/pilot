@@ -165,25 +165,29 @@ func onboardTelegramNotify(state *OnboardState) error {
 	return nil
 }
 
-// validateSlackConn validates a Slack bot token and returns the bot name.
+// validateSlackConn validates a Slack bot token via auth.test and returns the
+// authenticated team name (#11). A bad token fails instead of passing a
+// format-only check.
 func validateSlackConn(token string) (string, error) {
 	// Basic format validation
 	if !strings.HasPrefix(token, "xoxb-") {
 		return "", fmt.Errorf("token should start with xoxb-")
 	}
+	return validateSlackWith(slack.NewClient(token))
+}
 
-	// Create client and test auth
-	client := slack.NewClient(token)
+type slackAuthTester interface {
+	AuthTest(ctx context.Context) (*slack.AuthTestResponse, error)
+}
+
+func validateSlackWith(client slackAuthTester) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
-	// Test by posting a minimal request - auth.test equivalent
-	// For now, just validate format since we don't have auth.test
-	_ = client
-	_ = ctx
-
-	// Return placeholder - in production this would call auth.test
-	return "pilot-bot", nil
+	auth, err := client.AuthTest(ctx)
+	if err != nil {
+		return "", fmt.Errorf("token validation failed: %w", err)
+	}
+	return auth.Team, nil
 }
 
 // validateTelegramConn validates a Telegram bot token and returns the bot username.

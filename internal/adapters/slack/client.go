@@ -137,6 +137,46 @@ func (c *Client) PostMessage(ctx context.Context, msg *Message) (*PostMessageRes
 	return &result, nil
 }
 
+// AuthTestResponse is the minimal subset of Slack's auth.test response used to
+// validate a bot token during onboarding.
+type AuthTestResponse struct {
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+	Team  string `json:"team,omitempty"`
+	User  string `json:"user,omitempty"`
+}
+
+// AuthTest calls Slack's auth.test to verify the bot token and return the
+// authenticated team/user. A non-OK response surfaces the Slack error so a bad
+// token fails onboarding instead of passing a format-only check (#11).
+func (c *Client) AuthTest(ctx context.Context) (*AuthTestResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/auth.test", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.botToken)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call auth.test: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var result AuthTestResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+	if !result.OK {
+		return nil, fmt.Errorf("slack auth.test failed: %s", result.Error)
+	}
+	return &result, nil
+}
+
 // UpdateMessage updates an existing message
 func (c *Client) UpdateMessage(ctx context.Context, channel, ts string, msg *Message) error {
 	payload := struct {

@@ -270,6 +270,17 @@ func (c *Client) GetProject(ctx context.Context, projectGID string) (*Project, e
 	return &resp.Data, nil
 }
 
+// ListWorkspaces fetches all workspaces visible to the authenticated token.
+// Unlike GetWorkspace it needs no workspace ID, so onboarding can validate a
+// token before a workspace is selected (#11).
+func (c *Client) ListWorkspaces(ctx context.Context) ([]Workspace, error) {
+	var resp PagedResponse[Workspace]
+	if err := c.doRequest(ctx, http.MethodGet, "/workspaces", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
+}
+
 // GetWorkspace fetches workspace info
 func (c *Client) GetWorkspace(ctx context.Context) (*Workspace, error) {
 	path := fmt.Sprintf("/workspaces/%s", c.workspaceID)
