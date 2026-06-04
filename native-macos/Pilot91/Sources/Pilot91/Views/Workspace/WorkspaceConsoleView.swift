@@ -1844,7 +1844,8 @@ private struct WorkspaceReviewRail: View {
     @State private var confirmCreatePR = false
     @State private var prTitleDraft = ""
     @State private var prDescriptionDraft = ""
-    @State private var todos: [String] = []
+    @AppStorage("workspace.reviewTodos") private var todosRaw = ""
+    @State private var todoDraft = ""
 
     var body: some View {
         VStack(spacing: 12) {
@@ -1894,7 +1895,9 @@ private struct WorkspaceReviewRail: View {
         }
         .confirmationDialog("Create pull request?", isPresented: $confirmCreatePR) {
             Button("Open PR creation") {
-                Task { await store.createWorkspacePullRequest() }
+                let title = prTitleDraft
+                let body = prDescriptionDraft
+                Task { await store.createWorkspacePullRequest(title: title, body: body) }
             }
             Button("Cancel", role: .cancel) {}
         }
@@ -1968,12 +1971,16 @@ private struct WorkspaceReviewRail: View {
                     Text("Your todos")
                         .font(.subheadline.weight(.medium))
                     Spacer()
-                    Button {
-                        todos.append("Review workspace")
-                    } label: {
+                }
+                HStack(spacing: 8) {
+                    TextField("Add a todo", text: $todoDraft)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit(addTodo)
+                    Button(action: addTodo) {
                         Label("Add", systemImage: "plus")
                     }
                     .buttonStyle(.borderless)
+                    .disabled(todoDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
                 if todos.isEmpty {
                     Text("No todos yet")
@@ -1987,6 +1994,14 @@ private struct WorkspaceReviewRail: View {
                             Text(todos[index])
                                 .lineLimit(1)
                             Spacer()
+                            Button {
+                                removeTodo(at: index)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Remove todo")
                         }
                         .font(.caption)
                     }
@@ -2087,6 +2102,28 @@ private struct WorkspaceReviewRail: View {
             return [pr.state, pr.reviewDecision].compactMap { $0 }.joined(separator: " / ")
         }
         return reviewFiles.isEmpty ? "workspace clean" : "changes ready for review"
+    }
+
+    private var todos: [String] {
+        todosRaw
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map(String.init)
+    }
+
+    private func addTodo() {
+        let trimmed = todoDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var items = todos
+        items.append(trimmed)
+        todosRaw = items.joined(separator: "\n")
+        todoDraft = ""
+    }
+
+    private func removeTodo(at index: Int) {
+        var items = todos
+        guard items.indices.contains(index) else { return }
+        items.remove(at: index)
+        todosRaw = items.joined(separator: "\n")
     }
 
     private func copyChangedFileList() {
