@@ -51,25 +51,37 @@ func TestService_LogTaskEvent(t *testing.T) {
 
 	team, owner, _ := service.CreateTeam("Test Team", "owner@example.com")
 
-	// Log a task event
-	err := service.LogTaskEvent(team.ID, owner.ID, owner.Email, "task-123", AuditTaskCreated, map[string]interface{}{
-		"title": "Test Task",
-	})
-	if err != nil {
-		t.Fatalf("LogTaskEvent failed: %v", err)
+	// Each task lifecycle action must produce a matching audit row.
+	cases := []struct {
+		taskID string
+		action AuditAction
+	}{
+		{"task-created", AuditTaskCreated},
+		{"task-completed", AuditTaskCompleted},
+		{"task-failed", AuditTaskFailed},
+		{"task-cancelled", AuditTaskCancelled},
 	}
 
-	// Verify audit log
-	entries, _ := service.GetAuditLog(team.ID, owner.ID, 10)
-	found := false
-	for _, e := range entries {
-		if e.Action == AuditTaskCreated && e.ResourceID == "task-123" {
-			found = true
-			break
+	for _, c := range cases {
+		if err := service.LogTaskEvent(team.ID, owner.ID, owner.Email, c.taskID, c.action, map[string]interface{}{
+			"title": "Test Task",
+		}); err != nil {
+			t.Fatalf("LogTaskEvent(%s) failed: %v", c.action, err)
 		}
 	}
-	if !found {
-		t.Error("task event not found in audit log")
+
+	entries, _ := service.GetAuditLog(team.ID, owner.ID, 50)
+	for _, c := range cases {
+		found := false
+		for _, e := range entries {
+			if e.Action == c.action && e.ResourceID == c.taskID && e.Resource == "task" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("task event %s (%s) not found in audit log", c.taskID, c.action)
+		}
 	}
 }
 
