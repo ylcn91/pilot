@@ -43,6 +43,41 @@ struct PilotGatewayClient {
         try await get("/api/v1/gitgraph?limit=\(limit)")
     }
 
+    func tasks() async throws -> [TaskInfo] {
+        let response: TasksResponse = try await get("/api/v1/tasks")
+        return response.tasks
+    }
+
+    func liveness() async throws -> DaemonLiveness {
+        try await get("/live")
+    }
+
+    /// Reads the Prometheus text exposition from /metrics and extracts the
+    /// pilot_api_error_rate gauge. Returns nil when metrics are unconfigured
+    /// (503) or the gauge is absent, so callers treat it as "unknown" rather
+    /// than surfacing a spurious error.
+    func apiErrorRate() async throws -> Double? {
+        var request = URLRequest(url: url(for: "/metrics"))
+        request.httpMethod = "GET"
+        if !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            return nil
+        }
+        let text = String(decoding: data, as: UTF8.self)
+        for rawLine in text.split(whereSeparator: \.isNewline) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard !line.hasPrefix("#") else { continue }
+            guard line.hasPrefix("pilot_api_error_rate ") || line.hasPrefix("pilot_api_error_rate{") else { continue }
+            if let value = line.split(whereSeparator: \.isWhitespace).last {
+                return Double(value)
+            }
+        }
+        return nil
+    }
+
     private func get<T: Decodable>(_ path: String) async throws -> T {
         var request = URLRequest(url: url(for: path))
         request.httpMethod = "GET"

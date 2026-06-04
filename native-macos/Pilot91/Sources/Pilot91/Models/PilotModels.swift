@@ -475,6 +475,60 @@ struct ServerStatus: Codable, Equatable {
     var sessions: Int?
 }
 
+struct TaskInfo: Codable, Identifiable, Equatable {
+    var id: String
+    var title: String
+    var status: String
+    var projectPath: String?
+    var priority: Int?
+}
+
+struct TasksResponse: Codable, Equatable {
+    var tasks: [TaskInfo]
+}
+
+/// Mirrors the gateway /live payload: overall liveness plus the individual
+/// probe checks (goroutine count, recent panics, main-loop heartbeat). All
+/// nested fields are optional so partial payloads still decode.
+struct DaemonLiveness: Codable, Equatable {
+    var alive: Bool
+    var checks: Checks?
+
+    struct Checks: Codable, Equatable {
+        var goroutines: GoroutineCheck?
+        var panics: PanicCheck?
+        var heartbeat: HeartbeatCheck?
+    }
+
+    struct GoroutineCheck: Codable, Equatable {
+        var count: Int?
+        var max: Int?
+        var ok: Bool?
+    }
+
+    struct PanicCheck: Codable, Equatable {
+        var count: Int?
+        var recent: Bool?
+        var windowSeconds: Int?
+        var ok: Bool?
+
+        enum CodingKeys: String, CodingKey {
+            case count, recent, ok
+            case windowSeconds = "window_seconds"
+        }
+    }
+
+    struct HeartbeatCheck: Codable, Equatable {
+        var lastSecondsAgo: Int?
+        var ok: Bool?
+
+        enum CodingKeys: String, CodingKey {
+            case ok
+            case lastSecondsAgo = "last_seconds_ago"
+        }
+    }
+}
+
 struct ActivePR: Codable, Identifiable, Equatable {
     var id: Int { number }
     var number: Int
