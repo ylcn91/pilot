@@ -34,6 +34,13 @@ func parseRetryAfterHeader(h http.Header) time.Duration {
 	return httpretry.ParseRetryAfterHeader(h)
 }
 
+// APIErrorRecorder is notified when a GitHub API request terminates in a
+// non-2xx response. Implementations typically increment a metric keyed by the
+// request endpoint. A nil recorder is a no-op.
+type APIErrorRecorder interface {
+	RecordAPIError(endpoint string)
+}
+
 // Client is a GitHub API client
 type Client struct {
 	token                string
@@ -41,6 +48,7 @@ type Client struct {
 	baseURL              string       // For testing - defaults to githubAPIURL
 	retryOpts            RetryOptions // Retry config for doRequest; overridable in tests
 	issueCreationEnabled bool
+	apiErrorRecorder     APIErrorRecorder // nil = no-op
 }
 
 // NewClient creates a new GitHub client
@@ -65,6 +73,22 @@ func (c *Client) SetIssueCreationEnabled(enabled bool) {
 // IssueCreationEnabled reports whether this client may create GitHub issues.
 func (c *Client) IssueCreationEnabled() bool {
 	return c != nil && c.issueCreationEnabled
+}
+
+// WithAPIErrorRecorder configures the recorder notified on non-2xx API
+// responses and returns the client for chaining. Passing nil clears it (no-op).
+func (c *Client) WithAPIErrorRecorder(rec APIErrorRecorder) *Client {
+	if c != nil {
+		c.apiErrorRecorder = rec
+	}
+	return c
+}
+
+// recordAPIError notifies the configured recorder, if any.
+func (c *Client) recordAPIError(endpoint string) {
+	if c != nil && c.apiErrorRecorder != nil {
+		c.apiErrorRecorder.RecordAPIError(endpoint)
+	}
 }
 
 // NewClientWithBaseURL creates a new GitHub client with a custom base URL (for testing).
@@ -123,6 +147,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 		}
 
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			c.recordAPIError(path)
 			return httpretry.ClassifyResponse(resp, respBody)
 		}
 
