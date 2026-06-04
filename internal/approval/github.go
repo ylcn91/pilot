@@ -97,7 +97,7 @@ func (h *GitHubHandler) SendApprovalRequest(ctx context.Context, req *Request) (
 		slog.Duration("poll_interval", h.pollInterval))
 
 	// Start polling goroutine
-	go h.pollForApproval(pollCtx, req.ID)
+	logging.SafeGo("approval.github-poll", func() { h.pollForApproval(pollCtx, req.ID) })
 
 	return responseCh, nil
 }
