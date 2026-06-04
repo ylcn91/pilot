@@ -50,6 +50,15 @@ type QwenCodeBackend struct {
 	config           *QwenCodeConfig
 	heartbeatTimeout time.Duration
 	log              *slog.Logger
+
+	// subprocessLimits configures RSS telemetry and optional RLIMIT_AS cap. #27.
+	subprocessLimits *SubprocessLimitsConfig
+}
+
+// SetSubprocessLimits configures RSS telemetry and optional memory cap for the
+// Qwen Code subprocess. #27 (mirrors ClaudeCodeBackend).
+func (b *QwenCodeBackend) SetSubprocessLimits(cfg *SubprocessLimitsConfig) {
+	b.subprocessLimits = cfg
 }
 
 // NewQwenCodeBackend creates a new Qwen Code backend.
@@ -154,6 +163,17 @@ func (b *QwenCodeBackend) Execute(ctx context.Context, opts ExecuteOptions) (*Ba
 		return nil, fmt.Errorf("failed to start Qwen Code: %w", err)
 	}
 	b.log.Debug("Qwen Code started", slog.Int("pid", cmd.Process.Pid))
+
+	// #27: apply RSS cap (Linux: RLIMIT_AS via prlimit64; darwin/other: no-op)
+	// and start the RSS sampler — collects peak/final RSS for telemetry. Mirrors
+	// claude-code so OOM diagnosis works across subprocess backends.
+	applyResourceLimits(cmd.Process.Pid, b.subprocessLimits)
+	sampleInterval := 10 * time.Second
+	if b.subprocessLimits != nil && b.subprocessLimits.SampleIntervalSec > 0 {
+		sampleInterval = time.Duration(b.subprocessLimits.SampleIntervalSec) * time.Second
+	}
+	rssSamplerCtx, cancelRSSSampler := context.WithCancel(context.Background())
+	rssCh := StartRSSSampler(rssSamplerCtx, cmd.Process.Pid, sampleInterval)
 
 	// Track results
 	result := &BackendResult{}
@@ -273,6 +293,12 @@ func (b *QwenCodeBackend) Execute(ctx context.Context, opts ExecuteOptions) (*Ba
 				opts.EventHandler(event)
 			}
 
+			// GH-2777/#24: track the last assistant text block so a DECLINED
+			// marker (or any refusal) emitted by Qwen is surfaced to the runner.
+			if event.Type == EventTypeText && event.Message != "" {
+				result.LastAssistantText = event.Message
+			}
+
 			// Track final result
 			if event.Type == EventTypeResult {
 				if event.IsError {
@@ -360,11 +386,31 @@ func (b *QwenCodeBackend) Execute(ctx context.Context, opts ExecuteOptions) (*Ba
 	err = cmd.Wait()
 	close(cmdDone)
 
+	// #27: collect RSS sample (cancelling the sampler triggers the final read).
+	cancelRSSSampler()
+	if rssSample, ok := <-rssCh; ok {
+		result.PeakRSSMB = rssSample.PeakMB
+		result.FinalRSSMB = rssSample.FinalMB
+		if rssSample.PeakMB > 0 {
+			b.log.Debug("Subprocess RSS telemetry",
+				slog.Int("peak_rss_mb", rssSample.PeakMB),
+				slog.Int("final_rss_mb", rssSample.FinalMB),
+			)
+		}
+	}
+
+	stderrStr := stderrOutput.String()
+	// GH-2328/#25: surface stderr on every path so persistBackendDiagnostics can
+	// write it to execution_logs, matching claude-code. Without this, qwen
+	// failures were undiagnosable beyond the bare error string.
+	result.Stderr = stderrStr
+
 	if err != nil {
 		result.Success = false
 
-		stderrStr := stderrOutput.String()
 		qcErr := classifyQwenCodeError(stderrStr, err)
+		// GH-2328/#25: carry the classification so GH-2328 diagnostics aren't empty.
+		result.ErrorType = string(qcErr.Type)
 
 		b.log.Warn("Qwen Code execution failed",
 			slog.String("error_type", string(qcErr.Type)),

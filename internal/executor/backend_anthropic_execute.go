@@ -46,13 +46,14 @@ func (b *AnthropicBackend) Execute(ctx context.Context, opts ExecuteOptions) (*B
 		// Check context
 		if ctx.Err() != nil {
 			return &BackendResult{
-				Success:          sawSuccess,
-				Output:           lastOutput,
-				Error:            "context cancelled",
-				TokensInput:      totalInputTokens,
-				TokensOutput:     totalOutputTokens,
-				Model:            model,
-				SawSuccessResult: sawSuccess,
+				Success:           sawSuccess,
+				Output:            lastOutput,
+				LastAssistantText: lastOutput,
+				Error:             "context cancelled",
+				TokensInput:       totalInputTokens,
+				TokensOutput:      totalOutputTokens,
+				Model:             model,
+				SawSuccessResult:  sawSuccess,
 			}, nil
 		}
 
@@ -116,13 +117,14 @@ func (b *AnthropicBackend) Execute(ctx context.Context, opts ExecuteOptions) (*B
 			}
 
 			return &BackendResult{
-				Success:          sawSuccess,
-				Output:           lastOutput,
-				Error:            err.Error(),
-				TokensInput:      totalInputTokens,
-				TokensOutput:     totalOutputTokens,
-				Model:            model,
-				SawSuccessResult: sawSuccess,
+				Success:           sawSuccess,
+				Output:            lastOutput,
+				LastAssistantText: lastOutput,
+				Error:             err.Error(),
+				TokensInput:       totalInputTokens,
+				TokensOutput:      totalOutputTokens,
+				Model:             model,
+				SawSuccessResult:  sawSuccess,
 			}, nil
 		}
 
@@ -223,12 +225,13 @@ func (b *AnthropicBackend) Execute(ctx context.Context, opts ExecuteOptions) (*B
 	}
 
 	return &BackendResult{
-		Success:          sawSuccess,
-		Output:           lastOutput,
-		TokensInput:      totalInputTokens,
-		TokensOutput:     totalOutputTokens,
-		Model:            model,
-		SawSuccessResult: sawSuccess,
+		Success:           sawSuccess,
+		Output:            lastOutput,
+		LastAssistantText: lastOutput,
+		TokensInput:       totalInputTokens,
+		TokensOutput:      totalOutputTokens,
+		Model:             model,
+		SawSuccessResult:  sawSuccess,
 	}, nil
 }
 

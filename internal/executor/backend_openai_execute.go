@@ -47,13 +47,14 @@ func (b *OpenAIBackend) Execute(ctx context.Context, opts ExecuteOptions) (*Back
 	for turn := 0; turn < apiMaxTurns; turn++ {
 		if ctx.Err() != nil {
 			return &BackendResult{
-				Success:          sawSuccess,
-				Output:           lastOutput,
-				Error:            "context cancelled",
-				TokensInput:      totalPromptTokens,
-				TokensOutput:     totalCompletionTokens,
-				Model:            model,
-				SawSuccessResult: sawSuccess,
+				Success:           sawSuccess,
+				Output:            lastOutput,
+				LastAssistantText: lastOutput,
+				Error:             "context cancelled",
+				TokensInput:       totalPromptTokens,
+				TokensOutput:      totalCompletionTokens,
+				Model:             model,
+				SawSuccessResult:  sawSuccess,
 			}, nil
 		}
 
@@ -79,13 +80,14 @@ func (b *OpenAIBackend) Execute(ctx context.Context, opts ExecuteOptions) (*Back
 			}
 
 			return &BackendResult{
-				Success:          sawSuccess,
-				Output:           lastOutput,
-				Error:            err.Error(),
-				TokensInput:      totalPromptTokens,
-				TokensOutput:     totalCompletionTokens,
-				Model:            model,
-				SawSuccessResult: sawSuccess,
+				Success:           sawSuccess,
+				Output:            lastOutput,
+				LastAssistantText: lastOutput,
+				Error:             err.Error(),
+				TokensInput:       totalPromptTokens,
+				TokensOutput:      totalCompletionTokens,
+				Model:             model,
+				SawSuccessResult:  sawSuccess,
 			}, nil
 		}
 
@@ -175,12 +177,13 @@ func (b *OpenAIBackend) Execute(ctx context.Context, opts ExecuteOptions) (*Back
 	}
 
 	return &BackendResult{
-		Success:          sawSuccess,
-		Output:           lastOutput,
-		TokensInput:      totalPromptTokens,
-		TokensOutput:     totalCompletionTokens,
-		Model:            model,
-		SawSuccessResult: sawSuccess,
+		Success:           sawSuccess,
+		Output:            lastOutput,
+		LastAssistantText: lastOutput,
+		TokensInput:       totalPromptTokens,
+		TokensOutput:      totalCompletionTokens,
+		Model:             model,
+		SawSuccessResult:  sawSuccess,
 	}, nil
 }
 
