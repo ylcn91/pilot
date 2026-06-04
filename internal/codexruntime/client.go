@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // Config describes how to spawn a Codex app-server process.
@@ -118,8 +120,8 @@ func Start(ctx context.Context, cfg Config) (*Client, error) {
 		done:           make(chan struct{}),
 	}
 
-	go c.read(stdout)
-	go c.drainStderr(cfg.Stderr)
+	logging.SafeGo("codexruntime.read", func() { c.read(stdout) })
+	logging.SafeGo("codexruntime.drain-stderr", func() { c.drainStderr(cfg.Stderr) })
 	return c, nil
 }
 
@@ -225,9 +227,9 @@ func (c *Client) Close() error {
 	}
 
 	wait := make(chan error, 1)
-	go func() {
+	logging.SafeGo("codexruntime.process-wait", func() {
 		wait <- c.cmd.Wait()
-	}()
+	})
 
 	select {
 	case err := <-wait:

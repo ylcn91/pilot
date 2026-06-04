@@ -70,5 +70,6 @@ func createTestBrief() *Brief {
 			AvgDurationMs:  720000, // 12 minutes
 			PRsCreated:     15,
 		},
+		IncludeMetrics: true,
 	}
 }

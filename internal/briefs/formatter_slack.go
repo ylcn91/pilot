@@ -74,13 +74,15 @@ func (f *SlackFormatter) Format(brief *Brief) (string, error) {
 	sb.WriteString("\n")
 
 	// Metrics
-	sb.WriteString("*:chart_with_upwards_trend: Metrics*\n")
-	sb.WriteString(fmt.Sprintf("• Success rate: *%.0f%%* (%d/%d)\n",
-		brief.Metrics.SuccessRate*100,
-		brief.Metrics.CompletedCount,
-		brief.Metrics.TotalTasks))
-	sb.WriteString(fmt.Sprintf("• Avg completion: *%s*\n", formatDuration(brief.Metrics.AvgDurationMs)))
-	sb.WriteString(fmt.Sprintf("• PRs created: *%d*\n", brief.Metrics.PRsCreated))
+	if brief.IncludeMetrics {
+		sb.WriteString("*:chart_with_upwards_trend: Metrics*\n")
+		sb.WriteString(fmt.Sprintf("• Success rate: *%.0f%%* (%d/%d)\n",
+			brief.Metrics.SuccessRate*100,
+			brief.Metrics.CompletedCount,
+			brief.Metrics.TotalTasks))
+		sb.WriteString(fmt.Sprintf("• Avg completion: *%s*\n", formatDuration(brief.Metrics.AvgDurationMs)))
+		sb.WriteString(fmt.Sprintf("• PRs created: *%d*\n", brief.Metrics.PRsCreated))
+	}
 
 	return sb.String(), nil
 }
@@ -178,28 +180,29 @@ func (f *SlackFormatter) SlackBlocks(brief *Brief) []map[string]interface{} {
 		},
 	})
 
-	// Divider
-	blocks = append(blocks, map[string]interface{}{
-		"type": "divider",
-	})
+	// Metrics (with leading divider) — omitted entirely when disabled.
+	if brief.IncludeMetrics {
+		blocks = append(blocks, map[string]interface{}{
+			"type": "divider",
+		})
 
-	// Metrics
-	metricsText := fmt.Sprintf(":chart_with_upwards_trend: *Metrics*\n"+
-		"Success rate: *%.0f%%* (%d/%d) • Avg: *%s* • PRs: *%d*",
-		brief.Metrics.SuccessRate*100,
-		brief.Metrics.CompletedCount,
-		brief.Metrics.TotalTasks,
-		formatDuration(brief.Metrics.AvgDurationMs),
-		brief.Metrics.PRsCreated)
-	blocks = append(blocks, map[string]interface{}{
-		"type": "context",
-		"elements": []map[string]interface{}{
-			{
-				"type": "mrkdwn",
-				"text": metricsText,
+		metricsText := fmt.Sprintf(":chart_with_upwards_trend: *Metrics*\n"+
+			"Success rate: *%.0f%%* (%d/%d) • Avg: *%s* • PRs: *%d*",
+			brief.Metrics.SuccessRate*100,
+			brief.Metrics.CompletedCount,
+			brief.Metrics.TotalTasks,
+			formatDuration(brief.Metrics.AvgDurationMs),
+			brief.Metrics.PRsCreated)
+		blocks = append(blocks, map[string]interface{}{
+			"type": "context",
+			"elements": []map[string]interface{}{
+				{
+					"type": "mrkdwn",
+					"text": metricsText,
+				},
 			},
-		},
-	})
+		})
+	}
 
 	return blocks
 }

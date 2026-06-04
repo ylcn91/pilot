@@ -84,14 +84,16 @@ func (f *PlainTextFormatter) Format(brief *Brief) (string, error) {
 	sb.WriteString("\n")
 
 	// Metrics
-	sb.WriteString("METRICS\n")
-	sb.WriteString(strings.Repeat("-", 30) + "\n")
-	sb.WriteString(fmt.Sprintf("  Success rate: %.0f%% (%d/%d)\n",
-		brief.Metrics.SuccessRate*100,
-		brief.Metrics.CompletedCount,
-		brief.Metrics.TotalTasks))
-	sb.WriteString(fmt.Sprintf("  Avg completion: %s\n", formatDuration(brief.Metrics.AvgDurationMs)))
-	sb.WriteString(fmt.Sprintf("  PRs created: %d\n", brief.Metrics.PRsCreated))
+	if brief.IncludeMetrics {
+		sb.WriteString("METRICS\n")
+		sb.WriteString(strings.Repeat("-", 30) + "\n")
+		sb.WriteString(fmt.Sprintf("  Success rate: %.0f%% (%d/%d)\n",
+			brief.Metrics.SuccessRate*100,
+			brief.Metrics.CompletedCount,
+			brief.Metrics.TotalTasks))
+		sb.WriteString(fmt.Sprintf("  Avg completion: %s\n", formatDuration(brief.Metrics.AvgDurationMs)))
+		sb.WriteString(fmt.Sprintf("  PRs created: %d\n", brief.Metrics.PRsCreated))
+	}
 
 	return sb.String(), nil
 }

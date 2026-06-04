@@ -64,12 +64,6 @@ func (s *Store) GetMembersByTelegramID(telegramID int64) ([]*Member, error) {
 	return s.scanMembers(rows)
 }
 
-// GetMemberBySlackUserID retrieves a member by Slack user ID within a team (GH-783).
-func (s *Store) GetMemberBySlackUserID(teamID, slackUserID string) (*Member, error) {
-	row := s.db.QueryRow(`SELECT `+memberColumns+` FROM team_members WHERE team_id = ? AND slack_user_id = ?`, teamID, slackUserID)
-	return s.scanMember(row)
-}
-
 // GetMembersBySlackUserID retrieves all memberships for a Slack user ID (across teams) (GH-783).
 func (s *Store) GetMembersBySlackUserID(slackUserID string) ([]*Member, error) {
 	rows, err := s.db.Query(`SELECT `+memberColumns+` FROM team_members WHERE slack_user_id = ? AND slack_user_id != ''`, slackUserID)

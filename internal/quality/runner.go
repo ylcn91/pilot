@@ -78,6 +78,7 @@ func (r *Runner) RunAll(ctx context.Context, taskID string) (*CheckResults, erro
 			wg.Add(1)
 			go func(idx int, g *Gate) {
 				defer wg.Done()
+				defer logging.Recover("quality.run-gate")
 				results.Results[idx] = r.runGate(ctx, g)
 			}(i, gate)
 		}
@@ -127,9 +128,10 @@ func (r *Runner) RunGate(ctx context.Context, gateName string) (*Result, error) 
 // runGate executes a gate with retry logic
 func (r *Runner) runGate(ctx context.Context, gate *Gate) *Result {
 	result := &Result{
-		GateName:  gate.Name,
-		Status:    StatusRunning,
-		StartedAt: time.Now(),
+		GateName:    gate.Name,
+		Status:      StatusRunning,
+		FailureHint: gate.FailureHint,
+		StartedAt:   time.Now(),
 	}
 
 	r.reportProgress(gate.Name, StatusRunning, fmt.Sprintf("Running %s gate...", gate.Name))
@@ -326,6 +328,11 @@ func FormatErrorFeedback(results *CheckResults) string {
 		}
 
 		sb.WriteString(fmt.Sprintf("### %s Gate (FAILED)\n\n", result.GateName))
+
+		if result.FailureHint != "" {
+			sb.WriteString(fmt.Sprintf("**Hint:** %s\n\n", result.FailureHint))
+		}
+
 		sb.WriteString("**Error Output:**\n```\n")
 
 		// Truncate output if too long

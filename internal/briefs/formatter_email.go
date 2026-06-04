@@ -118,21 +118,23 @@ h2 { color: #4a4a68; margin-top: 24px; }
 	sb.WriteString("</div>\n")
 
 	// Metrics
-	sb.WriteString("<div class=\"metrics\">\n")
-	sb.WriteString("<h2 style=\"margin-top: 0;\">📈 Metrics</h2>\n")
-	sb.WriteString("<div class=\"metric\">\n")
-	sb.WriteString(fmt.Sprintf("<div class=\"metric-value\">%.0f%%</div>\n", brief.Metrics.SuccessRate*100))
-	sb.WriteString(fmt.Sprintf("<div class=\"metric-label\">Success rate (%d/%d)</div>\n", brief.Metrics.CompletedCount, brief.Metrics.TotalTasks))
-	sb.WriteString("</div>\n")
-	sb.WriteString("<div class=\"metric\">\n")
-	sb.WriteString(fmt.Sprintf("<div class=\"metric-value\">%s</div>\n", formatDuration(brief.Metrics.AvgDurationMs)))
-	sb.WriteString("<div class=\"metric-label\">Avg completion</div>\n")
-	sb.WriteString("</div>\n")
-	sb.WriteString("<div class=\"metric\">\n")
-	sb.WriteString(fmt.Sprintf("<div class=\"metric-value\">%d</div>\n", brief.Metrics.PRsCreated))
-	sb.WriteString("<div class=\"metric-label\">PRs created</div>\n")
-	sb.WriteString("</div>\n")
-	sb.WriteString("</div>\n")
+	if brief.IncludeMetrics {
+		sb.WriteString("<div class=\"metrics\">\n")
+		sb.WriteString("<h2 style=\"margin-top: 0;\">📈 Metrics</h2>\n")
+		sb.WriteString("<div class=\"metric\">\n")
+		sb.WriteString(fmt.Sprintf("<div class=\"metric-value\">%.0f%%</div>\n", brief.Metrics.SuccessRate*100))
+		sb.WriteString(fmt.Sprintf("<div class=\"metric-label\">Success rate (%d/%d)</div>\n", brief.Metrics.CompletedCount, brief.Metrics.TotalTasks))
+		sb.WriteString("</div>\n")
+		sb.WriteString("<div class=\"metric\">\n")
+		sb.WriteString(fmt.Sprintf("<div class=\"metric-value\">%s</div>\n", formatDuration(brief.Metrics.AvgDurationMs)))
+		sb.WriteString("<div class=\"metric-label\">Avg completion</div>\n")
+		sb.WriteString("</div>\n")
+		sb.WriteString("<div class=\"metric\">\n")
+		sb.WriteString(fmt.Sprintf("<div class=\"metric-value\">%d</div>\n", brief.Metrics.PRsCreated))
+		sb.WriteString("<div class=\"metric-label\">PRs created</div>\n")
+		sb.WriteString("</div>\n")
+		sb.WriteString("</div>\n")
+	}
 
 	sb.WriteString(`
 <p style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb; color: #94a3b8; font-size: 0.85em;">
