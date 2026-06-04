@@ -131,10 +131,23 @@ func truncateVisual(s string, targetWidth int) string {
 		return strings.Repeat(".", targetWidth)
 	}
 
-	// We need to truncate to targetWidth-3 and add "..."
+	// We need to truncate to targetWidth-3 and add "...".
 	result := ""
 	width := 0
+	inEsc := false
 	for _, r := range s {
+		if inEsc {
+			result += string(r)
+			if r >= 0x40 && r <= 0x7e {
+				inEsc = false
+			}
+			continue
+		}
+		if r == 0x1b {
+			inEsc = true
+			result += string(r)
+			continue
+		}
 		runeWidth := lipgloss.Width(string(r))
 		if width+runeWidth > targetWidth-3 {
 			break

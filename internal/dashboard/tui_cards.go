@@ -237,11 +237,15 @@ func (m Model) renderTaskCard(cw int) string {
 	value := fmt.Sprintf("%d", len(m.tasks))
 	detail1 := statusCompletedStyle.Render(fmt.Sprintf("✓ %d succeeded", m.metrics.card.Succeeded))
 	// TASK-358: "failed" counts genuine failures only. Non-failure terminal
-	// outcomes (no-op / stalled / declined) are shown as a muted suffix so the
-	// numbers reconcile and a no-op is no longer miscounted as a failure.
+	// outcomes (no-op / infra / …) are shown as a muted suffix so the numbers
+	// reconcile and a no-op is no longer miscounted as a failure. Only append the
+	// suffix when the whole line fits the card; narrow cards keep the headline.
 	detail2 := statusFailedStyle.Render(fmt.Sprintf("✗ %d failed", m.metrics.card.Failed))
 	if suffix := nonFailureSuffix(m.metrics.card); suffix != "" {
-		detail2 += statusPendingStyle.Render(suffix)
+		withSuffix := detail2 + statusPendingStyle.Render(suffix)
+		if lipgloss.Width(withSuffix) <= ciw {
+			detail2 = withSuffix
+		}
 	}
 
 	// Convert int history to float64
