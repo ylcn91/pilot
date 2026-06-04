@@ -259,12 +259,11 @@ func (m *mockBoardSyncer) UpdateProjectItemStatus(_ context.Context, issueNodeID
 
 // withBoardSyncerForTest is a ControllerOption that injects a mockBoardSyncer
 // (bypasses the *github.ProjectBoardSync type constraint of WithProjectBoardSync).
-func withBoardSyncerForTest(bs projectBoardSyncer, done, fail, review, inProgress string) ControllerOption {
+func withBoardSyncerForTest(bs projectBoardSyncer, done, fail, review string) ControllerOption {
 	return func(c *Controller) {
 		c.boardSync = bs
 		c.doneStatus = done
 		c.failStatus = fail
 		c.reviewStatus = review
-		c.inProgressStatus = inProgress
 	}
 }

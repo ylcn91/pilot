@@ -52,7 +52,7 @@ func TestController_OnPRCreated_BoardSyncReview(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mock := &mockBoardSyncer{}
-			opt := withBoardSyncerForTest(mock, "Done", "Failed", tt.reviewStatus, "")
+			opt := withBoardSyncerForTest(mock, "Done", "Failed", tt.reviewStatus)
 			c := NewController(DefaultConfig(), github.NewClient(testutil.FakeGitHubToken), nil, "owner", "repo", opt)
 
 			c.OnPRCreated(42, "https://github.com/owner/repo/pull/42", 10, "abc123", "pilot/GH-10", tt.issueNodeID)
@@ -129,7 +129,7 @@ func TestController_handleCIFailed_BoardSync_IterationLimit(t *testing.T) {
 			cfg := DefaultConfig()
 			cfg.MaxCIFixIterations = 3 // iteration = 3 >= MaxCIFixIterations = 3 → limit hit
 
-			opt := withBoardSyncerForTest(mock, "Done", tt.failStatus, "In Review", "")
+			opt := withBoardSyncerForTest(mock, "Done", tt.failStatus, "In Review")
 			c := NewController(cfg, ghClient, nil, "owner", "repo", opt)
 
 			prState := &PRState{
@@ -197,7 +197,7 @@ func TestController_handleCIFailed_BoardSync_Regression_NormalPath(t *testing.T)
 	cfg := DefaultConfig()
 	cfg.MaxCIFixIterations = 5 // below limit
 
-	opt := withBoardSyncerForTest(mock, "Done", "Blocked", "In Review", "")
+	opt := withBoardSyncerForTest(mock, "Done", "Blocked", "In Review")
 	c := NewController(cfg, ghClient, nil, "owner", "repo", opt)
 
 	prState := &PRState{

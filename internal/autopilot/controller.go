@@ -22,26 +22,20 @@ type prFailureState struct {
 // Controller orchestrates the autopilot loop for PR processing.
 // It manages the state machine: PR created → CI check → merge → post-merge CI → feedback loop.
 type Controller struct {
-	config           *Config
-	ghClient         *github.Client
-	approvalMgr      *approval.Manager
-	ciMonitor        *CIMonitor
-	autoMerger       *AutoMerger
-	feedbackLoop     *FeedbackLoop
-	releaser         *Releaser
-	notifier         Notifier
-	monitor          TaskMonitor // GH-1336: sync dashboard state on merge
-	boardSync        projectBoardSyncer
-	doneStatus       string
-	failStatus       string
-	reviewStatus     string // GH-3260: board column for PR-created (In Progress → Review)
-	inProgressStatus string // GH-3260: In-Progress column. The poller owns this
-	// transition (it emits inProgressStatus on confirmed dispatch — the actual
-	// "work started" moment — via github.Poller.syncBoardStatusInProgress). By the
-	// time autopilot first sees a PR the card is already past In-Progress, so the
-	// controller never emits it; the field is kept only so WithProjectBoardSync's
-	// status set stays complete for callers.
-	log *slog.Logger
+	config       *Config
+	ghClient     *github.Client
+	approvalMgr  *approval.Manager
+	ciMonitor    *CIMonitor
+	autoMerger   *AutoMerger
+	feedbackLoop *FeedbackLoop
+	releaser     *Releaser
+	notifier     Notifier
+	monitor      TaskMonitor // GH-1336: sync dashboard state on merge
+	boardSync    projectBoardSyncer
+	doneStatus   string
+	failStatus   string
+	reviewStatus string // GH-3260: board column for PR-created (In Progress → Review)
+	log          *slog.Logger
 
 	// State tracking
 	activePRs map[int]*PRState

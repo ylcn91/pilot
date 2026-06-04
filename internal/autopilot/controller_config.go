@@ -58,18 +58,17 @@ type ExecutionHealer interface {
 type ControllerOption func(*Controller)
 
 // WithProjectBoardSync wires a GitHub Projects V2 board sync into the controller.
-// doneStatus: merged PRs; failStatus: CI/exec failures; reviewStatus: PR created (In Progress → Review);
-// inProgressStatus: the In-Progress column. The poller — not autopilot — emits
-// this on confirmed dispatch (github.Poller.syncBoardStatusInProgress), which is
-// the moment work actually starts; autopilot's lifecycle begins at PR-created,
-// already past In-Progress, so the controller never emits it.
-func WithProjectBoardSync(bs projectBoardSyncer, doneStatus, failStatus, reviewStatus, inProgressStatus string) ControllerOption {
+// doneStatus: merged PRs; failStatus: CI/exec failures; reviewStatus: PR created
+// (In Progress → Review). The In-Progress transition is owned by the poller
+// (github.Poller.syncBoardStatusInProgress) on confirmed dispatch; autopilot's
+// lifecycle begins at PR-created, already past In-Progress, so the controller
+// never emits it.
+func WithProjectBoardSync(bs projectBoardSyncer, doneStatus, failStatus, reviewStatus string) ControllerOption {
 	return func(c *Controller) {
 		c.boardSync = bs
 		c.doneStatus = doneStatus
 		c.failStatus = failStatus
 		c.reviewStatus = reviewStatus
-		c.inProgressStatus = inProgressStatus
 	}
 }
 

@@ -253,7 +253,7 @@ func buildGatewayAutopilot(gw *gatewayInfra, cfg *config.Config, approvalMgr *ap
 				if cfg.Adapters.GitHub.ProjectBoard != nil && cfg.Adapters.GitHub.ProjectBoard.Enabled {
 					bs := github.NewProjectBoardSync(ghClient, cfg.Adapters.GitHub.ProjectBoard, parts[0])
 					statuses := cfg.Adapters.GitHub.ProjectBoard.GetStatuses()
-					gwBoardOpts = append(gwBoardOpts, autopilot.WithProjectBoardSync(bs, statuses.Done, statuses.Failed, statuses.Review, statuses.InProgress))
+					gwBoardOpts = append(gwBoardOpts, autopilot.WithProjectBoardSync(bs, statuses.Done, statuses.Failed, statuses.Review))
 				}
 				// TASK-352: scope self-heal to the project's fs path (matches
 				// executions.project_path) so merged work flips failed→completed.
