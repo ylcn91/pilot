@@ -79,11 +79,11 @@ func (p *pollingRuntime) startSlackSocketMode() {
 			AllowedUsers:    cfg.Adapters.Slack.AllowedUsers,
 		})
 
-		go func() {
+		logging.SafeGo("slack.socketmode", func() {
 			if err := slackHandler.StartListening(ctx); err != nil {
 				logging.WithComponent("slack").Error("Slack Socket Mode error", slog.Any("error", err))
 			}
-		}()
+		})
 
 		if !p.dashboardMode {
 			fmt.Println("💬 Slack Socket Mode started")
@@ -116,6 +116,16 @@ func (p *pollingRuntime) startBriefScheduler() {
 			},
 			Filters: briefs.FilterConfig{
 				Projects: briefCfg.Filters.Projects,
+			},
+			// #33: thread SMTP settings through so email briefs deliver from
+			// config alone; NewDeliveryService self-wires the sender from this.
+			Email: briefs.EmailConfig{
+				Host:          briefCfg.Email.Host,
+				Port:          briefCfg.Email.Port,
+				From:          briefCfg.Email.From,
+				Username:      briefCfg.Email.Username,
+				Password:      briefCfg.Email.Password,
+				AllowInsecure: briefCfg.Email.AllowInsecure,
 			},
 		}
 

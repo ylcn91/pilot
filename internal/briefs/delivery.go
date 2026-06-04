@@ -81,6 +81,13 @@ func NewDeliveryService(config *BriefConfig, opts ...DeliveryOption) *DeliverySe
 		opt(d)
 	}
 
+	// Self-wire an SMTP sender from config when one was not injected explicitly
+	// and email settings are present. Lets email delivery work from config alone
+	// instead of always failing with "email sender not configured".
+	if d.emailSender == nil && config != nil && config.Email.IsConfigured() {
+		d.emailSender = NewSMTPEmailSender(config.Email)
+	}
+
 	return d
 }
 

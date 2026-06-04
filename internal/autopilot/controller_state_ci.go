@@ -262,8 +262,8 @@ func (c *Controller) handleCIFailed(ctx context.Context, prState *PRState) error
 		// Continue with empty list
 	}
 
-	// Notify CI failure
-	if c.notifier != nil {
+	// Notify CI failure (gated on config: notify_on_failure)
+	if c.config.NotifyOnFailure && c.notifier != nil {
 		if err := c.notifier.NotifyCIFailed(ctx, prState, failedChecks); err != nil {
 			c.log.Warn("failed to send CI failure notification", "error", err)
 		}

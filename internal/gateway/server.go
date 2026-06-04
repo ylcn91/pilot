@@ -64,6 +64,25 @@ type ArchitectProvider interface {
 	Findings() []pilotapi.Finding
 }
 
+// TaskInfo is the gateway-local view of a single task surfaced over
+// /api/v1/tasks. It is intentionally decoupled from internal/executor's Task
+// so the gateway never imports the executor; the cmd layer adapts the real
+// task source (executor queue / memory) into this shape.
+type TaskInfo struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Status      string `json:"status"`
+	ProjectPath string `json:"projectPath,omitempty"`
+	Priority    int    `json:"priority,omitempty"`
+}
+
+// TaskProvider exposes the current set of tasks to the gateway API.
+// It is injected as an interface so the gateway stays decoupled from the
+// executor/memory packages that own the real task state.
+type TaskProvider interface {
+	Tasks() []TaskInfo
+}
+
 // authState groups the request-authentication concerns: WebSocket/session
 // management plus the per-adapter webhook signature material. All of these
 // are set once at construction (or via Set* before Start) and then read
@@ -86,6 +105,7 @@ type providerState struct {
 	alertsSource       AlertMetricsSource
 	autopilot          AutopilotProvider
 	architect          ArchitectProvider
+	tasks              TaskProvider
 }
 
 // dashboardState groups everything backing the dashboard surface: the metrics
@@ -130,11 +150,22 @@ type Server struct {
 	readinessCheckers []ReadinessChecker
 	liveness          *livenessState
 
+	// Version is the build version reported by /api/v1/status. It defaults to
+	// defaultVersion and is overridable via SetVersion so the cmd layer can
+	// thread the real build version (set in cmd/pilot/main.go) through.
+	version string
+
 	authn     authState
 	providers providerState
 	dashboard dashboardState
 	codex     codexRuntimeState
 }
+
+// defaultVersion is the build version reported by /api/v1/status when the cmd
+// layer has not threaded an explicit version via SetVersion. It mirrors the
+// version var in cmd/pilot/main.go so a server constructed without wiring
+// still reports the correct release.
+const defaultVersion = "1.0.0"
 
 // Config holds gateway server configuration including network binding options.
 type Config struct {
@@ -198,6 +229,7 @@ func NewServerWithAuth(config *Config, authConfig *AuthConfig) *Server {
 		router:            NewRouter(),
 		customHandlers:    make(map[string]http.Handler),
 		readinessCheckers: make([]ReadinessChecker, 0),
+		version:           defaultVersion,
 		authn: authState{
 			auth:                   auth,
 			sessions:               NewSessionManager(),
@@ -266,6 +298,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	errCh := make(chan error, 1)
 	go func() {
+		defer logging.Recover("gateway.listenAndServe")
 		if err := s.server.ListenAndServe(); err != http.ErrServerClosed {
 			errCh <- err
 		}
@@ -325,6 +358,27 @@ func (s *Server) SetArchitectProvider(p ArchitectProvider) {
 	s.providers.architect = p
 }
 
+// SetTaskProvider sets the task provider for the /api/v1/tasks endpoint.
+// When set, /api/v1/tasks returns the provider's tasks; otherwise it returns
+// an empty list. Must be called before Start().
+func (s *Server) SetTaskProvider(p TaskProvider) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.providers.tasks = p
+}
+
+// SetVersion overrides the build version reported by /api/v1/status. The cmd
+// layer calls this with the version from cmd/pilot/main.go. An empty string
+// is ignored so the default is preserved. Must be called before Start().
+func (s *Server) SetVersion(v string) {
+	if v == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.version = v
+}
+
 // SetGitGraphPath sets the project path used by the /api/v1/gitgraph endpoint.
 // Defaults to "." if not set.
 func (s *Server) SetGitGraphPath(path string) {
@@ -360,6 +414,15 @@ func (s *Server) Shutdown() error {
 
 // handleWebSocket handles WebSocket connections for the control plane
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	// The control-plane WebSocket carries the same privileges as the /api/v1
+	// routes, so it must be authenticated too. It previously upgraded without
+	// any token check, leaving the control plane open whenever the gateway was
+	// exposed (e.g. via the ngrok/cloudflare tunnel feature).
+	if err := s.authn.auth.AuthenticateWebSocket(r); err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		logging.WithComponent("gateway").Error("WebSocket upgrade error", slog.Any("error", err))

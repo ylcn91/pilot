@@ -3,6 +3,8 @@ package executor
 import (
 	"context"
 	"time"
+
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // RSSSample holds peak and final RSS readings from a subprocess.
@@ -18,6 +20,7 @@ type RSSSample struct {
 func StartRSSSampler(ctx context.Context, pid int, interval time.Duration) <-chan RSSSample {
 	ch := make(chan RSSSample, 1)
 	go func() {
+		defer logging.Recover("executor.rss_sampler")
 		var peak int
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()

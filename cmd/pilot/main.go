@@ -66,6 +66,11 @@ func main() {
 		newArchitectCmd(),
 	)
 
+	// Install the process-wide panic-recovery telemetry hook so recovered
+	// goroutine panics increment pilot_panics_total{component} and feed the
+	// gateway liveness tracker (GH-31).
+	installPanicHook()
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

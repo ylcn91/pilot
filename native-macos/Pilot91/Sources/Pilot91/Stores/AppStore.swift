@@ -216,7 +216,7 @@ final class AppStore: ObservableObject {
     }
 
     func connectRuntime() {
-        runtime.connect(gatewayURL: settings.gatewayURL)
+        runtime.connect(gatewayURL: settings.gatewayURL, authToken: settings.authToken)
     }
 
     func runCommand(_ command: PilotCommandDefinition, rawArguments: String, prompt: String) async {
@@ -793,8 +793,8 @@ final class AppStore: ObservableObject {
         selectedWorkspaceFilePath = path
     }
 
-    func createWorkspacePullRequest() async {
-        await runWorkspaceCommand("gh pr create --web", title: "create-pr")
+    func createWorkspacePullRequest(title: String = "", body: String = "") async {
+        await runWorkspaceCommand(buildCreatePRCommand(title: title, body: body), title: "create-pr")
     }
 
     private func gatewayClient() -> PilotGatewayClient {
@@ -1272,6 +1272,31 @@ func splitShellLike(_ value: String) -> [String] {
 
 private func cleanOutput(_ value: String) -> String {
     value.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+/// Builds the `gh pr create` command for the workspace console.
+///
+/// When the user supplies a title and/or description, they are forwarded via
+/// `--title` / `--body` so the form input actually reaches GitHub. With no
+/// input we fall back to `--web`, letting GitHub prefill the PR from commits.
+func buildCreatePRCommand(title: String, body: String) -> String {
+    let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    guard !trimmedTitle.isEmpty || !trimmedBody.isEmpty else {
+        return "gh pr create --web"
+    }
+
+    var parts = ["gh", "pr", "create"]
+    if trimmedTitle.isEmpty {
+        // gh requires a title; reuse the body's first line so the call is non-interactive.
+        let fallbackTitle = trimmedBody.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? trimmedBody
+        parts += ["--title", shellQuote(fallbackTitle)]
+    } else {
+        parts += ["--title", shellQuote(trimmedTitle)]
+    }
+    parts += ["--body", shellQuote(trimmedBody)]
+    return parts.joined(separator: " ")
 }
 
 private func workspaceStatusSummary(_ files: [WorkspaceFileChange]) -> String {

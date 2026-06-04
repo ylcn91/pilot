@@ -311,17 +311,19 @@ curl http://localhost:8090/api/v1/tasks | jq
 
 ### WebSocket Log Streaming
 
-Connect to `/ws/logs` for real-time execution log streaming (v1.56.0):
+Connect to `/ws/dashboard` for real-time execution log streaming:
 
 ```javascript
-const ws = new WebSocket('ws://localhost:8090/ws/logs');
+// When an api token is configured, pass it as a query param
+// (browsers cannot set the Authorization header on a WebSocket handshake).
+const ws = new WebSocket('ws://localhost:8090/ws/dashboard?token=YOUR_TOKEN');
 ws.onmessage = (event) => {
   const entry = JSON.parse(event.data);
   console.log(`[${entry.task_id}] ${entry.level}: ${entry.message}`);
 };
 ```
 
-Log entries include the task ID, log level, timestamp, and message. The WebSocket connection automatically receives logs from all running executions.
+Log entries include the task ID, log level, timestamp, and message. The WebSocket connection automatically receives logs from all running executions. The control-plane socket `/ws` and `/ws/dashboard` require the same api token as the `/api/v1` routes when auth is configured.
 
 ### Desktop App Connection
 

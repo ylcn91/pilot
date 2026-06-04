@@ -12,9 +12,11 @@ final class RuntimeStore: ObservableObject {
 
     private var webSocket: URLSessionWebSocketTask?
     private var gatewayURL = ""
+    private var authToken = ""
 
-    func connect(gatewayURL: String) {
+    func connect(gatewayURL: String, authToken: String = "") {
         self.gatewayURL = gatewayURL
+        self.authToken = authToken
         disconnect()
         guard let url = runtimeWebSocketURL(from: gatewayURL) else {
             status = .error
@@ -22,7 +24,16 @@ final class RuntimeStore: ObservableObject {
             return
         }
 
-        let socket = URLSession.shared.webSocketTask(with: url)
+        // The gateway control plane requires the same bearer token as /api/v1
+        // when auth is configured. Carry it on the upgrade request (native
+        // clients can set headers, unlike browsers); omit it for local/no-auth
+        // gateways so the unauthenticated default still connects.
+        var request = URLRequest(url: url)
+        if !authToken.isEmpty {
+            request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        }
+
+        let socket = URLSession.shared.webSocketTask(with: request)
         webSocket = socket
         socket.resume()
         connected = false

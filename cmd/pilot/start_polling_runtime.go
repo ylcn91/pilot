@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -74,6 +75,34 @@ type pollingRuntime struct {
 
 	architectStore     *architect.FindingsStore
 	architectScheduler *architect.Scheduler
+}
+
+// heartbeatInterval controls how often the main loop refreshes the gateway
+// liveness heartbeat. Kept well under the readiness check's heartbeat window.
+const heartbeatInterval = 10 * time.Second
+
+// startHeartbeat ticks the gateway server's liveness heartbeat until the
+// runtime context is cancelled. No-op when no gateway server is running.
+func (p *pollingRuntime) startHeartbeat() {
+	if p.gwServer == nil {
+		return
+	}
+	server := p.gwServer
+	ctx := p.ctx
+	// Mark alive immediately so readiness doesn't lag the first tick.
+	server.Heartbeat()
+	logging.SafeGo("start.heartbeat", func() {
+		ticker := time.NewTicker(heartbeatInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				server.Heartbeat()
+			}
+		}
+	})
 }
 
 // validatePollingConfig validates Telegram and Slack Socket Mode config.

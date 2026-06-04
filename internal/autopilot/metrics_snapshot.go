@@ -18,6 +18,7 @@ func (m *Metrics) Snapshot() MetricsSnapshot {
 		PRsConflicting:             m.PRsConflicting,
 		CircuitBreakerTrips:        m.CircuitBreakerTrips,
 		APIErrors:                  copyStringIntMap(m.APIErrors),
+		Panics:                     copyStringIntMap(m.Panics),
 		LabelCleanups:              copyStringIntMap(m.LabelCleanups),
 		ApprovalPersistMisses:      copyStringIntMap(m.ApprovalPersistMisses),
 		TokensConsumed:             copyTokenKeyMap(m.TokensConsumed),
@@ -72,6 +73,7 @@ type MetricsSnapshot struct {
 	PRsConflicting        int64
 	CircuitBreakerTrips   int64
 	APIErrors             map[string]int64
+	Panics                map[string]int64 // component → recovered-panic count (#31)
 	LabelCleanups         map[string]int64
 	ApprovalPersistMisses map[string]int64
 	TokensConsumed        map[tokenKey]int64

@@ -53,7 +53,7 @@ func (p *Poller) checkForNewIssues(ctx context.Context) {
 		// Skip if has in-progress, done, or failed label
 		if p.hasStatusLabel(issue) {
 			p.markProcessed(issue.IID)
-			p.recordSkip(skipreason.ReasonStatusLabel)
+			p.recordSkip(p.statusLabelSkipReason(issue))
 			continue
 		}
 
@@ -157,4 +157,20 @@ func (p *Poller) hasStatusLabel(issue *Issue) bool {
 	return HasLabel(issue, LabelInProgress) ||
 		HasLabel(issue, LabelDone) ||
 		HasLabel(issue, LabelFailed)
+}
+
+// statusLabelSkipReason maps a status-label hit to the granular skip reason
+// used by the github parallel poller, so GitLab reports distinct in_progress /
+// done / failed_skip metrics instead of a single combined status_label (GH #23).
+func (p *Poller) statusLabelSkipReason(issue *Issue) string {
+	switch {
+	case HasLabel(issue, LabelInProgress):
+		return skipreason.ReasonInProgress
+	case HasLabel(issue, LabelDone):
+		return skipreason.ReasonDone
+	case HasLabel(issue, LabelFailed):
+		return skipreason.ReasonFailedSkip
+	default:
+		return skipreason.ReasonStatusLabel
+	}
 }

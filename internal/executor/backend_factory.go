@@ -16,6 +16,8 @@ func NewBackend(config *BackendConfig) (Backend, error) {
 	case BackendTypeCodexExec, "":
 		b := NewCodexExecBackend(config.CodexExec)
 		b.SetHeartbeatTimeout(heartbeatTimeout)
+		// #27: wire RSS telemetry + optional memory cap (subprocess backend).
+		b.SetSubprocessLimits(config.SubprocessLimits)
 		return b, nil
 
 	case BackendTypeClaudeCode:
@@ -36,6 +38,8 @@ func NewBackend(config *BackendConfig) (Backend, error) {
 	case BackendTypeQwenCode:
 		b := NewQwenCodeBackend(config.QwenCode)
 		b.SetHeartbeatTimeout(heartbeatTimeout)
+		// #27: wire RSS telemetry + optional memory cap (subprocess backend).
+		b.SetSubprocessLimits(config.SubprocessLimits)
 		return b, nil
 
 	case BackendTypeAnthropicAPI:

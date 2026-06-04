@@ -30,6 +30,9 @@ func (p *pollingRuntime) setupGateway() {
 	var gwServer *gateway.Server // hoisted so TASK-332 alert-metrics wiring can run after alerts engine is created
 	if !p.noGateway && cfg.Gateway != nil {
 		gwServer = gateway.NewServer(cfg.Gateway)
+		// GH-14: report the real build version on /api/v1/status instead of the
+		// gateway's hardcoded default.
+		gwServer.SetVersion(version)
 		if autopilotController != nil {
 			gwServer.SetAutopilotProvider(&autopilotProviderAdapter{controller: autopilotController})
 			gwServer.SetMetricsSource(autopilotController.Metrics())
@@ -64,6 +67,8 @@ func (p *pollingRuntime) setupGateway() {
 		if store != nil {
 			gwServer.SetDashboardStore(store)
 			gwServer.SetLogStreamStore(store)
+			// GH-13: surface live queued/in-progress executions on /api/v1/tasks.
+			gwServer.SetTaskProvider(&storeTaskProvider{store: store})
 		}
 		// Wire the Architect radar findings sink into the gateway so periodic
 		// scans surface on web/TUI/desktop. The same store is handed to the
@@ -78,13 +83,20 @@ func (p *pollingRuntime) setupGateway() {
 			return dashboard.FetchGitGraph(path, limit)
 		})
 		gwServer.SetGitGraphPath(projectPath)
-		go func() {
+		// Forward recovered goroutine panics to this server's liveness tracker.
+		registerPanicServer(gwServer)
+		// #31: also count panics on autopilot metrics so pilot_panics_total
+		// surfaces on the Prometheus endpoint.
+		if autopilotController != nil {
+			registerPanicRecorder(autopilotController.Metrics())
+		}
+		logging.SafeGo("gateway.background", func() {
 			addr := fmt.Sprintf("%s:%d", cfg.Gateway.Host, cfg.Gateway.Port)
 			logging.WithComponent("gateway").Info("gateway started in background", "addr", addr)
 			if err := gwServer.Start(ctx); err != nil && ctx.Err() == nil {
 				logging.WithComponent("gateway").Error("gateway background error", "error", err)
 			}
-		}()
+		})
 	}
 
 	p.gwServer = gwServer

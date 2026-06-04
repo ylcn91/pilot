@@ -1,7 +1,6 @@
 package autopilot
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/ylcn91/pilot/internal/adapters/github"
@@ -258,55 +257,6 @@ func TestDetectBumpType(t *testing.T) {
 			got := DetectBumpType(commits)
 			if got != tt.want {
 				t.Errorf("DetectBumpType() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestGenerateChangelog(t *testing.T) {
-	tests := []struct {
-		name     string
-		messages []string
-		prNumber int
-		contains []string
-	}{
-		{
-			name:     "features and fixes",
-			messages: []string{"feat: add new feature", "fix: resolve bug"},
-			prNumber: 42,
-			contains: []string{"## Features", "add new feature", "## Bug Fixes", "resolve bug"},
-		},
-		{
-			name:     "no commits - fallback message",
-			messages: []string{},
-			prNumber: 123,
-			contains: []string{"Release from PR #123"},
-		},
-		{
-			name:     "non-conventional commits",
-			messages: []string{"Update something"},
-			prNumber: 42,
-			contains: []string{"## Other Changes", "Update something"},
-		},
-		{
-			name:     "chore goes to other",
-			messages: []string{"chore: update deps"},
-			prNumber: 42,
-			contains: []string{"## Other Changes", "update deps"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			commits := make([]*github.Commit, len(tt.messages))
-			for i, msg := range tt.messages {
-				commits[i] = makeCommit(msg)
-			}
-			got := GenerateChangelog(commits, tt.prNumber)
-			for _, want := range tt.contains {
-				if !strings.Contains(got, want) {
-					t.Errorf("GenerateChangelog() = %q, want to contain %q", got, want)
-				}
 			}
 		})
 	}

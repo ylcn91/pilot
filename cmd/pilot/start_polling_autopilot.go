@@ -51,7 +51,7 @@ func (p *pollingRuntime) setupAutopilotControllers() {
 				}
 				bs := github.NewProjectBoardSync(ghClient, cfg.Adapters.GitHub.ProjectBoard, owner)
 				statuses := cfg.Adapters.GitHub.ProjectBoard.GetStatuses()
-				autopilotBoardOpts = append(autopilotBoardOpts, autopilot.WithProjectBoardSync(bs, statuses.Done, statuses.Failed, statuses.Review, statuses.InProgress))
+				autopilotBoardOpts = append(autopilotBoardOpts, autopilot.WithProjectBoardSync(bs, statuses.Done, statuses.Failed, statuses.Review))
 			}
 
 			// Create controller for default repo (adapters.github.repo)

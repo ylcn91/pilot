@@ -253,7 +253,7 @@ func buildGatewayAutopilot(gw *gatewayInfra, cfg *config.Config, approvalMgr *ap
 				if cfg.Adapters.GitHub.ProjectBoard != nil && cfg.Adapters.GitHub.ProjectBoard.Enabled {
 					bs := github.NewProjectBoardSync(ghClient, cfg.Adapters.GitHub.ProjectBoard, parts[0])
 					statuses := cfg.Adapters.GitHub.ProjectBoard.GetStatuses()
-					gwBoardOpts = append(gwBoardOpts, autopilot.WithProjectBoardSync(bs, statuses.Done, statuses.Failed, statuses.Review, statuses.InProgress))
+					gwBoardOpts = append(gwBoardOpts, autopilot.WithProjectBoardSync(bs, statuses.Done, statuses.Failed, statuses.Review))
 				}
 				// TASK-352: scope self-heal to the project's fs path (matches
 				// executions.project_path) so merged work flips failed→completed.
@@ -266,6 +266,10 @@ func buildGatewayAutopilot(gw *gatewayInfra, cfg *config.Config, approvalMgr *ap
 					parts[1],
 					gwBoardOpts...,
 				)
+				// GH-30: feed non-2xx GitHub API errors into autopilot metrics so
+				// api_errors_total / api_error_rate become non-zero and the
+				// api_error_rate_high alert can fire in gateway mode.
+				ghClient.WithAPIErrorRecorder(gw.AutopilotController.Metrics())
 				maybeAttachGuardrails(gw.AutopilotController, cfg, ghClient, parts[0], parts[1], projectPath)
 				// GH-2685: wire the controller as the approval state writer so
 				// async approval decisions update the in-memory PRState.

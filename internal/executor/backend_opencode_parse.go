@@ -45,10 +45,22 @@ func (b *OpenCodeBackend) parseAssistantResponse(body io.Reader, opts ExecuteOpt
 	}
 
 	// If the assistant message carries an error indicator, propagate it.
+	// GH-2328/#25: also set ErrorType + Stderr so persistBackendDiagnostics can
+	// write them to execution_logs, matching claude-code. OpenCode's structured
+	// error name is the closest analogue to a classified error type; the message
+	// is the closest analogue to stderr.
 	if resp.Info.Error.Message != "" {
 		result.Error = resp.Info.Error.Message
 	} else if resp.Info.Error.Name != "" {
 		result.Error = resp.Info.Error.Name
+	}
+	if resp.Info.Error.Name != "" {
+		result.ErrorType = resp.Info.Error.Name
+	} else if resp.Info.Error.Message != "" {
+		result.ErrorType = string(ErrorTypeAPIError)
+	}
+	if resp.Info.Error.Message != "" {
+		result.Stderr = resp.Info.Error.Message
 	}
 
 	var output strings.Builder
@@ -56,6 +68,11 @@ func (b *OpenCodeBackend) parseAssistantResponse(body io.Reader, opts ExecuteOpt
 		switch part.Type {
 		case "text":
 			output.WriteString(part.Text)
+			// GH-2777/#24: track the last assistant text block so a DECLINED
+			// marker (or any refusal) is surfaced to the runner for detection.
+			if part.Text != "" {
+				result.LastAssistantText = part.Text
+			}
 			if opts.EventHandler != nil {
 				opts.EventHandler(BackendEvent{
 					Type:    EventTypeText,
@@ -138,12 +155,30 @@ func (b *OpenCodeBackend) parseSSEStream(reader io.Reader, opts ExecuteOptions, 
 				opts.EventHandler(event)
 			}
 
+			// GH-2777/#24: track the last assistant text block so a DECLINED
+			// marker (or any refusal) is surfaced to the runner for detection.
+			if event.Type == EventTypeText && event.Message != "" {
+				result.LastAssistantText = event.Message
+			}
+
 			// Track final result
 			if event.Type == EventTypeResult {
 				if event.IsError {
 					result.Error = event.Message
 				} else {
 					result.Output = event.Message
+				}
+			}
+
+			// GH-2328/#25: capture error events so ErrorType + Stderr are set for
+			// diagnostics, matching the synchronous parse path and claude-code.
+			if event.Type == EventTypeError || (event.Type == EventTypeResult && event.IsError) {
+				if event.Message != "" {
+					result.Error = event.Message
+					result.Stderr = event.Message
+				}
+				if result.ErrorType == "" {
+					result.ErrorType = string(ErrorTypeAPIError)
 				}
 			}
 

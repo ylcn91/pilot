@@ -1,6 +1,8 @@
 package executor
 
 import (
+	"fmt"
+	"os/exec"
 	"testing"
 )
 
@@ -75,6 +77,60 @@ func TestClassifyQwenCodeError(t *testing.T) {
 			}
 			if tt.stderr != "" && err.Stderr != tt.stderr {
 				t.Errorf("classifyQwenCodeError() stderr = %q, want %q", err.Stderr, tt.stderr)
+			}
+		})
+	}
+}
+
+func TestClassifyQwenCodeError_OOM(t *testing.T) {
+	// #26: OOM/SIGKILL detection via exit code, mirroring claude-code.
+	tests := []struct {
+		name       string
+		exitCode   int
+		stderr     string
+		expectType QwenCodeErrorType
+		expectMsg  string
+	}{
+		{
+			name:       "exit 137 (SIGKILL) classified as OOM",
+			exitCode:   137,
+			expectType: QwenErrorTypeOOM,
+			expectMsg:  "Process killed by SIGKILL (exit code 137)",
+		},
+		{
+			name:       "exit 139 (SIGSEGV) classified as OOM",
+			exitCode:   139,
+			expectType: QwenErrorTypeOOM,
+			expectMsg:  "Process killed by SIGSEGV (exit code 139)",
+		},
+		{
+			name:       "exit 137 with stderr still classified as OOM",
+			exitCode:   137,
+			stderr:     "some noise",
+			expectType: QwenErrorTypeOOM,
+			expectMsg:  "Process killed by SIGKILL (exit code 137)",
+		},
+		{
+			name:       "exit 1 is not OOM",
+			exitCode:   1,
+			stderr:     "",
+			expectType: QwenErrorTypeUnknown,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var exitErr error
+			if tt.exitCode > 0 {
+				cmd := exec.Command("sh", "-c", fmt.Sprintf("exit %d", tt.exitCode))
+				exitErr = cmd.Run()
+			}
+			err := classifyQwenCodeError(tt.stderr, exitErr)
+			if err.Type != tt.expectType {
+				t.Errorf("type = %q, want %q", err.Type, tt.expectType)
+			}
+			if tt.expectMsg != "" && err.Message != tt.expectMsg {
+				t.Errorf("message = %q, want %q", err.Message, tt.expectMsg)
 			}
 		})
 	}

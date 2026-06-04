@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ylcn91/pilot/internal/logging"
 	"github.com/ylcn91/pilot/internal/upgrade"
 )
 
@@ -150,11 +151,11 @@ func runUpgradeRun(cmd *cobra.Command, args []string, force, skipConfirm bool) e
 	// Handle Ctrl+C
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
+	logging.SafeGo("upgrade.signal", func() {
 		<-sigCh
 		fmt.Println("\n⚠️  Upgrade cancelled")
 		cancel()
-	}()
+	})
 
 	// Check for updates
 	fmt.Println("🔍 Checking for updates...")

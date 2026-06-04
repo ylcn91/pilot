@@ -28,8 +28,8 @@ func TestStatusEndpoint(t *testing.T) {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
 
-	if response["version"] != "0.1.0" {
-		t.Errorf("Expected version '0.1.0', got '%v'", response["version"])
+	if response["version"] != defaultVersion {
+		t.Errorf("Expected version '%s', got '%v'", defaultVersion, response["version"])
 	}
 }
 
@@ -168,8 +168,8 @@ func TestHandleStatusTableDriven(t *testing.T) {
 				t.Fatalf("Failed to decode response: %v", err)
 			}
 
-			if response["version"] != "0.1.0" {
-				t.Errorf("Expected version '0.1.0', got '%v'", response["version"])
+			if response["version"] != defaultVersion {
+				t.Errorf("Expected version '%s', got '%v'", defaultVersion, response["version"])
 			}
 
 			if _, ok := response["running"]; !ok {
@@ -183,38 +183,27 @@ func TestHandleStatusTableDriven(t *testing.T) {
 	}
 }
 
-func TestHandleTasksTableDriven(t *testing.T) {
+// stubTaskProvider returns a fixed task set for handler tests.
+type stubTaskProvider struct {
+	tasks []TaskInfo
+}
+
+func (s stubTaskProvider) Tasks() []TaskInfo { return s.tasks }
+
+func TestHandleTasksNoProviderReturnsEmpty(t *testing.T) {
 	config := &Config{Host: "127.0.0.1", Port: 9090}
 	server := NewServer(config)
 
-	tests := []struct {
-		name           string
-		method         string
-		expectedStatus int
-	}{
-		{
-			name:           "GET request returns empty tasks",
-			method:         http.MethodGet,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "POST request",
-			method:         http.MethodPost,
-			expectedStatus: http.StatusOK,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(tt.method, "/api/v1/tasks", nil)
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		t.Run(method, func(t *testing.T) {
+			req := httptest.NewRequest(method, "/api/v1/tasks", nil)
 			w := httptest.NewRecorder()
 
 			server.handleTasks(w, req)
 
-			if w.Code != tt.expectedStatus {
-				t.Errorf("Expected status %d, got %d", tt.expectedStatus, w.Code)
+			if w.Code != http.StatusOK {
+				t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
 			}
-
 			if w.Header().Get("Content-Type") != "application/json" {
 				t.Error("Expected Content-Type application/json")
 			}
@@ -228,16 +217,49 @@ func TestHandleTasksTableDriven(t *testing.T) {
 			if !ok {
 				t.Error("Response should include 'tasks' field")
 			}
-
 			taskArray, ok := tasks.([]interface{})
 			if !ok {
-				t.Error("Tasks should be an array")
+				t.Fatal("Tasks should be an array")
 			}
-
 			if len(taskArray) != 0 {
-				t.Errorf("Expected empty tasks array, got %d items", len(taskArray))
+				t.Errorf("Expected empty tasks array with no provider, got %d items", len(taskArray))
 			}
 		})
+	}
+}
+
+func TestHandleTasksReturnsProviderData(t *testing.T) {
+	config := &Config{Host: "127.0.0.1", Port: 9090}
+	server := NewServer(config)
+	server.SetTaskProvider(stubTaskProvider{tasks: []TaskInfo{
+		{ID: "TASK-1", Title: "first", Status: "running", ProjectPath: "/p", Priority: 1},
+		{ID: "TASK-2", Title: "second", Status: "queued"},
+	}})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/tasks", nil)
+	w := httptest.NewRecorder()
+
+	server.handleTasks(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var response struct {
+		Tasks []TaskInfo `json:"tasks"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if len(response.Tasks) != 2 {
+		t.Fatalf("Expected 2 tasks from provider, got %d", len(response.Tasks))
+	}
+	if response.Tasks[0].ID != "TASK-1" || response.Tasks[0].Status != "running" {
+		t.Errorf("Unexpected first task: %+v", response.Tasks[0])
+	}
+	if response.Tasks[1].ID != "TASK-2" || response.Tasks[1].Title != "second" {
+		t.Errorf("Unexpected second task: %+v", response.Tasks[1])
 	}
 }
 

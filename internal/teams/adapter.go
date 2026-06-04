@@ -41,3 +41,18 @@ func (a *ServiceAdapter) ResolveTelegramIdentity(telegramID int64, email string)
 func (a *ServiceAdapter) ResolveSlackIdentity(slackUserID, email string) (string, error) {
 	return a.service.ResolveSlackIdentity(slackUserID, email)
 }
+
+// LogTaskEvent records a task-lifecycle audit entry for the resolved member
+// (#35). It looks up the member's team and email so callers only need the
+// memberID returned by the Resolve* methods. No-op (nil) when memberID is empty
+// or the member can't be found, so unattributed daemon tasks don't error.
+func (a *ServiceAdapter) LogTaskEvent(memberID, taskID string, action AuditAction, details map[string]interface{}) error {
+	if a == nil || a.service == nil || memberID == "" {
+		return nil
+	}
+	member, err := a.service.GetMember(memberID)
+	if err != nil || member == nil {
+		return nil
+	}
+	return a.service.LogTaskEvent(member.TeamID, member.ID, member.Email, taskID, action, details)
+}

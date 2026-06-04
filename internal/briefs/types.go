@@ -4,13 +4,14 @@ import "time"
 
 // Brief represents a daily summary brief
 type Brief struct {
-	GeneratedAt time.Time
-	Period      BriefPeriod
-	Completed   []TaskSummary
-	InProgress  []TaskSummary
-	Blocked     []BlockedTask
-	Upcoming    []TaskSummary
-	Metrics     BriefMetrics
+	GeneratedAt    time.Time
+	Period         BriefPeriod
+	Completed      []TaskSummary
+	InProgress     []TaskSummary
+	Blocked        []BlockedTask
+	Upcoming       []TaskSummary
+	Metrics        BriefMetrics
+	IncludeMetrics bool // When false, metrics are neither collected nor rendered
 }
 
 // BriefPeriod represents the time range for the brief
@@ -60,6 +61,23 @@ type BriefConfig struct {
 	Channels []ChannelConfig `yaml:"channels"`
 	Content  ContentConfig   `yaml:"content"`
 	Filters  FilterConfig    `yaml:"filters"`
+	Email    EmailConfig     `yaml:"email"` // SMTP settings for email channels
+}
+
+// EmailConfig holds SMTP settings used to construct the email sender.
+type EmailConfig struct {
+	Host          string `yaml:"host"`
+	Port          int    `yaml:"port"`
+	From          string `yaml:"from"`
+	Username      string `yaml:"username"`
+	Password      string `yaml:"password"`
+	AllowInsecure bool   `yaml:"allow_insecure"` // Permit sending without STARTTLS (trusted relays only)
+}
+
+// IsConfigured reports whether enough SMTP settings are present to build a
+// working sender (host and from address are the minimum).
+func (e EmailConfig) IsConfigured() bool {
+	return e.Host != "" && e.From != ""
 }
 
 // ChannelConfig defines a delivery channel

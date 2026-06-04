@@ -51,6 +51,25 @@ func TestRunRuntimeSessionUsesInjectedStart(t *testing.T) {
 	}
 }
 
+func TestResolveCodexRuntimeConfigCopiesDisablePriming(t *testing.T) {
+	server := NewServer(&Config{
+		Host: "127.0.0.1",
+		Port: 9090,
+		CodexRuntime: &CodexRuntimeConfig{
+			Command:        "/opt/bin/codex",
+			DisablePriming: true,
+		},
+	})
+
+	got, err := server.resolveCodexRuntimeConfig(runtimeTaskPayload{})
+	if err != nil {
+		t.Fatalf("resolveCodexRuntimeConfig: %v", err)
+	}
+	if !got.DisablePriming {
+		t.Error("DisablePriming = false, want true (configured value was dropped)")
+	}
+}
+
 func TestRunRuntimeSessionRequiresPrompt(t *testing.T) {
 	server := NewServer(&Config{Host: "127.0.0.1", Port: 9090})
 

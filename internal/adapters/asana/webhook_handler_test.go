@@ -71,7 +71,20 @@ func TestHasPilotTag(t *testing.T) {
 }
 
 func TestWasTagAdded(t *testing.T) {
-	client := NewClient(testutil.FakeAsanaAccessToken, testutil.FakeAsanaWorkspaceID)
+	// Server backs the GID-only path: FindTagByName lists workspace tags so the
+	// pilot tag's GID ("pilot-gid") can be resolved and compared.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": []map[string]string{
+				{"gid": "pilot-gid", "name": "pilot"},
+				{"gid": "other-gid", "name": "other"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL(server.URL, testutil.FakeAsanaAccessToken, testutil.FakeAsanaWorkspaceID)
 	handler := NewWebhookHandler(client, "", "pilot")
 
 	tests := []struct {
@@ -116,21 +129,32 @@ func TestWasTagAdded(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "tag added by GID only",
+			name: "GID-only matches pilot tag GID",
 			change: &WebhookChange{
 				Field:  "tags",
 				Action: "added",
 				AddedValue: map[string]interface{}{
-					"gid": "123",
+					"gid": "pilot-gid",
 				},
 			},
-			want: true, // Optimistically returns true
+			want: true,
+		},
+		{
+			name: "GID-only does not match pilot tag GID",
+			change: &WebhookChange{
+				Field:  "tags",
+				Action: "added",
+				AddedValue: map[string]interface{}{
+					"gid": "other-gid",
+				},
+			},
+			want: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := handler.wasTagAdded(tt.change)
+			got := handler.wasTagAdded(context.Background(), tt.change)
 			if got != tt.want {
 				t.Errorf("wasTagAdded() = %v, want %v", got, tt.want)
 			}

@@ -14,7 +14,9 @@ const (
 	QwenErrorTypeTimeout         QwenCodeErrorType = "timeout"
 	QwenErrorTypeInvalidConfig   QwenCodeErrorType = "invalid_config"
 	QwenErrorTypeSessionNotFound QwenCodeErrorType = "session_not_found"
-	QwenErrorTypeUnknown         QwenCodeErrorType = "unknown"
+	// QwenErrorTypeOOM indicates the process was OOM-killed (exit 137/139). #26.
+	QwenErrorTypeOOM     QwenCodeErrorType = "oom_killed"
+	QwenErrorTypeUnknown QwenCodeErrorType = "unknown"
 )
 
 // QwenCodeError represents a classified error from Qwen Code.
@@ -43,6 +45,20 @@ func (e *QwenCodeError) ErrorStderr() string { return e.Stderr }
 // classifyQwenCodeError examines stderr output to classify the error.
 func classifyQwenCodeError(stderr string, originalErr error) *QwenCodeError {
 	stderrLower := strings.ToLower(stderr)
+
+	// #26: OOM kills (137=SIGKILL, 139=SIGSEGV) often produce no stderr, so the
+	// exit code is the only reliable signal. Check it before stderr matching.
+	if exitCode := extractExitCode(originalErr); exitCode == 137 || exitCode == 139 {
+		sigName := "SIGKILL"
+		if exitCode == 139 {
+			sigName = "SIGSEGV"
+		}
+		return &QwenCodeError{
+			Type:    QwenErrorTypeOOM,
+			Message: fmt.Sprintf("Process killed by %s (exit code %d)", sigName, exitCode),
+			Stderr:  strings.TrimSpace(stderr),
+		}
+	}
 
 	// Rate limit detection
 	if strings.Contains(stderrLower, "rate limit") ||

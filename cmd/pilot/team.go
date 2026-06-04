@@ -31,6 +31,8 @@ Teams allow multiple users to collaborate on Pilot with different permission lev
 		newTeamListCmd(),
 		newTeamShowCmd(),
 		newTeamDeleteCmd(),
+		newTeamSettingsCmd(),
+		newTeamMembershipsCmd(),
 		newTeamMemberCmd(),
 		newTeamProjectCmd(),
 		newTeamAuditCmd(),

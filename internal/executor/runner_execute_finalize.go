@@ -99,7 +99,21 @@ func (r *Runner) executeFinalize(s *executeState) (*ExecutionResult, error) {
 			return res, err
 		}
 
+		// Capture HEAD so we can tell whether the self-review / intent-retry
+		// phase (which can commit fixes) mutated the tree after the gate passed.
+		headBeforeReview := ""
+		if s.git != nil {
+			headBeforeReview, _ = s.git.GetCurrentCommitSHA(ctx)
+		}
+
 		if res, err := r.executeSelfReviewIntent(s); res != nil || err != nil {
+			return res, err
+		}
+
+		// The quality gate ran before self-review/intent-retry. Those phases can
+		// commit new code, so re-validate when HEAD moved — otherwise a PR could
+		// ship changes that were never build/test-checked.
+		if res, err := r.revalidateAfterReview(s, headBeforeReview); res != nil || err != nil {
 			return res, err
 		}
 

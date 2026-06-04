@@ -1,246 +1,376 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/ylcn91/pilot/internal/adapters/asana"
+	"github.com/ylcn91/pilot/internal/adapters/azuredevops"
 	"github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/adapters/gitlab"
+	"github.com/ylcn91/pilot/internal/adapters/jira"
+	"github.com/ylcn91/pilot/internal/adapters/linear"
+	"github.com/ylcn91/pilot/internal/adapters/slack"
 	"github.com/ylcn91/pilot/internal/testutil"
 )
 
-// TestValidateGitHubConn tests GitHub connection validation.
-// Note: Current implementation is a stub that only checks for empty token.
-func TestValidateGitHubConn(t *testing.T) {
+// newAuthServer returns an httptest server responding with the given status and
+// JSON body for every request, asserting the auth header carries the token.
+func newAuthServer(t *testing.T, status int, body interface{}) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		if body != nil {
+			_ = json.NewEncoder(w).Encode(body)
+		}
+	}))
+}
+
+// --- GitHub ---
+
+func TestValidateGitHubConnEmpty(t *testing.T) {
+	if err := validateGitHubConn(""); err == nil {
+		t.Error("expected error for empty token")
+	}
+}
+
+func TestValidateGitHubWith(t *testing.T) {
 	tests := []struct {
 		name    string
-		token   string
+		status  int
+		body    interface{}
 		wantErr bool
 	}{
-		{
-			name:    "valid token",
-			token:   testutil.FakeGitHubToken,
-			wantErr: false,
-		},
-		{
-			name:    "empty token",
-			token:   "",
-			wantErr: true,
-		},
+		{"valid token", http.StatusOK, github.User{Login: "octocat"}, false},
+		{"unauthorized", http.StatusUnauthorized, map[string]string{"message": "Bad credentials"}, true},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateGitHubConn(tt.token)
+			srv := newAuthServer(t, tt.status, tt.body)
+			defer srv.Close()
+			client := github.NewClientWithBaseURL(testutil.FakeGitHubToken, srv.URL)
+			err := validateGitHubWith(client)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("validateGitHubConn() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("validateGitHubWith() err = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
-// TestValidateGitHubConnWithServer demonstrates GitHub validation with httptest server.
-// Uses GetRepository as a proxy for auth validation since the client doesn't have GetAuthenticatedUser.
-func TestValidateGitHubConnWithServer(t *testing.T) {
+// --- Linear ---
+
+func TestValidateLinearConnEmpty(t *testing.T) {
+	if _, err := validateLinearConn(""); err == nil {
+		t.Error("expected error for empty API key")
+	}
+}
+
+func TestValidateLinearWith(t *testing.T) {
 	tests := []struct {
-		name       string
-		statusCode int
-		response   interface{}
-		wantErr    bool
+		name     string
+		status   int
+		body     interface{}
+		wantName string
+		wantErr  bool
 	}{
 		{
-			name:       "success - valid token",
-			statusCode: http.StatusOK,
-			response:   github.Repository{Name: "test-repo"},
-			wantErr:    false,
+			name:     "valid returns real org name",
+			status:   http.StatusOK,
+			body:     map[string]interface{}{"data": map[string]interface{}{"organization": map[string]string{"name": "Acme Inc"}}},
+			wantName: "Acme Inc",
 		},
 		{
-			name:       "unauthorized - invalid token",
-			statusCode: http.StatusUnauthorized,
-			response:   map[string]string{"message": "Bad credentials"},
-			wantErr:    true,
+			name:     "valid but no org name falls back",
+			status:   http.StatusOK,
+			body:     map[string]interface{}{"data": map[string]interface{}{"organization": map[string]string{}}},
+			wantName: "Workspace",
+		},
+		{
+			name:    "unauthorized",
+			status:  http.StatusUnauthorized,
+			body:    map[string]string{"error": "unauthorized"},
+			wantErr: true,
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Header.Get("Authorization") != "Bearer "+testutil.FakeGitHubToken {
-					t.Errorf("unexpected auth header: %s", r.Header.Get("Authorization"))
+			srv := newAuthServer(t, tt.status, tt.body)
+			defer srv.Close()
+			client := linear.NewClientWithBaseURL(testutil.FakeLinearAPIKey, srv.URL)
+			name, err := validateLinearWith(client)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("validateLinearWith() err = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && name != tt.wantName {
+				t.Errorf("name = %q, want %q", name, tt.wantName)
+			}
+		})
+	}
+}
+
+// --- Jira ---
+
+func TestValidateJiraConnRequiredFields(t *testing.T) {
+	if err := validateJiraConn("", "user", "tok"); err == nil {
+		t.Error("expected error for missing base URL")
+	}
+}
+
+func TestValidateJiraWith(t *testing.T) {
+	tests := []struct {
+		name    string
+		status  int
+		body    interface{}
+		wantErr bool
+	}{
+		{"valid", http.StatusOK, map[string]interface{}{"issues": []interface{}{}}, false},
+		{"forbidden", http.StatusForbidden, map[string]string{"message": "no"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := newAuthServer(t, tt.status, tt.body)
+			defer srv.Close()
+			client := jira.NewClient(srv.URL, "user@example.com", "fake-token", jira.PlatformCloud)
+			err := validateJiraWith(client)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateJiraWith() err = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// --- GitLab ---
+
+func TestValidateGitLabConnEmpty(t *testing.T) {
+	if err := validateGitLabConn("https://gitlab.com", ""); err == nil {
+		t.Error("expected error for empty token")
+	}
+}
+
+func TestValidateGitLabWith(t *testing.T) {
+	tests := []struct {
+		name    string
+		status  int
+		body    interface{}
+		wantErr bool
+	}{
+		{"valid", http.StatusOK, gitlab.Project{ID: 1, Name: "proj"}, false},
+		{"unauthorized", http.StatusUnauthorized, map[string]string{"message": "401"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := newAuthServer(t, tt.status, tt.body)
+			defer srv.Close()
+			client := gitlab.NewClientWithBaseURL("fake-token", "group/proj", srv.URL)
+			err := validateGitLabWith(client)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateGitLabWith() err = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// --- Azure DevOps ---
+
+func TestValidateAzureDevOpsConnRequiredFields(t *testing.T) {
+	if err := validateAzureDevOpsConn("", "proj", "pat"); err == nil {
+		t.Error("expected error for missing org")
+	}
+}
+
+func TestValidateAzureDevOpsWith(t *testing.T) {
+	tests := []struct {
+		name    string
+		status  int
+		body    interface{}
+		wantErr bool
+	}{
+		{"valid empty result", http.StatusOK, map[string]interface{}{"workItems": []interface{}{}}, false},
+		{"unauthorized", http.StatusUnauthorized, map[string]string{"message": "denied"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := newAuthServer(t, tt.status, tt.body)
+			defer srv.Close()
+			client := azuredevops.NewClientWithBaseURL("pat", "org", "proj", srv.URL)
+			err := validateAzureDevOpsWith(client)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateAzureDevOpsWith() err = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// --- Asana ---
+
+func TestValidateAsanaConnEmpty(t *testing.T) {
+	if _, err := validateAsanaConn(""); err == nil {
+		t.Error("expected error for empty token")
+	}
+}
+
+func TestValidateAsanaWorkspaceRequiresID(t *testing.T) {
+	if _, err := validateAsanaWorkspace("tok", ""); err == nil {
+		t.Error("expected error for empty workspace ID")
+	}
+}
+
+func TestValidateAsanaTokenWith(t *testing.T) {
+	tests := []struct {
+		name      string
+		status    int
+		body      interface{}
+		wantNames []string
+		wantErr   bool
+	}{
+		{
+			name:   "valid token lists workspaces",
+			status: http.StatusOK,
+			body: map[string]interface{}{"data": []map[string]string{
+				{"gid": "1", "name": "Acme Corp"},
+				{"gid": "2", "name": "Side Project"},
+			}},
+			wantNames: []string{"Acme Corp", "Side Project"},
+		},
+		{
+			name:    "unauthorized",
+			status:  http.StatusUnauthorized,
+			body:    map[string]string{"message": "no"},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := newAuthServer(t, tt.status, tt.body)
+			defer srv.Close()
+			client := asana.NewClientWithBaseURL(srv.URL, "fake-token", "")
+			names, err := validateAsanaTokenWith(client)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("validateAsanaTokenWith() err = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr {
+				if len(names) != len(tt.wantNames) {
+					t.Fatalf("got %d names, want %d", len(names), len(tt.wantNames))
 				}
-				w.WriteHeader(tt.statusCode)
-				_ = json.NewEncoder(w).Encode(tt.response)
-			}))
-			defer server.Close()
-
-			// Use the GitHub client with test server base URL
-			client := github.NewClientWithBaseURL(testutil.FakeGitHubToken, server.URL)
-			_, err := client.GetRepository(context.Background(), "owner", "repo")
-
-			if (err != nil) != tt.wantErr {
-				t.Errorf("GetRepository() error = %v, wantErr %v", err, tt.wantErr)
+				for i, n := range names {
+					if n != tt.wantNames[i] {
+						t.Errorf("name[%d] = %q, want %q", i, n, tt.wantNames[i])
+					}
+				}
 			}
 		})
 	}
 }
 
-// TestValidateSlackConn tests Slack connection validation.
-// Note: Current implementation validates token format (xoxb- prefix).
-func TestValidateSlackConn(t *testing.T) {
+func TestValidateAsanaWith(t *testing.T) {
 	tests := []struct {
-		name    string
-		token   string
-		wantBot string
-		wantErr bool
+		name     string
+		status   int
+		body     interface{}
+		wantName string
+		wantErr  bool
 	}{
 		{
-			name:    "valid token format",
-			token:   "xoxb-test-token",
-			wantBot: "pilot-bot", // Stub always returns "pilot-bot"
-			wantErr: false,
+			name:     "valid",
+			status:   http.StatusOK,
+			body:     map[string]interface{}{"data": map[string]string{"gid": "1", "name": "My Workspace"}},
+			wantName: "My Workspace",
 		},
 		{
-			name:    "invalid token format - no xoxb prefix",
-			token:   "invalid-format",
-			wantBot: "",
-			wantErr: true,
-		},
-		{
-			name:    "empty token",
-			token:   "",
-			wantBot: "",
+			name:    "unauthorized",
+			status:  http.StatusUnauthorized,
+			body:    map[string]string{"message": "no"},
 			wantErr: true,
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			botName, err := validateSlackConn(tt.token)
+			srv := newAuthServer(t, tt.status, tt.body)
+			defer srv.Close()
+			client := asana.NewClientWithBaseURL(srv.URL, "fake-token", "12345")
+			name, err := validateAsanaWith(client)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("validateSlackConn() error = %v, wantErr %v", err, tt.wantErr)
-				return
+				t.Fatalf("validateAsanaWith() err = %v, wantErr %v", err, tt.wantErr)
 			}
-			if !tt.wantErr && botName != tt.wantBot {
-				t.Errorf("validateSlackConn() botName = %v, want %v", botName, tt.wantBot)
+			if !tt.wantErr && name != tt.wantName {
+				t.Errorf("name = %q, want %q", name, tt.wantName)
 			}
 		})
 	}
 }
 
-// TestValidateSlackConnWithServer tests Slack validation with httptest server.
-func TestValidateSlackConnWithServer(t *testing.T) {
-	tests := []struct {
-		name       string
-		statusCode int
-		response   interface{}
-		wantBot    string
-		wantErr    bool
-	}{
-		{
-			name:       "success",
-			statusCode: http.StatusOK,
-			response:   map[string]interface{}{"ok": true, "user": "pilot-bot"},
-			wantBot:    "pilot-bot",
-			wantErr:    false,
-		},
-		{
-			name:       "auth error",
-			statusCode: http.StatusOK,
-			response:   map[string]interface{}{"ok": false, "error": "invalid_auth"},
-			wantBot:    "",
-			wantErr:    true,
-		},
-	}
+// --- Slack (#11: real auth.test validation) ---
 
+// TestValidateSlackConnFormat covers the cheap format gate before any network call.
+func TestValidateSlackConnFormat(t *testing.T) {
+	tests := []struct {
+		name  string
+		token string
+	}{
+		{"missing prefix", "invalid-format"},
+		{"empty", ""},
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(tt.statusCode)
+			if _, err := validateSlackConn(tt.token); err == nil {
+				t.Errorf("validateSlackConn(%q) err = nil, want error", tt.token)
+			}
+		})
+	}
+}
+
+// TestValidateSlackWith exercises the auth.test path against a stub server: a
+// valid token returns the team name, a bad token surfaces a wrapped error.
+func TestValidateSlackWith(t *testing.T) {
+	tests := []struct {
+		name     string
+		response slack.AuthTestResponse
+		wantTeam string
+		wantErr  bool
+	}{
+		{"valid", slack.AuthTestResponse{OK: true, Team: "Acme Corp"}, "Acme Corp", false},
+		{"bad token", slack.AuthTestResponse{OK: false, Error: "invalid_auth"}, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if !strings.HasSuffix(r.URL.Path, "/auth.test") {
+					t.Errorf("path = %q, want /auth.test", r.URL.Path)
+				}
 				_ = json.NewEncoder(w).Encode(tt.response)
 			}))
-			defer server.Close()
+			defer srv.Close()
 
-			// Note: Would need to inject test server URL into Slack client
-			// For now, just validate the test server setup
-			_ = server
-		})
-	}
-}
-
-// TestValidateLinearConn tests Linear connection validation.
-func TestValidateLinearConn(t *testing.T) {
-	tests := []struct {
-		name          string
-		apiKey        string
-		statusCode    int
-		response      interface{}
-		wantWorkspace string
-		wantErr       bool
-	}{
-		{
-			name:          "valid API key",
-			apiKey:        testutil.FakeLinearAPIKey,
-			statusCode:    http.StatusOK,
-			response:      map[string]interface{}{"data": map[string]interface{}{"organization": map[string]string{"name": "Test Workspace"}}},
-			wantWorkspace: "Workspace", // Stub returns "Workspace"
-			wantErr:       false,
-		},
-		{
-			name:          "empty API key",
-			apiKey:        "",
-			statusCode:    0,
-			response:      nil,
-			wantWorkspace: "",
-			wantErr:       true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			workspaceName, err := validateLinearConn(tt.apiKey)
+			client := slack.NewClientWithBaseURL(testutil.FakeSlackBotToken, srv.URL)
+			team, err := validateSlackWith(client)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("validateLinearConn() error = %v, wantErr %v", err, tt.wantErr)
-				return
+				t.Fatalf("validateSlackWith() err = %v, wantErr %v", err, tt.wantErr)
 			}
-			if !tt.wantErr && workspaceName != tt.wantWorkspace {
-				t.Errorf("validateLinearConn() workspaceName = %v, want %v", workspaceName, tt.wantWorkspace)
+			if !tt.wantErr && team != tt.wantTeam {
+				t.Errorf("team = %q, want %q", team, tt.wantTeam)
 			}
 		})
 	}
 }
 
-// TestValidateTelegramConn tests Telegram connection validation.
-func TestValidateTelegramConn(t *testing.T) {
-	tests := []struct {
-		name       string
-		token      string
-		statusCode int
-		response   interface{}
-		wantBot    string
-		wantErr    bool
-	}{
-		{
-			name:       "invalid token format - no colon",
-			token:      "invalid-no-colon",
-			statusCode: 0,
-			response:   nil,
-			wantBot:    "",
-			wantErr:    true,
-		},
+func TestValidateTelegramConnFormat(t *testing.T) {
+	if _, err := validateTelegramConn("invalid-no-colon"); err == nil {
+		t.Error("expected error for token without colon")
 	}
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			botName, err := validateTelegramConn(tt.token)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("validateTelegramConn() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !tt.wantErr && botName != tt.wantBot {
-				t.Errorf("validateTelegramConn() botName = %v, want %v", botName, tt.wantBot)
-			}
-		})
+// Guard: ensure validators wrap auth failures in a clear message rather than
+// silently succeeding.
+func TestValidateGitHubWithErrorMessage(t *testing.T) {
+	srv := newAuthServer(t, http.StatusUnauthorized, map[string]string{"message": "Bad credentials"})
+	defer srv.Close()
+	client := github.NewClientWithBaseURL(testutil.FakeGitHubToken, srv.URL)
+	err := validateGitHubWith(client)
+	if err == nil || !strings.Contains(err.Error(), "validation failed") {
+		t.Errorf("expected wrapped validation error, got %v", err)
 	}
 }

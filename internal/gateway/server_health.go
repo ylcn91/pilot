@@ -132,19 +132,38 @@ func (s *Server) Heartbeat() {
 // handleStatus returns current Pilot status
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	s.mu.RLock()
+	version := s.version
+	s.mu.RUnlock()
+
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"version":  "0.1.0",
+		"version":  version,
 		"running":  s.running,
 		"sessions": s.authn.sessions.Count(),
 	})
 }
 
-// handleTasks returns current tasks
+// handleTasks returns current tasks from the wired TaskProvider. When no
+// provider is set the response is an empty list (never null), mirroring
+// handleAutopilot's nil-provider behaviour so the dashboard always receives a
+// valid payload.
 func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	// Return placeholder for now - tasks would come from executor/memory integration
+
+	s.mu.RLock()
+	provider := s.providers.tasks
+	s.mu.RUnlock()
+
+	tasks := []TaskInfo{}
+	if provider != nil {
+		if got := provider.Tasks(); got != nil {
+			tasks = got
+		}
+	}
+
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"tasks": []interface{}{},
+		"tasks": tasks,
 	})
 }
 

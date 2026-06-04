@@ -14,7 +14,9 @@ const (
 	CodexExecErrorTypeInvalidConfig   CodexExecErrorType = "invalid_config"
 	CodexExecErrorTypeSessionNotFound CodexExecErrorType = "session_not_found"
 	CodexExecErrorTypeSandbox         CodexExecErrorType = "sandbox_error"
-	CodexExecErrorTypeUnknown         CodexExecErrorType = "unknown"
+	// CodexExecErrorTypeOOM indicates the process was OOM-killed (exit 137/139). #26.
+	CodexExecErrorTypeOOM     CodexExecErrorType = "oom_killed"
+	CodexExecErrorTypeUnknown CodexExecErrorType = "unknown"
 )
 
 type CodexExecError struct {
@@ -39,6 +41,20 @@ func (e *CodexExecError) ErrorStderr() string { return e.Stderr }
 func classifyCodexExecError(stderr string, originalErr error) *CodexExecError {
 	stderrLower := strings.ToLower(stderr)
 	trimmed := strings.TrimSpace(stderr)
+
+	// #26: OOM kills (137=SIGKILL, 139=SIGSEGV) often produce no stderr, so the
+	// exit code is the only reliable signal. Check it before stderr matching.
+	if exitCode := extractExitCode(originalErr); exitCode == 137 || exitCode == 139 {
+		sigName := "SIGKILL"
+		if exitCode == 139 {
+			sigName = "SIGSEGV"
+		}
+		return &CodexExecError{
+			Type:    CodexExecErrorTypeOOM,
+			Message: fmt.Sprintf("Process killed by %s (exit code %d)", sigName, exitCode),
+			Stderr:  trimmed,
+		}
+	}
 
 	if strings.Contains(stderrLower, "rate limit") ||
 		strings.Contains(stderrLower, "usage limit") ||

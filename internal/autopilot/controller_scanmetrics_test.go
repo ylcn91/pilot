@@ -134,7 +134,7 @@ func TestController_ScanRecentlyMergedPRs_BoardWriteBack(t *testing.T) {
 
 	mock := &mockBoardSyncer{}
 	c := NewController(cfg, ghClient, nil, "owner", "repo",
-		withBoardSyncerForTest(mock, "Done", "Failed", "In Review", "In Dev"))
+		withBoardSyncerForTest(mock, "Done", "Failed", "In Review"))
 	c.SetStateStore(newTestStateStore(t))
 
 	if err := c.ScanRecentlyMergedPRs(context.Background()); err != nil {
@@ -193,7 +193,7 @@ func TestController_ScanRecentlyMergedPRs_BoardWriteBack_NoRelease(t *testing.T)
 
 	mock := &mockBoardSyncer{}
 	c := NewController(cfg, ghClient, nil, "owner", "repo",
-		withBoardSyncerForTest(mock, "Done", "Failed", "In Review", "In Dev"))
+		withBoardSyncerForTest(mock, "Done", "Failed", "In Review"))
 	c.SetStateStore(newTestStateStore(t))
 
 	if err := c.ScanRecentlyMergedPRs(context.Background()); err != nil {

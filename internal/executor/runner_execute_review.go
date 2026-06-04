@@ -5,7 +5,51 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+
+	"github.com/ylcn91/pilot/internal/logging"
 )
+
+// revalidateAfterReview re-runs the quality gate once when self-review or the
+// intent-alignment retry committed new code after the gate already passed.
+// Those post-gate phases can mutate the tree, so without this re-check a PR
+// could ship changes that were never build/test-validated. It runs the gate a
+// single time (no retry loop) and fails the task if the re-check does not pass.
+// It is a no-op when no gate ran/passed or when HEAD is unchanged.
+func (r *Runner) revalidateAfterReview(s *executeState, headBeforeReview string) (*ExecutionResult, error) {
+	if !s.qualityGatesPassed || r.qualityCheckerFactory == nil || s.git == nil {
+		return nil, nil
+	}
+	headAfter, err := s.git.GetCurrentCommitSHA(s.ctx)
+	if err != nil || headAfter == "" || headAfter == headBeforeReview {
+		// No new commits (or HEAD unreadable) → nothing changed since the gate.
+		return nil, nil
+	}
+
+	s.log.Info("Re-running quality gate after post-gate review changes",
+		slog.String("task_id", s.task.ID),
+		slog.String("head_before", headBeforeReview),
+		slog.String("head_after", headAfter),
+	)
+	r.reportProgress(s.task.ID, "Re-validating", 96, "Re-running quality checks after review changes...")
+
+	checker := r.qualityCheckerFactory(s.task.ID, s.executionPath)
+	outcome, qErr := checker.Check(s.ctx)
+	if qErr != nil {
+		s.result.Success = false
+		s.result.Error = fmt.Sprintf("post-review quality gate error: %v", qErr)
+		r.reportProgress(s.task.ID, "Quality Failed", 100, s.result.Error)
+		return r.failQualityGates(s, AlertEventTypeTaskFailed,
+			map[string]string{"phase": "post_review_revalidation"}, "Post-Review Quality Gate")
+	}
+	if !outcome.Passed {
+		s.result.Success = false
+		s.result.Error = "quality gate failed after post-gate review changes"
+		r.reportProgress(s.task.ID, "Quality Failed", 100, s.result.Error)
+		return r.failQualityGates(s, AlertEventTypeTaskFailed,
+			map[string]string{"phase": "post_review_revalidation"}, "Post-Review Quality Gate")
+	}
+	return nil, nil
+}
 
 // executeSelfReviewIntent runs the finalizing progress update plus self-review
 // and the intent judge in parallel, with intent-alignment retry (GH-1079,
@@ -19,6 +63,9 @@ func (r *Runner) executeSelfReviewIntent(s *executeState) (*ExecutionResult, err
 	result := s.result
 	state := s.state
 	executionPath := s.executionPath
+	// Make the worktree path available to the self-review phase so it reviews
+	// (and commits fixes in) the isolated worktree rather than the project root.
+	state.executionPath = executionPath
 	selectedModel := s.selectedModel
 	selectedEffort := s.selectedEffort
 	agentPath := s.agentPath
@@ -91,6 +138,7 @@ func (r *Runner) executeSelfReviewIntent(s *executeState) (*ExecutionResult, err
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer logging.Recover("executor.review.selfreview")
 			if err := r.runSelfReview(ctx, task, state); err != nil {
 				selfReviewErr = err
 			}
@@ -101,6 +149,7 @@ func (r *Runner) executeSelfReviewIntent(s *executeState) (*ExecutionResult, err
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer logging.Recover("executor.review.intentjudge")
 			log.Info("Intent judge running",
 				slog.String("task_id", task.ID),
 				slog.Int("diff_len", len(intentDiff)),

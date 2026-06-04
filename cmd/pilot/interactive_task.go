@@ -12,6 +12,7 @@ import (
 
 	"github.com/ylcn91/pilot/internal/config"
 	"github.com/ylcn91/pilot/internal/executor"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 func interactiveNewTask(cfg *config.Config) error {
@@ -113,11 +114,11 @@ func interactiveNewTask(cfg *config.Config) error {
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
+	logging.SafeGo("interactive.task.signal", func() {
 		<-sigCh
 		fmt.Println("\n\n  Cancelling task...")
 		cancel()
-	}()
+	})
 
 	result, err := runner.Execute(ctx, task)
 	if err != nil {

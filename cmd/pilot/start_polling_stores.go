@@ -150,7 +150,7 @@ func (p *pollingRuntime) setupStores() func() {
 			}
 
 			// Pattern maintenance — decay and cleanup every 24h
-			go func() {
+			logging.SafeGo("learning.maintenance", func() {
 				ticker := time.NewTicker(24 * time.Hour)
 				defer ticker.Stop()
 				for {
@@ -187,7 +187,7 @@ func (p *pollingRuntime) setupStores() func() {
 						}
 					}
 				}
-			}()
+			})
 		}
 	}
 

@@ -44,6 +44,11 @@ Examples:
 				return fmt.Errorf("failed to load config: %w", err)
 			}
 
+			// Follow mode: tail-and-stream the configured log file until interrupted.
+			if follow {
+				return followLogFile(cmd.Context(), cfg)
+			}
+
 			// If task ID provided, show specific task logs
 			if len(args) > 0 {
 				return showTaskLogs(args[0], cfg, verbose, jsonOut)
@@ -55,7 +60,7 @@ Examples:
 	}
 
 	cmd.Flags().IntVarP(&limit, "limit", "n", 10, "Number of recent tasks to show")
-	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "Follow log output (not implemented)")
+	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "Follow log output (tail the configured log file)")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show detailed output")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Output as JSON")
 

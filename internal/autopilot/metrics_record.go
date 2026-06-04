@@ -123,6 +123,15 @@ func (m *Metrics) RecordAPIError(endpoint string) {
 	}
 }
 
+// RecordPanic increments the recovered-panic counter for a component (#31), so
+// pilot_panics_total surfaces on the Prometheus endpoint instead of staying a
+// cmd-local map.
+func (m *Metrics) RecordPanic(component string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.Panics[component]++
+}
+
 // RecordLabelCleanup increments the label cleanup counter.
 func (m *Metrics) RecordLabelCleanup(label string) {
 	m.mu.Lock()

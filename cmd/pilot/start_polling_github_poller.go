@@ -80,6 +80,9 @@ func (p *pollingRuntime) createRepoPoller(
 	// Wire issue metrics recorder for rate-limit tracking.
 	if controller != nil {
 		pollerOpts = append(pollerOpts, github.WithIssueMetricsRecorder(controller.Metrics()))
+		// Wire per-repo dispatch/skip counters (TASK-293) so the three poller
+		// counters are populated instead of staying zero.
+		pollerOpts = append(pollerOpts, github.WithPollerMetrics(controller.Metrics()))
 	}
 
 	// GH-2802: Wire pre-flight judge when enabled (GH-2817: uses CC subprocess, no API key)
@@ -155,6 +158,9 @@ func (p *pollingRuntime) createRepoPoller(
 		// confirmed pickup. WithBoardSync is a no-op when InProgress is "".
 		boardWB := github.NewProjectBoardSync(client, cfg.Adapters.GitHub.ProjectBoard, repoOwner)
 		pollerOpts = append(pollerOpts, github.WithBoardSync(boardWB, cfg.Adapters.GitHub.ProjectBoard.GetStatuses().InProgress))
+		// #17: move the card to the blocked column on pre-flight reject / failed
+		// execution so cards don't orphan in In Progress. No-op when empty.
+		pollerOpts = append(pollerOpts, github.WithBoardBlockedStatus(cfg.Adapters.GitHub.ProjectBoard.GetStatuses().Blocked))
 	}
 
 	// Configure based on execution mode
@@ -225,6 +231,7 @@ func (p *pollingRuntime) startAutopilotLoops(
 
 		// Start controller run loop
 		go func(c *autopilot.Controller, repo string) {
+			defer logging.Recover("autopilot.controller.run")
 			if err := c.Run(ctx); err != nil && err != context.Canceled {
 				logging.WithComponent("autopilot").Error("autopilot controller stopped",
 					slog.String("repo", repo),
@@ -241,6 +248,9 @@ func (p *pollingRuntime) startAutopilotLoops(
 	// Start metrics alerter for default controller (GH-728)
 	if alertsEngine != nil && autopilotController != nil {
 		metricsAlerter := autopilot.NewMetricsAlerter(autopilotController, alertsEngine)
+		// GH-34: register the breaker-trip hook so an open per-PR circuit
+		// breaker drives the PagerDuty escalation path, not just the counter.
+		metricsAlerter.AttachToController(autopilotController)
 		go metricsAlerter.Run(ctx)
 	}
 

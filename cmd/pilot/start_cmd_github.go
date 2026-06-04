@@ -109,6 +109,12 @@ func wireGatewayGitHubPolling(gw *gatewayInfra, cfg *config.Config, projectPath 
 	// Wire issue metrics recorder for rate-limit tracking.
 	if gw.AutopilotController != nil {
 		pollerOpts = append(pollerOpts, github.WithIssueMetricsRecorder(gw.AutopilotController.Metrics()))
+		// Wire per-repo dispatch/skip counters (TASK-293) so the three poller
+		// counters are populated instead of staying zero.
+		pollerOpts = append(pollerOpts, github.WithPollerMetrics(gw.AutopilotController.Metrics()))
+		// GH-30: route non-2xx GitHub API errors into autopilot metrics so
+		// api_errors_total / api_error_rate become non-zero.
+		client.WithAPIErrorRecorder(gw.AutopilotController.Metrics())
 	}
 
 	// GH-2802: Wire pre-flight judge when enabled (GH-2817: uses CC subprocess, no API key)
@@ -189,6 +195,9 @@ func wireGatewayGitHubPolling(gw *gatewayInfra, cfg *config.Config, projectPath 
 		// confirmed pickup. WithBoardSync is a no-op when InProgress is "".
 		boardWB := github.NewProjectBoardSync(client, cfg.Adapters.GitHub.ProjectBoard, repoOwner)
 		pollerOpts = append(pollerOpts, github.WithBoardSync(boardWB, cfg.Adapters.GitHub.ProjectBoard.GetStatuses().InProgress))
+		// #17: move the card to the blocked column on pre-flight reject / failed
+		// execution so cards don't orphan in In Progress. No-op when empty.
+		pollerOpts = append(pollerOpts, github.WithBoardBlockedStatus(cfg.Adapters.GitHub.ProjectBoard.GetStatuses().Blocked))
 	}
 
 	// GH-392: Configure with actual issue processing callbacks (same as polling mode)
@@ -241,13 +250,13 @@ func wireGatewayGitHubPolling(gw *gatewayInfra, cfg *config.Config, projectPath 
 			logging.WithComponent("start").Info("autopilot enabled in gateway mode",
 				slog.String("environment", string(cfg.Orchestrator.Autopilot.Environment)),
 			)
-			go func() {
+			logging.SafeGo("autopilot.controller.run", func() {
 				if runErr := gw.AutopilotController.Run(ctx); runErr != nil && runErr != context.Canceled {
 					logging.WithComponent("autopilot").Error("autopilot controller stopped",
 						slog.Any("error", runErr),
 					)
 				}
-			}()
+			})
 		}
 	}
 

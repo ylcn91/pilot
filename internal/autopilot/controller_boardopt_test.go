@@ -8,11 +8,12 @@ import (
 )
 
 // TestController_WithProjectBoardSync_AllStatuses verifies that WithProjectBoardSync
-// stores all four status strings and wires the boardSync field.
+// stores the controller-owned status strings and wires the boardSync field. The
+// In-Progress transition is owned by the poller, not the controller (#15).
 func TestController_WithProjectBoardSync_AllStatuses(t *testing.T) {
 	ghClient := github.NewClient(testutil.FakeGitHubToken)
 	mock := &mockBoardSyncer{}
-	opt := withBoardSyncerForTest(mock, "Done", "Failed", "In Review", "In Dev")
+	opt := withBoardSyncerForTest(mock, "Done", "Failed", "In Review")
 
 	c := NewController(DefaultConfig(), ghClient, nil, "owner", "repo", opt)
 
@@ -27,8 +28,5 @@ func TestController_WithProjectBoardSync_AllStatuses(t *testing.T) {
 	}
 	if c.reviewStatus != "In Review" {
 		t.Errorf("reviewStatus = %q, want %q", c.reviewStatus, "In Review")
-	}
-	if c.inProgressStatus != "In Dev" {
-		t.Errorf("inProgressStatus = %q, want %q", c.inProgressStatus, "In Dev")
 	}
 }

@@ -313,6 +313,10 @@ func (s *Server) resolveCodexRuntimeConfig(task runtimeTaskPayload) (resolvedCod
 		if configured.Sandbox != "" {
 			cfg.Sandbox = configured.Sandbox
 		}
+		// disable_priming is a plain bool; copy it unconditionally so the
+		// configured value (true) actually opts out of .agent priming instead
+		// of being silently dropped in favor of the default.
+		cfg.DisablePriming = configured.DisablePriming
 	}
 	if task.Model != "" {
 		cfg.Model = task.Model

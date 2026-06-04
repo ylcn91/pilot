@@ -180,6 +180,22 @@ func resolveGitHubMemberID(teamAdapter *teams.ServiceAdapter, issue *github.Issu
 	return memberID
 }
 
+// logTeamTaskEvent writes a task-lifecycle audit entry via the team adapter (#35).
+// No-op when RBAC is not configured or no member was resolved; a write failure is
+// logged but never blocks task execution.
+func logTeamTaskEvent(teamAdapter *teams.ServiceAdapter, memberID, taskID string, action teams.AuditAction, details map[string]interface{}) {
+	if teamAdapter == nil || memberID == "" {
+		return
+	}
+	if err := teamAdapter.LogTaskEvent(memberID, taskID, action, details); err != nil {
+		logging.WithComponent("teams").Warn("failed to write task audit event",
+			slog.String("task_id", taskID),
+			slog.String("action", string(action)),
+			slog.Any("error", err),
+		)
+	}
+}
+
 // extractGitHubLabelNames returns label name strings from a GitHub issue (GH-727).
 // Used to flow labels into executor.Task for decomposition/complexity decisions.
 func extractGitHubLabelNames(issue *github.Issue) []string {

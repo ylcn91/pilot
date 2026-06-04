@@ -13,7 +13,7 @@ import (
 func newTestNotifierServer(t *testing.T, handler http.HandlerFunc) (*Client, *httptest.Server) {
 	t.Helper()
 	server := httptest.NewServer(handler)
-	client := NewClient(server.URL, "user@example.com", "fake-api-token", PlatformCloud)
+	client := newClientNoRetry(server.URL, "user@example.com", "fake-api-token", PlatformCloud)
 	return client, server
 }
 

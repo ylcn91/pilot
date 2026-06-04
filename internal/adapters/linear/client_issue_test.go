@@ -304,7 +304,9 @@ func TestAddComment_Error(t *testing.T) {
 
 // TestClientMethodSignatures verifies all client methods have correct signatures
 func TestClientMethodSignatures(t *testing.T) {
-	client := NewClient(testutil.FakeLinearAPIKey)
+	// Use the no-retry test constructor pointed at an unreachable address so the
+	// signature-compile calls fail fast instead of retrying against the real API.
+	client := NewClientWithBaseURL(testutil.FakeLinearAPIKey, "http://127.0.0.1:0")
 	ctx := context.Background()
 
 	// These verify signatures compile correctly (actual calls will fail without mock server)

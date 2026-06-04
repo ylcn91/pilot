@@ -43,22 +43,26 @@ func TestGitLabPoller_SkipMetric_StatusLabel(t *testing.T) {
 		name           string
 		labels         []string
 		wantSkip       int
+		wantReason     string
 		wantDispatched int
 	}{
 		{
-			name:     "in_progress label → status_label skip",
-			labels:   []string{LabelInProgress},
-			wantSkip: 1,
+			name:       "in_progress label → in_progress skip",
+			labels:     []string{LabelInProgress},
+			wantSkip:   1,
+			wantReason: skipreason.ReasonInProgress,
 		},
 		{
-			name:     "done label → status_label skip",
-			labels:   []string{LabelDone},
-			wantSkip: 1,
+			name:       "done label → done skip",
+			labels:     []string{LabelDone},
+			wantSkip:   1,
+			wantReason: skipreason.ReasonDone,
 		},
 		{
-			name:     "failed label → status_label skip",
-			labels:   []string{LabelFailed},
-			wantSkip: 1,
+			name:       "failed label → failed_skip skip",
+			labels:     []string{LabelFailed},
+			wantSkip:   1,
+			wantReason: skipreason.ReasonFailedSkip,
 		},
 		{
 			name:           "no status label → dispatched",
@@ -98,9 +102,9 @@ func TestGitLabPoller_SkipMetric_StatusLabel(t *testing.T) {
 			defer m.mu.Unlock()
 
 			if tt.wantSkip > 0 {
-				got := m.skipped[skipreason.ReasonStatusLabel]
+				got := m.skipped[tt.wantReason]
 				if got != tt.wantSkip {
-					t.Errorf("skipped[status_label] = %d, want %d", got, tt.wantSkip)
+					t.Errorf("skipped[%s] = %d, want %d", tt.wantReason, got, tt.wantSkip)
 				}
 			}
 			if tt.wantDispatched > 0 && m.dispatched != tt.wantDispatched {

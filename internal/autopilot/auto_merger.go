@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/ylcn91/pilot/internal/adapters/github"
 	"github.com/ylcn91/pilot/internal/approval"
@@ -32,6 +34,14 @@ type AutoMerger struct {
 	repo        string
 	config      *Config
 	log         *slog.Logger
+
+	// throttleMu guards mergeTimes, the rolling-window record of successful merges
+	// used to enforce MaxMergesPerHour.
+	throttleMu sync.Mutex
+	// mergeTimes holds the timestamps of recent successful merges, ordered oldest
+	// first. Entries older than one hour are pruned on each throttle check so the
+	// slice never grows beyond the per-hour cap plus in-flight entries.
+	mergeTimes []time.Time
 }
 
 // NewAutoMerger creates an auto-merger with the given configuration.
@@ -45,6 +55,48 @@ func NewAutoMerger(ghClient *github.Client, approvalMgr *approval.Manager, ciMon
 		config:      cfg,
 		log:         slog.Default().With("component", "auto-merger"),
 	}
+}
+
+// mergeWindow is the rolling window over which MaxMergesPerHour is enforced.
+const mergeWindow = time.Hour
+
+// pruneMergeTimesLocked drops merge timestamps older than the rolling window.
+// Caller must hold throttleMu.
+func (m *AutoMerger) pruneMergeTimesLocked(now time.Time) {
+	cutoff := now.Add(-mergeWindow)
+	kept := m.mergeTimes[:0]
+	for _, t := range m.mergeTimes {
+		if t.After(cutoff) {
+			kept = append(kept, t)
+		}
+	}
+	m.mergeTimes = kept
+}
+
+// MergeAllowed reports whether a merge may proceed under the configured
+// per-hour throttle. A cap of 0 (or negative) means unlimited and always
+// returns true. Old timestamps are pruned as a side effect.
+func (m *AutoMerger) MergeAllowed() bool {
+	limit := m.config.MaxMergesPerHour
+	if limit <= 0 {
+		return true
+	}
+	m.throttleMu.Lock()
+	defer m.throttleMu.Unlock()
+	m.pruneMergeTimesLocked(time.Now())
+	return len(m.mergeTimes) < limit
+}
+
+// recordMerge stamps a successful merge for throttle accounting.
+func (m *AutoMerger) recordMerge() {
+	if m.config.MaxMergesPerHour <= 0 {
+		return
+	}
+	m.throttleMu.Lock()
+	defer m.throttleMu.Unlock()
+	now := time.Now()
+	m.pruneMergeTimesLocked(now)
+	m.mergeTimes = append(m.mergeTimes, now)
 }
 
 // MergePR merges a PR with environment-appropriate safety checks.
@@ -98,6 +150,9 @@ func (m *AutoMerger) MergePR(ctx context.Context, prState *PRState) error {
 	}
 
 	m.log.Info("PR merged", "pr", prState.PRNumber, "method", mergeMethod)
+
+	// Record the merge for the per-hour throttle (no-op when unlimited).
+	m.recordMerge()
 
 	// GH-2432: Strip retry-counter labels off the linked issue so a future
 	// regression on the same issue starts the retry budget from zero again.

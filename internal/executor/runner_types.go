@@ -89,6 +89,11 @@ type progressState struct {
 	sessionID string // Claude Code session ID for resume in self-review
 	// Modified files tracking (GH-1388)
 	modifiedFiles []string // List of actually modified files from Write/Edit tool events
+	// executionPath is the worktree the run executes in (GH-936). Set after
+	// worktree setup so post-execution phases (self-review) operate on the
+	// isolated worktree, not the shared project root. Empty in unit tests, where
+	// callers fall back to task.ProjectPath.
+	executionPath string
 }
 
 // Task represents a task to be executed by the Runner.

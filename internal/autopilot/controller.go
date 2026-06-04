@@ -22,21 +22,20 @@ type prFailureState struct {
 // Controller orchestrates the autopilot loop for PR processing.
 // It manages the state machine: PR created → CI check → merge → post-merge CI → feedback loop.
 type Controller struct {
-	config           *Config
-	ghClient         *github.Client
-	approvalMgr      *approval.Manager
-	ciMonitor        *CIMonitor
-	autoMerger       *AutoMerger
-	feedbackLoop     *FeedbackLoop
-	releaser         *Releaser
-	notifier         Notifier
-	monitor          TaskMonitor // GH-1336: sync dashboard state on merge
-	boardSync        projectBoardSyncer
-	doneStatus       string
-	failStatus       string
-	reviewStatus     string // GH-3260: board column for PR-created (In Progress → Review)
-	inProgressStatus string // GH-3260: reserved for symmetry; not yet emitted
-	log              *slog.Logger
+	config       *Config
+	ghClient     *github.Client
+	approvalMgr  *approval.Manager
+	ciMonitor    *CIMonitor
+	autoMerger   *AutoMerger
+	feedbackLoop *FeedbackLoop
+	releaser     *Releaser
+	notifier     Notifier
+	monitor      TaskMonitor // GH-1336: sync dashboard state on merge
+	boardSync    projectBoardSyncer
+	doneStatus   string
+	failStatus   string
+	reviewStatus string // GH-3260: board column for PR-created (In Progress → Review)
+	log          *slog.Logger
 
 	// State tracking
 	activePRs map[int]*PRState
@@ -103,6 +102,12 @@ type Controller struct {
 	// the merge decision (blocking is expressed only through its commit status),
 	// so existing behaviour is preserved when it is unset.
 	guardrailsGate *GuardrailsGate
+
+	// circuitBreakerTripHook is invoked whenever a per-PR circuit breaker is
+	// found open in ProcessPR. The composition root wires it to
+	// MetricsAlerter.RecordCircuitBreakerTrip so the PagerDuty escalation path
+	// (3+ trips/hour) actually runs in production. nil = no escalation hook.
+	circuitBreakerTripHook func(prNumber int, reason string)
 }
 
 // NewController creates an autopilot controller with all required components.
@@ -260,6 +265,13 @@ func (c *Controller) ProcessPR(ctx context.Context, prNumber int, ghPR *github.P
 	if c.isPRCircuitOpen(prNumber) {
 		c.log.Warn("per-PR circuit breaker open", "pr", prNumber)
 		c.metrics.RecordCircuitBreakerTrip()
+		// Drive the escalation path (PagerDuty after 3+ trips/hour). The no-arg
+		// metrics counter above only bumps the Prometheus gauge; this hook feeds
+		// the alerter's trip tracker so persistent breaker trips actually escalate.
+		if c.circuitBreakerTripHook != nil {
+			reason := fmt.Sprintf("PR %d circuit breaker open: %d+ consecutive failures", prNumber, c.config.MaxFailures)
+			c.circuitBreakerTripHook(prNumber, reason)
+		}
 		return fmt.Errorf("circuit breaker: PR %d has too many consecutive failures", prNumber)
 	}
 

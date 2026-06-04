@@ -58,15 +58,17 @@ type ExecutionHealer interface {
 type ControllerOption func(*Controller)
 
 // WithProjectBoardSync wires a GitHub Projects V2 board sync into the controller.
-// doneStatus: merged PRs; failStatus: CI/exec failures; reviewStatus: PR created (In Progress → Review);
-// inProgressStatus: reserved for future use (wired for symmetry, not yet emitted).
-func WithProjectBoardSync(bs projectBoardSyncer, doneStatus, failStatus, reviewStatus, inProgressStatus string) ControllerOption {
+// doneStatus: merged PRs; failStatus: CI/exec failures; reviewStatus: PR created
+// (In Progress → Review). The In-Progress transition is owned by the poller
+// (github.Poller.syncBoardStatusInProgress) on confirmed dispatch; autopilot's
+// lifecycle begins at PR-created, already past In-Progress, so the controller
+// never emits it.
+func WithProjectBoardSync(bs projectBoardSyncer, doneStatus, failStatus, reviewStatus string) ControllerOption {
 	return func(c *Controller) {
 		c.boardSync = bs
 		c.doneStatus = doneStatus
 		c.failStatus = failStatus
 		c.reviewStatus = reviewStatus
-		c.inProgressStatus = inProgressStatus
 	}
 }
 
@@ -143,6 +145,14 @@ func (c *Controller) SetReleaseSummaryGenerator(gen *ReleaseSummaryGenerator) {
 // phantom re-dispatch. GH-3271.
 func (c *Controller) SetOnIssueDone(fn func(issueNumber int)) {
 	c.onIssueDone = fn
+}
+
+// SetCircuitBreakerTripHook registers a callback invoked whenever a per-PR
+// circuit breaker is found open in ProcessPR. Wire it to
+// MetricsAlerter.RecordCircuitBreakerTrip so the PagerDuty escalation path runs
+// (the no-arg metrics counter only feeds the Prometheus gauge). nil disables it.
+func (c *Controller) SetCircuitBreakerTripHook(fn func(prNumber int, reason string)) {
+	c.circuitBreakerTripHook = fn
 }
 
 // SetGuardrailsGate wires the per-PR architectural guardrails gate. When set and

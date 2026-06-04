@@ -86,6 +86,13 @@ func (e *PrometheusExporter) WritePrometheus(w io.Writer) error {
 		writeCounter(w, "pilot_api_errors_total", count, "endpoint", endpoint)
 	}
 
+	// pilot_panics_total
+	writeHelp(w, "pilot_panics_total", "Total recovered goroutine panics by component")
+	writeType(w, "pilot_panics_total", "counter")
+	for component, count := range snap.Panics {
+		writeCounter(w, "pilot_panics_total", count, "component", component)
+	}
+
 	// pilot_label_cleanups_total
 	writeHelp(w, "pilot_label_cleanups_total", "Total label cleanup operations")
 	writeType(w, "pilot_label_cleanups_total", "counter")

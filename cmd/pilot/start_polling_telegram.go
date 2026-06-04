@@ -39,6 +39,11 @@ func (p *pollingRuntime) setupTelegram() error {
 			}
 			if apiKey != "" {
 				client := intent.NewAnthropicClient(apiKey)
+				// GH-6: honor the configured classifier timeout so a slow
+				// classification can't hang the message path past the limit.
+				if t := cfg.Adapters.Telegram.LLMClassifier.TimeoutSeconds; t > 0 {
+					client.SetTimeout(time.Duration(t) * time.Second)
+				}
 				if cfg.Executor != nil {
 					if cfg.Executor.DefaultModel != "" {
 						client.SetModel(cfg.Executor.DefaultModel)
