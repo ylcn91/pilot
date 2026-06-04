@@ -18,6 +18,7 @@ import (
 	"github.com/ylcn91/pilot/internal/executor"
 	"github.com/ylcn91/pilot/internal/gateway"
 	"github.com/ylcn91/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/memory"
 	"github.com/ylcn91/pilot/internal/quality"
 	"github.com/ylcn91/pilot/internal/teams"
 )
@@ -292,6 +293,48 @@ func (a *autopilotProviderAdapter) GetFailureCount() int {
 func (a *autopilotProviderAdapter) IsAutoReleaseEnabled() bool {
 	cfg := a.controller.Config()
 	return cfg.Release != nil && cfg.Release.Enabled
+}
+
+// storeTaskProvider adapts the memory store to gateway.TaskProvider so
+// /api/v1/tasks reports the daemon's live work (#13). It surfaces in-progress
+// (running) executions first, then queued/pending ones, mapping each
+// memory.Execution into the gateway-local TaskInfo. The gateway never imports
+// the executor/memory packages; this cmd-layer adapter is the only bridge.
+type storeTaskProvider struct {
+	store *memory.Store
+}
+
+func (p *storeTaskProvider) Tasks() []gateway.TaskInfo {
+	if p == nil || p.store == nil {
+		return nil
+	}
+	var out []gateway.TaskInfo
+	if running, err := p.store.GetActiveExecutions(); err == nil {
+		for _, e := range running {
+			out = append(out, executionToTaskInfo(e))
+		}
+	}
+	if queued, err := p.store.GetQueuedTasks(50); err == nil {
+		for _, e := range queued {
+			out = append(out, executionToTaskInfo(e))
+		}
+	}
+	return out
+}
+
+// executionToTaskInfo maps a memory.Execution to the gateway view, falling back
+// to the task ID when no human-readable title was persisted.
+func executionToTaskInfo(e *memory.Execution) gateway.TaskInfo {
+	title := e.TaskTitle
+	if title == "" {
+		title = e.TaskID
+	}
+	return gateway.TaskInfo{
+		ID:          e.TaskID,
+		Title:       title,
+		Status:      e.Status,
+		ProjectPath: e.ProjectPath,
+	}
 }
 
 // resolveOwnerRepo determines the GitHub owner and repo from config or git remote.

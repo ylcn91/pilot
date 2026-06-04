@@ -67,6 +67,8 @@ func (p *pollingRuntime) setupGateway() {
 		if store != nil {
 			gwServer.SetDashboardStore(store)
 			gwServer.SetLogStreamStore(store)
+			// GH-13: surface live queued/in-progress executions on /api/v1/tasks.
+			gwServer.SetTaskProvider(&storeTaskProvider{store: store})
 		}
 		// Wire the Architect radar findings sink into the gateway so periodic
 		// scans surface on web/TUI/desktop. The same store is handed to the
