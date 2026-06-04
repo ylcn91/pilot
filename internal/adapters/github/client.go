@@ -4,13 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
+
+	"github.com/ylcn91/pilot/internal/adapters/httpretry"
 )
 
 const (
@@ -20,45 +19,19 @@ const (
 
 // RateLimitError is returned by doRequest when GitHub signals a rate limit via
 // a 403 or 429 response. It carries the parsed Retry-After duration so the
-// retry loop can honor it without regexing the error string.
-type RateLimitError struct {
-	StatusCode int
-	RetryAfter time.Duration
-	Message    string
-}
-
-func (e *RateLimitError) Error() string {
-	return fmt.Sprintf("API error (status %d): %s", e.StatusCode, e.Message)
-}
+// retry loop can honor it without regexing the error string. It aliases the
+// shared httpretry type so errors.As matches across adapter boundaries.
+type RateLimitError = httpretry.RateLimitError
 
 // APIError is returned by doRequest for non-2xx GitHub responses that are not
 // rate limits. Carrying the status code lets callers branch with errors.As
 // instead of matching the formatted message string.
-type APIError struct {
-	StatusCode int
-	Message    string
-}
-
-func (e *APIError) Error() string {
-	return fmt.Sprintf("API error (status %d): %s", e.StatusCode, e.Message)
-}
+type APIError = httpretry.APIError
 
 // parseRetryAfterHeader reads Retry-After and X-RateLimit-Reset headers and
 // returns the delay duration. Returns 0 when neither header is present.
 func parseRetryAfterHeader(h http.Header) time.Duration {
-	if v := h.Get("Retry-After"); v != "" {
-		if secs, err := strconv.Atoi(v); err == nil && secs > 0 {
-			return time.Duration(secs) * time.Second
-		}
-	}
-	if v := h.Get("X-RateLimit-Reset"); v != "" {
-		if unix, err := strconv.ParseInt(v, 10, 64); err == nil {
-			if d := time.Until(time.Unix(unix, 0)); d > 0 {
-				return d
-			}
-		}
-	}
-	return 0
+	return httpretry.ParseRetryAfterHeader(h)
 }
 
 // Client is a GitHub API client
@@ -150,28 +123,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 		}
 
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			msg := string(respBody)
-			if resp.StatusCode == http.StatusTooManyRequests {
-				return &RateLimitError{
-					StatusCode: http.StatusTooManyRequests,
-					RetryAfter: parseRetryAfterHeader(resp.Header),
-					Message:    msg,
-				}
-			}
-			if resp.StatusCode == http.StatusForbidden {
-				msgLower := strings.ToLower(msg)
-				isRateLimit := resp.Header.Get("X-RateLimit-Remaining") == "0" ||
-					strings.Contains(msgLower, "secondary rate limit") ||
-					strings.Contains(msgLower, "rate limit exceeded")
-				if isRateLimit {
-					return &RateLimitError{
-						StatusCode: http.StatusForbidden,
-						RetryAfter: parseRetryAfterHeader(resp.Header),
-						Message:    msg,
-					}
-				}
-			}
-			return &APIError{StatusCode: resp.StatusCode, Message: msg}
+			return httpretry.ClassifyResponse(resp, respBody)
 		}
 
 		if result != nil && len(respBody) > 0 {
@@ -188,16 +140,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 // status code. It also recognizes the legacy formatted message string so callers
 // that only have the rendered error (rather than the typed value) still match.
 func hasAPIStatus(err error, status int) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr *APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.StatusCode == status
-	}
-	prefix := fmt.Sprintf("API error (status %d", status)
-	errStr := err.Error()
-	return len(errStr) >= len(prefix) && errStr[:len(prefix)] == prefix
+	return httpretry.HasAPIStatus(err, status)
 }
 
 // isNotFoundError checks if error is a 404 not found error
