@@ -34,7 +34,7 @@ func (s *Server) SetDashboardStore(store DashboardStore) {
 	s.dashboard.store = store
 }
 
-// --- JSON response types (mirrors desktop/types.go) ---
+// --- JSON response types (consumed by the web dashboard + native app) ---
 
 type dashboardMetricsResponse struct {
 	TotalTokens    int64     `json:"totalTokens"`
