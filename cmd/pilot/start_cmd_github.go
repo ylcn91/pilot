@@ -244,13 +244,13 @@ func wireGatewayGitHubPolling(gw *gatewayInfra, cfg *config.Config, projectPath 
 			logging.WithComponent("start").Info("autopilot enabled in gateway mode",
 				slog.String("environment", string(cfg.Orchestrator.Autopilot.Environment)),
 			)
-			go func() {
+			logging.SafeGo("autopilot.controller.run", func() {
 				if runErr := gw.AutopilotController.Run(ctx); runErr != nil && runErr != context.Canceled {
 					logging.WithComponent("autopilot").Error("autopilot controller stopped",
 						slog.Any("error", runErr),
 					)
 				}
-			}()
+			})
 		}
 	}
 

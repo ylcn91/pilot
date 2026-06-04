@@ -78,13 +78,13 @@ func discordPollerRegistration() PollerRegistration {
 			// GH-2132: Wire notifier for task lifecycle messages
 			handler.SetNotifier(discord.NewNotifier(discordClient))
 
-			go func() {
+			logging.SafeGo("discord.listener", func() {
 				if err := handler.StartListening(ctx); err != nil {
 					logging.WithComponent("discord").Error("Discord listener error",
 						slog.Any("error", err),
 					)
 				}
-			}()
+			})
 			fmt.Println("🎮 Discord bot started")
 			logging.WithComponent("start").Info("Discord bot started")
 		},

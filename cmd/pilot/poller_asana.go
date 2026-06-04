@@ -81,6 +81,7 @@ func asanaPollerRegistration() PollerRegistration {
 				slog.Duration("interval", interval),
 			)
 			go func(p *asana.Poller) {
+				defer logging.Recover("asana.poller")
 				if err := p.Start(ctx); err != nil {
 					logging.WithComponent("asana").Error("Asana poller failed",
 						slog.Any("error", err),

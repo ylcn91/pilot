@@ -131,7 +131,7 @@ func runDashboardMode(p *pilot.Pilot, cfg *config.Config, gwProgram *tea.Program
 	})
 
 	// Periodic refresh to catch any missed updates
-	go func() {
+	logging.SafeGo("dashboard.refresh", func() {
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
 
@@ -144,23 +144,23 @@ func runDashboardMode(p *pilot.Pilot, cfg *config.Config, gwProgram *tea.Program
 				program.Send(dashboard.UpdateTasks(tasks)())
 			}
 		}
-	}()
+	})
 
 	// Handle signals for graceful shutdown
-	go func() {
+	logging.SafeGo("dashboard.signal", func() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
 		cancel()
 		program.Send(tea.Quit())
-	}()
+	})
 
 	// Add startup log AFTER program starts (GH-351: Send blocks if called before Run)
 	gatewayURL := fmt.Sprintf("http://%s:%d", cfg.Gateway.Host, cfg.Gateway.Port)
-	go func() {
+	logging.SafeGo("dashboard.startuplog", func() {
 		time.Sleep(100 * time.Millisecond) // Wait for program.Run() to start
 		program.Send(dashboard.AddLog(fmt.Sprintf("🚀 Pilot %s started - Gateway: %s", version, gatewayURL))())
-	}()
+	})
 
 	// Run TUI (blocks until quit)
 	_, err := program.Run()

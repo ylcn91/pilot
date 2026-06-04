@@ -79,11 +79,11 @@ func (p *pollingRuntime) startSlackSocketMode() {
 			AllowedUsers:    cfg.Adapters.Slack.AllowedUsers,
 		})
 
-		go func() {
+		logging.SafeGo("slack.socketmode", func() {
 			if err := slackHandler.StartListening(ctx); err != nil {
 				logging.WithComponent("slack").Error("Slack Socket Mode error", slog.Any("error", err))
 			}
-		}()
+		})
 
 		if !p.dashboardMode {
 			fmt.Println("💬 Slack Socket Mode started")

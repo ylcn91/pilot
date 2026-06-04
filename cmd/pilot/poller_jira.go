@@ -71,6 +71,7 @@ func jiraPollerRegistration() PollerRegistration {
 				slog.String("adapter", jiraAdapter.Name()),
 			)
 			go func(p *jira.Poller) {
+				defer logging.Recover("jira.poller")
 				if err := p.Start(ctx); err != nil {
 					logging.WithComponent("jira").Error("Jira poller failed",
 						slog.Any("error", err),

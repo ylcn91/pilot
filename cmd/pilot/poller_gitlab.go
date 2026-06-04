@@ -74,6 +74,7 @@ func gitlabPollerRegistration() PollerRegistration {
 				slog.Duration("interval", interval),
 			)
 			go func(p *gitlab.Poller) {
+				defer logging.Recover("gitlab.poller")
 				p.Start(ctx)
 			}(gitlabPoller)
 		},
