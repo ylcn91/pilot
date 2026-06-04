@@ -23,6 +23,7 @@ func (p *Pilot) Start() error {
 	// Start gateway
 	p.wg.Add(1)
 	go func() {
+		defer logging.Recover("pilot.lifecycle.gateway")
 		defer p.wg.Done()
 		if err := p.gateway.Start(p.ctx); err != nil {
 			logging.WithComponent("pilot").Error("Gateway error", slog.Any("error", err))
@@ -45,6 +46,7 @@ func (p *Pilot) Start() error {
 	if p.slackHandler != nil {
 		p.wg.Add(1)
 		go func() {
+			defer logging.Recover("pilot.lifecycle.slack")
 			defer p.wg.Done()
 			if err := p.slackHandler.StartListening(p.ctx); err != nil {
 				logging.WithComponent("pilot").Error("Slack Socket Mode error", slog.Any("error", err))

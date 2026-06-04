@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"sync"
 	"time"
+
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 const (
@@ -93,6 +95,7 @@ func (p *NgrokProvider) Start(ctx context.Context) (string, error) {
 
 	// Log stderr in background
 	go func() {
+		defer logging.Recover("tunnel.ngrok.stderr")
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			p.logger.Debug("ngrok", "line", scanner.Text())

@@ -78,6 +78,7 @@ func (s *Server) handleDashboardWebSocket(w http.ResponseWriter, r *http.Request
 	// Read pump: drain client messages (none expected) and detect disconnect.
 	done := make(chan struct{})
 	go func() {
+		defer logging.Recover("gateway.dashboardWS.readPump")
 		defer close(done)
 		for {
 			if _, _, err := conn.ReadMessage(); err != nil {
