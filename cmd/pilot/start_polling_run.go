@@ -26,6 +26,10 @@ func (p *pollingRuntime) run() error {
 	architectScheduler := p.architectScheduler
 	architectStore := p.architectStore
 
+	// Drive the gateway liveness heartbeat from the main loop so the readiness
+	// check (gateway/server_health.go) reflects an alive daemon (GH-31).
+	p.startHeartbeat()
+
 	// Dashboard mode: run TUI and handle shutdown via TUI quit
 	if p.dashboardMode && program != nil {
 		fmt.Println("\n🖥️  Starting TUI dashboard...")

@@ -321,6 +321,8 @@ Examples:
 			if err := p.Start(); err != nil {
 				return fmt.Errorf("failed to start Pilot: %w", err)
 			}
+			// Forward recovered goroutine panics to the gateway liveness tracker (GH-31).
+			registerPanicServer(p.Gateway())
 			if gw.ArchitectScheduler != nil {
 				defer gw.ArchitectScheduler.Stop()
 			}
