@@ -2,6 +2,7 @@ package alerts
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -139,6 +140,100 @@ func TestEngine_AutopilotMetrics_BelowThresholds_NoAlerts(t *testing.T) {
 
 	if got := len(mock.getAlerts()); got != 0 {
 		t.Fatalf("expected 0 alerts below thresholds, got %d", got)
+	}
+}
+
+// TestEngine_AutopilotMetrics_APIErrorRateHighFires verifies the
+// api_error_rate_high rule fires once a high api_error_rate metric crosses its
+// per-minute threshold. The rule is default-on but in production never fired
+// because the producer always reported 0 (the metric is wired separately).
+// This test pins the rule's own correctness: given a high rate it fires with a
+// message naming both the observed rate and the threshold.
+func TestEngine_AutopilotMetrics_APIErrorRateHighFires(t *testing.T) {
+	mock := newMockChannel("mock", "webhook")
+	config := &AlertConfig{
+		Enabled:  true,
+		Channels: []ChannelConfig{{Name: mock.Name(), Type: mock.Type(), Enabled: true}},
+		Rules: []AlertRule{
+			autopilotRule("api_error_rate_high", AlertTypeAPIErrorRateHigh, SeverityWarning, mock.Name(),
+				RuleCondition{APIErrorRatePerMin: 10.0}),
+		},
+		Defaults: AlertDefaults{SuppressDuplicates: false},
+	}
+	dispatcher := NewDispatcher(config)
+	dispatcher.RegisterChannel(mock)
+	engine := NewEngine(config, WithDispatcher(dispatcher))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := engine.Start(ctx); err != nil {
+		t.Fatalf("failed to start engine: %v", err)
+	}
+	defer engine.Stop()
+
+	engine.ProcessEvent(Event{
+		Type:      EventTypeAutopilotMetrics,
+		Project:   "/test/project",
+		Timestamp: time.Now(),
+		Metadata: map[string]string{
+			"api_error_rate": "25.0", // >= 10/min threshold
+		},
+	})
+
+	waitForAlerts(t, mock, 1, 2*time.Second)
+	engine.flushForTest()
+
+	alerts := mock.getAlerts()
+	if len(alerts) != 1 {
+		t.Fatalf("expected 1 api_error_rate_high alert, got %d", len(alerts))
+	}
+	if alerts[0].Type != AlertTypeAPIErrorRateHigh {
+		t.Errorf("expected alert type %s, got %s", AlertTypeAPIErrorRateHigh, alerts[0].Type)
+	}
+	if !strings.Contains(alerts[0].Message, "25.0") || !strings.Contains(alerts[0].Message, "10.0") {
+		t.Errorf("expected message to name observed rate and threshold, got %q", alerts[0].Message)
+	}
+}
+
+// TestEngine_AutopilotMetrics_APIErrorRateBelowThreshold_NoAlert verifies the
+// api_error_rate_high rule stays silent when the rate is below threshold,
+// including the production-default value of 0 that the producer reports until
+// the metric is wired.
+func TestEngine_AutopilotMetrics_APIErrorRateBelowThreshold_NoAlert(t *testing.T) {
+	mock := newMockChannel("mock", "webhook")
+	config := &AlertConfig{
+		Enabled:  true,
+		Channels: []ChannelConfig{{Name: mock.Name(), Type: mock.Type(), Enabled: true}},
+		Rules: []AlertRule{
+			autopilotRule("api_error_rate_high", AlertTypeAPIErrorRateHigh, SeverityWarning, mock.Name(),
+				RuleCondition{APIErrorRatePerMin: 10.0}),
+		},
+		Defaults: AlertDefaults{SuppressDuplicates: false},
+	}
+	dispatcher := NewDispatcher(config)
+	dispatcher.RegisterChannel(mock)
+	engine := NewEngine(config, WithDispatcher(dispatcher))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := engine.Start(ctx); err != nil {
+		t.Fatalf("failed to start engine: %v", err)
+	}
+	defer engine.Stop()
+
+	for _, rate := range []string{"0", "9.9"} {
+		engine.ProcessEvent(Event{
+			Type:      EventTypeAutopilotMetrics,
+			Project:   "/test/project",
+			Timestamp: time.Now(),
+			Metadata:  map[string]string{"api_error_rate": rate},
+		})
+	}
+
+	engine.flushForTest()
+
+	if got := len(mock.getAlerts()); got != 0 {
+		t.Fatalf("expected 0 alerts below threshold, got %d", got)
 	}
 }
 
