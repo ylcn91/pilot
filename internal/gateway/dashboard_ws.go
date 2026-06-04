@@ -40,6 +40,12 @@ func (s *Server) SetLogStreamStore(store LogStreamStore) {
 // log entries in real-time. On connect it sends the last 50 entries as an
 // initial payload, then pushes new entries as they arrive.
 func (s *Server) handleDashboardWebSocket(w http.ResponseWriter, r *http.Request) {
+	// Streams live logs; gate it behind the same auth as the control plane.
+	if err := s.authn.auth.AuthenticateWebSocket(r); err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	s.mu.RLock()
 	store := s.dashboard.logStreamStore
 	s.mu.RUnlock()

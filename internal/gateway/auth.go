@@ -91,6 +91,47 @@ func extractBearerToken(r *http.Request) string {
 	return auth[len(prefix):]
 }
 
+// extractWebSocketToken returns the bearer token for a WebSocket upgrade
+// request. It first tries the Authorization header, then falls back to the
+// `token` / `access_token` query parameter, because browsers cannot set the
+// Authorization header on a WebSocket handshake.
+func extractWebSocketToken(r *http.Request) string {
+	if t := extractBearerToken(r); t != "" {
+		return t
+	}
+	q := r.URL.Query()
+	if t := q.Get("token"); t != "" {
+		return t
+	}
+	return q.Get("access_token")
+}
+
+// AuthenticateWebSocket validates a WebSocket upgrade request. It mirrors
+// Authenticate but, for api-token auth, also accepts the token via query
+// parameter since the handshake cannot carry an Authorization header from a
+// browser. A nil authenticator or nil config means auth is disabled and the
+// request is allowed (same contract as Middleware).
+func (a *Authenticator) AuthenticateWebSocket(r *http.Request) error {
+	if a == nil || a.config == nil {
+		return nil
+	}
+	switch a.config.Type {
+	case AuthTypeClaudeCode:
+		return a.authenticateClaudeCode(r)
+	case AuthTypeAPIToken:
+		token := extractWebSocketToken(r)
+		if token == "" {
+			return errors.New("missing authorization token")
+		}
+		if !secureCompare(token, a.config.Token) {
+			return errors.New("invalid token")
+		}
+		return nil
+	default:
+		return errors.New("unknown auth type")
+	}
+}
+
 // secureCompare performs constant-time string comparison
 func secureCompare(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1

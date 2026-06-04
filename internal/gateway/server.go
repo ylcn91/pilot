@@ -414,6 +414,15 @@ func (s *Server) Shutdown() error {
 
 // handleWebSocket handles WebSocket connections for the control plane
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	// The control-plane WebSocket carries the same privileges as the /api/v1
+	// routes, so it must be authenticated too. It previously upgraded without
+	// any token check, leaving the control plane open whenever the gateway was
+	// exposed (e.g. via the ngrok/cloudflare tunnel feature).
+	if err := s.authn.auth.AuthenticateWebSocket(r); err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		logging.WithComponent("gateway").Error("WebSocket upgrade error", slog.Any("error", err))
