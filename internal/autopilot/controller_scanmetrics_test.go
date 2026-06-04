@@ -216,6 +216,55 @@ func TestController_ScanRecentlyMergedPRs_BoardWriteBack_NoRelease(t *testing.T)
 	}
 }
 
+func TestController_ScanRecentlyMergedPRs_RunsWithoutReleaseOrBoard(t *testing.T) {
+	recentMergedAt := time.Now().Add(-3 * time.Minute).UTC().Format(time.RFC3339)
+
+	pilotPR := github.PullRequest{
+		Number:         322,
+		Head:           github.PRRef{Ref: "pilot/GH-655", SHA: "headsha322"},
+		Base:           github.PRRef{Ref: "main"},
+		HTMLURL:        "https://github.com/owner/repo/pull/322",
+		Title:          "feat: merged manually, release and board off",
+		Merged:         true,
+		MergedAt:       recentMergedAt,
+		MergeCommitSHA: "merge-sha-322",
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/repos/owner/repo/pulls"):
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode([]*github.PullRequest{&pilotPR})
+		case r.URL.Path == "/repos/owner/repo/issues/655":
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(github.Issue{Number: 655})
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer server.Close()
+
+	ghClient := github.NewClientWithBaseURL(testutil.FakeGitHubToken, server.URL)
+	cfg := DefaultConfig()
+	cfg.Release = &ReleaseConfig{Enabled: false}
+	cfg.MergedPRScanWindow = 30 * time.Minute
+
+	c := NewController(cfg, ghClient, nil, "owner", "repo", WithProjectPath("/proj/pilot"))
+	healer := &mockExecutionHealer{}
+	c.SetExecutionHealer(healer)
+
+	if err := c.ScanRecentlyMergedPRs(context.Background()); err != nil {
+		t.Fatalf("ScanRecentlyMergedPRs() error = %v", err)
+	}
+
+	if snap := c.metrics.Snapshot(); snap.PRsMerged != 1 {
+		t.Errorf("PRsMerged = %d, want 1", snap.PRsMerged)
+	}
+	if len(healer.selfHealed) != 1 || healer.selfHealed[0].TaskID != "GH-655" {
+		t.Fatalf("self-heal calls = %+v, want one call for GH-655", healer.selfHealed)
+	}
+}
+
 // TestController_ScanRecentlyMergedPRs_RecordsMetricsDespiteExistingRelease
 // reproduces the bug where Pilot's own self-release pipeline always tags every
 // merge within ~1min, so by the time the ~5-15min scanner tick runs the
