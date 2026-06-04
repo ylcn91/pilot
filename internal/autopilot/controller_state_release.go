@@ -227,6 +227,17 @@ func (c *Controller) shouldTriggerRelease() bool {
 	return rel != nil && rel.Enabled && rel.Trigger == "on_merge"
 }
 
+// detectBumpFromPRLabels fetches the PR's labels (PRs are issues in the GitHub
+// API, so the issues endpoint returns their labels) and maps them to a bump type
+// via DetectBumpFromLabels. Used by the "pr_labels" version strategy.
+func (c *Controller) detectBumpFromPRLabels(ctx context.Context, owner, repo string, prNumber int) (BumpType, error) {
+	issue, err := c.ghClient.GetIssue(ctx, owner, repo, prNumber)
+	if err != nil {
+		return BumpNone, err
+	}
+	return DetectBumpFromLabels(issue.Labels), nil
+}
+
 // handleReleasing creates a release after successful merge and CI.
 func (c *Controller) handleReleasing(ctx context.Context, prState *PRState) error {
 	if c.releaser == nil {
@@ -271,14 +282,24 @@ func (c *Controller) handleReleasing(ctx context.Context, prState *PRState) erro
 		currentVersion = SemVer{}
 	}
 
-	// Get PR commits for bump detection
+	// Get PR commits for bump detection (and for the release summary enrichment below).
 	commits, err := c.ghClient.GetPRCommits(ctx, owner, repo, prState.PRNumber)
 	if err != nil {
 		return fmt.Errorf("failed to get PR commits: %w", err)
 	}
 
-	// Detect bump type from commits
-	bumpType := DetectBumpType(commits)
+	// Detect bump type using the configured version strategy. "pr_labels" derives
+	// the bump from the PR's semver:* / breaking / feature / fix labels; the default
+	// "conventional_commits" derives it from the commit messages.
+	var bumpType BumpType
+	if c.resolvedRelease().VersionStrategy == "pr_labels" {
+		bumpType, err = c.detectBumpFromPRLabels(ctx, owner, repo, prState.PRNumber)
+		if err != nil {
+			return fmt.Errorf("failed to detect bump from PR labels: %w", err)
+		}
+	} else {
+		bumpType = DetectBumpType(commits)
+	}
 	prState.ReleaseBumpType = bumpType
 
 	if !c.releaser.ShouldRelease(bumpType) {

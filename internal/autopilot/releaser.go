@@ -147,6 +147,37 @@ func parseBumpFromMessage(msg string) BumpType {
 	}
 }
 
+// DetectBumpFromLabels analyzes PR labels and returns the highest bump type
+// requested. Used by the "pr_labels" version strategy. Recognised labels (case-
+// insensitive): semver:major / semver:minor / semver:patch, and the convenience
+// aliases breaking (major), feature/feat (minor), and fix/bugfix (patch). When no
+// recognised label is present it returns BumpNone (no release).
+func DetectBumpFromLabels(labels []github.Label) BumpType {
+	maxBump := BumpNone
+	for _, l := range labels {
+		bump := parseBumpFromLabel(l.Name)
+		if bumpPriority(bump) > bumpPriority(maxBump) {
+			maxBump = bump
+		}
+	}
+	return maxBump
+}
+
+// parseBumpFromLabel maps a single label name to a bump type, or BumpNone when
+// the label is not a recognised version label.
+func parseBumpFromLabel(name string) BumpType {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "semver:major", "breaking", "breaking-change", "breaking change":
+		return BumpMajor
+	case "semver:minor", "feature", "feat":
+		return BumpMinor
+	case "semver:patch", "fix", "bugfix":
+		return BumpPatch
+	default:
+		return BumpNone
+	}
+}
+
 // bumpPriority returns priority for comparison (higher = more significant).
 func bumpPriority(b BumpType) int {
 	switch b {
