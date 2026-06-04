@@ -90,6 +90,12 @@ func handleGitHubIssueWithResult(ctx context.Context, cfg *config.Config, client
 		slog.Int("label_count", len(issue.Labels)),
 	)
 
+	memberID := resolveGitHubMemberID(teamAdapter, issue) // GH-634: RBAC lookup
+	// #35: audit task creation against the resolved member's team.
+	logTeamTaskEvent(teamAdapter, memberID, taskID, teams.AuditTaskCreated, map[string]interface{}{
+		"source": "github", "issue": issue.Number,
+	})
+
 	task := &executor.Task{
 		ID:                 taskID,
 		Title:              issue.Title,
@@ -98,7 +104,7 @@ func handleGitHubIssueWithResult(ctx context.Context, cfg *config.Config, client
 		Branch:             branchName,
 		CreatePR:           true,
 		SourceRepo:         sourceRepo,
-		MemberID:           resolveGitHubMemberID(teamAdapter, issue),    // GH-634: RBAC lookup
+		MemberID:           memberID,
 		Labels:             labels,                                       // GH-727: flow labels for complexity classifier
 		AcceptanceCriteria: github.ExtractAcceptanceCriteria(issue.Body), // GH-920: acceptance criteria in prompts
 		FromPR:             fromPR,                                       // GH-1267: session resumption from PR context
@@ -334,6 +340,17 @@ func handleGitHubIssueWithResult(ctx context.Context, cfg *config.Config, client
 			}
 		}
 	}
+
+	// #35: audit the terminal task outcome against the resolved member's team.
+	auditAction := teams.AuditTaskCompleted
+	auditDetails := map[string]interface{}{"source": "github", "issue": issue.Number}
+	if !issueResult.Success {
+		auditAction = teams.AuditTaskFailed
+		if issueResult.Error != nil {
+			auditDetails["error"] = issueResult.Error.Error()
+		}
+	}
+	logTeamTaskEvent(teamAdapter, memberID, taskID, auditAction, auditDetails)
 
 	return issueResult, execErr
 }
