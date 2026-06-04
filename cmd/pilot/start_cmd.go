@@ -323,6 +323,11 @@ Examples:
 			}
 			// Forward recovered goroutine panics to the gateway liveness tracker (GH-31).
 			registerPanicServer(p.Gateway())
+			// #31: also count panics on autopilot metrics so pilot_panics_total
+			// surfaces on the Prometheus endpoint.
+			if gw.AutopilotController != nil {
+				registerPanicRecorder(gw.AutopilotController.Metrics())
+			}
 			if gw.ArchitectScheduler != nil {
 				defer gw.ArchitectScheduler.Stop()
 			}

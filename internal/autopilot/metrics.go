@@ -35,6 +35,7 @@ type Metrics struct {
 	PRsConflicting        int64
 	CircuitBreakerTrips   int64
 	APIErrors             map[string]int64 // endpoint → count
+	Panics                map[string]int64 // component → recovered-panic count (#31)
 	LabelCleanups         map[string]int64 // label → count
 	ApprovalPersistMisses map[string]int64 // kind → count (request_id, decision)
 	// TokensConsumed, ExecutionCostUSD, and ExecutionsByResult are persisted per
@@ -78,6 +79,7 @@ func NewMetrics() *Metrics {
 	return &Metrics{
 		IssuesProcessed:            make(map[string]int64),
 		APIErrors:                  make(map[string]int64),
+		Panics:                     make(map[string]int64),
 		LabelCleanups:              make(map[string]int64),
 		ApprovalPersistMisses:      make(map[string]int64),
 		TokensConsumed:             make(map[tokenKey]int64),

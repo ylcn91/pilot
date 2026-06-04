@@ -85,6 +85,11 @@ func (p *pollingRuntime) setupGateway() {
 		gwServer.SetGitGraphPath(projectPath)
 		// Forward recovered goroutine panics to this server's liveness tracker.
 		registerPanicServer(gwServer)
+		// #31: also count panics on autopilot metrics so pilot_panics_total
+		// surfaces on the Prometheus endpoint.
+		if autopilotController != nil {
+			registerPanicRecorder(autopilotController.Metrics())
+		}
 		logging.SafeGo("gateway.background", func() {
 			addr := fmt.Sprintf("%s:%d", cfg.Gateway.Host, cfg.Gateway.Port)
 			logging.WithComponent("gateway").Info("gateway started in background", "addr", addr)

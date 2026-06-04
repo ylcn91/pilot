@@ -49,14 +49,28 @@ func (p *panicCounters) PanicTotal() uint64 {
 // at install time.
 var liveServer atomic.Pointer[gateway.Server]
 
+// panicRecorder receives recovered-panic events keyed by component (#31). The
+// autopilot Metrics satisfies it, surfacing pilot_panics_total on /metrics.
+type panicRecorder interface {
+	RecordPanic(component string)
+}
+
+// livePanicRecorder holds the active panic recorder. A pointer-to-interface is
+// used so the atomic stores a stable, comparable value.
+var livePanicRecorder atomic.Pointer[panicRecorder]
+
 // installPanicHook wires the process-wide panic hook once. On every recovered
-// goroutine panic it increments pilot_panics_total{component} and forwards the
-// event to the gateway server's liveness tracker (when a server is registered).
+// goroutine panic it increments the cmd-local pilot_panics_total{component},
+// forwards the event to the gateway server's liveness tracker, and records it on
+// the autopilot metrics recorder so the counter shows on the Prometheus endpoint.
 func installPanicHook() {
 	logging.SetPanicHook(func(component string, _ any) {
 		panicMetrics.inc(component)
 		if srv := liveServer.Load(); srv != nil {
 			srv.RecordPanic()
+		}
+		if rec := livePanicRecorder.Load(); rec != nil {
+			(*rec).RecordPanic(component)
 		}
 	})
 }
@@ -65,4 +79,14 @@ func installPanicHook() {
 // forwarding from the panic hook. Safe to call with nil (clears the target).
 func registerPanicServer(srv *gateway.Server) {
 	liveServer.Store(srv)
+}
+
+// registerPanicRecorder makes the given recorder the target for component-keyed
+// panic counting from the panic hook. Safe to call with nil (clears the target).
+func registerPanicRecorder(rec panicRecorder) {
+	if rec == nil {
+		livePanicRecorder.Store(nil)
+		return
+	}
+	livePanicRecorder.Store(&rec)
 }
