@@ -9,6 +9,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // executeWithFromPR is the internal implementation that allows controlling --from-pr usage.
@@ -71,6 +73,7 @@ func (b *ClaudeCodeBackend) executeWithFromPR(ctx context.Context, opts ExecuteO
 	heartbeatCtx, cancelHeartbeat := context.WithCancel(context.Background())
 	defer cancelHeartbeat()
 	go func() {
+		defer logging.Recover("executor.claudecode.heartbeat")
 		ticker := time.NewTicker(HeartbeatCheckInterval)
 		defer ticker.Stop()
 		for {
@@ -118,6 +121,7 @@ func (b *ClaudeCodeBackend) executeWithFromPR(ctx context.Context, opts ExecuteO
 	// This is a safety net for processes that ignore context cancellation.
 	if opts.WatchdogTimeout > 0 {
 		go func() {
+			defer logging.Recover("executor.claudecode.watchdog")
 			select {
 			case <-cmdDone:
 				// Command completed normally, watchdog not needed
@@ -157,6 +161,7 @@ func (b *ClaudeCodeBackend) executeWithFromPR(ctx context.Context, opts ExecuteO
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer logging.Recover("executor.claudecode.stdout")
 		scanner := bufio.NewScanner(stdout)
 		// Increase buffer size for large JSON events
 		buf := make([]byte, 0, 64*1024)
@@ -221,6 +226,7 @@ func (b *ClaudeCodeBackend) executeWithFromPR(ctx context.Context, opts ExecuteO
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer logging.Recover("executor.claudecode.stderr")
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -233,6 +239,7 @@ func (b *ClaudeCodeBackend) executeWithFromPR(ctx context.Context, opts ExecuteO
 
 	// Monitor context for timeout and handle hard kill
 	go func() {
+		defer logging.Recover("executor.claudecode.context")
 		select {
 		case <-cmdDone:
 			// Command completed normally, nothing to do

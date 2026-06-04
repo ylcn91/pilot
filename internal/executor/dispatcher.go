@@ -279,6 +279,7 @@ func (d *Dispatcher) ensureWorker(projectPath string) {
 	d.wg.Add(1)
 	go func() {
 		defer d.wg.Done()
+		defer logging.Recover("executor.dispatcher.worker")
 		worker.Run(d.ctx)
 	}()
 

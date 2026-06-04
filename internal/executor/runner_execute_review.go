@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // executeSelfReviewIntent runs the finalizing progress update plus self-review
@@ -91,6 +93,7 @@ func (r *Runner) executeSelfReviewIntent(s *executeState) (*ExecutionResult, err
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer logging.Recover("executor.review.selfreview")
 			if err := r.runSelfReview(ctx, task, state); err != nil {
 				selfReviewErr = err
 			}
@@ -101,6 +104,7 @@ func (r *Runner) executeSelfReviewIntent(s *executeState) (*ExecutionResult, err
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer logging.Recover("executor.review.intentjudge")
 			log.Info("Intent judge running",
 				slog.String("task_id", task.ID),
 				slog.Int("diff_len", len(intentDiff)),

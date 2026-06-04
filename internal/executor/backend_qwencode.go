@@ -171,6 +171,7 @@ func (b *QwenCodeBackend) Execute(ctx context.Context, opts ExecuteOptions) (*Ba
 	heartbeatCtx, cancelHeartbeat := context.WithCancel(context.Background())
 	defer cancelHeartbeat()
 	go func() {
+		defer logging.Recover("executor.qwencode.heartbeat")
 		ticker := time.NewTicker(HeartbeatCheckInterval)
 		defer ticker.Stop()
 		for {
@@ -215,6 +216,7 @@ func (b *QwenCodeBackend) Execute(ctx context.Context, opts ExecuteOptions) (*Ba
 	// Watchdog goroutine: hard kill after absolute timeout
 	if opts.WatchdogTimeout > 0 {
 		go func() {
+			defer logging.Recover("executor.qwencode.watchdog")
 			select {
 			case <-cmdDone:
 				return
@@ -250,6 +252,7 @@ func (b *QwenCodeBackend) Execute(ctx context.Context, opts ExecuteOptions) (*Ba
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer logging.Recover("executor.qwencode.stdout")
 		scanner := bufio.NewScanner(stdout)
 		buf := make([]byte, 0, 64*1024)
 		scanner.Buffer(buf, 1024*1024)
@@ -297,6 +300,7 @@ func (b *QwenCodeBackend) Execute(ctx context.Context, opts ExecuteOptions) (*Ba
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer logging.Recover("executor.qwencode.stderr")
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -309,6 +313,7 @@ func (b *QwenCodeBackend) Execute(ctx context.Context, opts ExecuteOptions) (*Ba
 
 	// Monitor context for timeout and handle hard kill
 	go func() {
+		defer logging.Recover("executor.qwencode.context")
 		select {
 		case <-cmdDone:
 			return

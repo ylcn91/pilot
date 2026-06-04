@@ -176,6 +176,7 @@ func (b *CodexExecBackend) Execute(ctx context.Context, opts ExecuteOptions) (*B
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer logging.Recover("executor.codexexec.stdout")
 		scanner := bufio.NewScanner(stdout)
 		buf := make([]byte, 0, 64*1024)
 		scanner.Buffer(buf, 1024*1024)
@@ -227,6 +228,7 @@ func (b *CodexExecBackend) Execute(ctx context.Context, opts ExecuteOptions) (*B
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer logging.Recover("executor.codexexec.stderr")
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -277,6 +279,7 @@ func (b *CodexExecBackend) Execute(ctx context.Context, opts ExecuteOptions) (*B
 }
 
 func (b *CodexExecBackend) monitorHeartbeat(ctx context.Context, cmdDone <-chan struct{}, cmd *exec.Cmd, opts ExecuteOptions, lastEventAt *atomic.Int64) {
+	defer logging.Recover("executor.codexexec.heartbeat")
 	ticker := time.NewTicker(HeartbeatCheckInterval)
 	defer ticker.Stop()
 	for {
@@ -318,6 +321,7 @@ func (b *CodexExecBackend) monitorWatchdog(cmdDone <-chan struct{}, cmd *exec.Cm
 		return
 	}
 	go func() {
+		defer logging.Recover("executor.codexexec.watchdog")
 		select {
 		case <-cmdDone:
 			return
@@ -343,6 +347,7 @@ func (b *CodexExecBackend) monitorWatchdog(cmdDone <-chan struct{}, cmd *exec.Cm
 }
 
 func (b *CodexExecBackend) monitorContext(ctx context.Context, cmdDone <-chan struct{}, cmd *exec.Cmd) {
+	defer logging.Recover("executor.codexexec.context")
 	select {
 	case <-cmdDone:
 		return
