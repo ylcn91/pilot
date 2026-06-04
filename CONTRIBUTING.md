@@ -102,7 +102,7 @@ Never use realistic API key patterns in test code. GitHub push protection blocks
 
 ```go
 // Bad — will be blocked by push protection
-token := "xoxb-123456789012-1234567890123-abcdefghij"
+token := "realistic-slack-token-shaped-placeholder"
 
 // Good — use test utilities
 import "github.com/ylcn91/pilot/internal/testutil"

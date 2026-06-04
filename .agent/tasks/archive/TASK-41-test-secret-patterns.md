@@ -9,7 +9,7 @@
 ## Context
 
 **Problem**:
-Pilot wrote tests with realistic-looking fake tokens (e.g., `xoxb-123456789012-1234567890123-abcdefghijklmnopqrstuvwx`). GitHub's push protection blocked all pushes because these patterns match real secret formats.
+Pilot wrote tests with realistic-looking fake tokens (for example, a Slack bot token shaped like a real credential). GitHub's push protection blocked all pushes because these patterns match real secret formats.
 
 **Impact**:
 - 9 branches blocked for hours
@@ -90,7 +90,7 @@ Add to project CLAUDE.md:
 ## Test Guidelines
 
 When writing tests that need API tokens:
-- ❌ DON'T use realistic patterns: `xoxb-123456789012-1234567890123-abc`
+- ❌ DON'T use realistic token-shaped placeholders.
 - ✅ DO use obviously fake tokens: `test-slack-token`, `fake-api-key`
 - ✅ DO use constants from `internal/testutil/tokens.go`
 

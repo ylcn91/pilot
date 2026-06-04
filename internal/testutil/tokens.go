@@ -4,7 +4,7 @@ package testutil
 // Safe test tokens that won't trigger GitHub's push protection.
 // These are intentionally simple and obviously fake to avoid secret scanning.
 //
-// ❌ DON'T use patterns like: xoxb-123456789012-1234567890123-abcdefghij
+// ❌ DON'T use realistic token-shaped placeholders.
 // ✅ DO use these constants or similarly obvious fakes.
 const (
 	// FakeSlackBotToken is a safe test token for Slack bot authentication.

@@ -191,10 +191,10 @@ pilot/
 When writing tests that need API tokens or secrets:
 
 - ❌ **DON'T** use realistic patterns that trigger GitHub push protection:
-  - `xoxb-123456789012-1234567890123-abcdefghij` (Slack)
-  - `sk-abcdefghijklmnopqrstuvwxyz123456` (OpenAI)
-  - `ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` (GitHub PAT)
-  - `AKIAIOSFODNN7EXAMPLE` (AWS)
+  - Slack bot token-shaped placeholders
+  - OpenAI API key-shaped placeholders
+  - GitHub PAT-shaped placeholders
+  - AWS access key ID-shaped placeholders
 
 - ✅ **DO** use obviously fake tokens:
   - `test-slack-bot-token`
