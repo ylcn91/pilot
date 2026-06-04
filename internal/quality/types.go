@@ -85,8 +85,9 @@ type Result struct {
 	GateName    string        `json:"gate_name"`
 	Status      GateStatus    `json:"status"`
 	ExitCode    int           `json:"exit_code"`
-	Output      string        `json:"output"` // stdout + stderr
-	Error       string        `json:"error"`  // Error message if failed
+	Output      string        `json:"output"`       // stdout + stderr
+	Error       string        `json:"error"`        // Error message if failed
+	FailureHint string        `json:"failure_hint"` // Gate's configured hint, surfaced on failure
 	Duration    time.Duration `json:"duration"`
 	RetryCount  int           `json:"retry_count"` // How many retries were attempted
 	Coverage    float64       `json:"coverage"`    // Parsed coverage percentage (for coverage gates)
@@ -145,7 +146,6 @@ func (c *Config) IsParallel() bool {
 type FailureConfig struct {
 	Action     FailureAction `yaml:"action" json:"action"`
 	MaxRetries int           `yaml:"max_retries" json:"max_retries"`
-	NotifyOn   []GateStatus  `yaml:"notify_on" json:"notify_on"` // Statuses to notify on
 }
 
 // FailureAction defines what to do when a required gate fails
@@ -196,7 +196,6 @@ func DefaultConfig() *Config {
 		OnFailure: FailureConfig{
 			Action:     ActionRetry,
 			MaxRetries: 2,
-			NotifyOn:   []GateStatus{StatusFailed},
 		},
 	}
 }
