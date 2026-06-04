@@ -58,6 +58,8 @@ func gitlabPollerRegistration() PollerRegistration {
 				gitlabPollerOpts = append(gitlabPollerOpts, gitlab.WithOnMRCreated(func(mrIID int, mrURL string, issueIID int, headSHA string, branchName string) {
 					ctrl.OnPRCreated(mrIID, mrURL, issueIID, headSHA, branchName, "")
 				}))
+				// Wire per-repo dispatch/skip counters (TASK-293).
+				gitlabPollerOpts = append(gitlabPollerOpts, gitlab.WithPollerMetrics(ctrl.Metrics()))
 			}
 
 			if deps.Cfg.Orchestrator.MaxConcurrent > 0 {

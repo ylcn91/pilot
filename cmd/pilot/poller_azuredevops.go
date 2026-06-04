@@ -51,6 +51,8 @@ func azuredevopsPollerRegistration() PollerRegistration {
 				adoPollerOpts = append(adoPollerOpts, azuredevops.WithOnPRCreated(func(prID int, prURL string, workItemID int, headSHA string, branchName string) {
 					deps.AutopilotController.OnPRCreated(prID, prURL, 0, headSHA, branchName, "")
 				}))
+				// Wire per-repo dispatch/skip counters (TASK-293).
+				adoPollerOpts = append(adoPollerOpts, azuredevops.WithPollerMetrics(deps.AutopilotController.Metrics()))
 			}
 
 			// Wire processed store for persistence

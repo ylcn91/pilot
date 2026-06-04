@@ -80,6 +80,9 @@ func (p *pollingRuntime) createRepoPoller(
 	// Wire issue metrics recorder for rate-limit tracking.
 	if controller != nil {
 		pollerOpts = append(pollerOpts, github.WithIssueMetricsRecorder(controller.Metrics()))
+		// Wire per-repo dispatch/skip counters (TASK-293) so the three poller
+		// counters are populated instead of staying zero.
+		pollerOpts = append(pollerOpts, github.WithPollerMetrics(controller.Metrics()))
 	}
 
 	// GH-2802: Wire pre-flight judge when enabled (GH-2817: uses CC subprocess, no API key)
