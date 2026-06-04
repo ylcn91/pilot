@@ -245,6 +245,9 @@ func (p *pollingRuntime) startAutopilotLoops(
 	// Start metrics alerter for default controller (GH-728)
 	if alertsEngine != nil && autopilotController != nil {
 		metricsAlerter := autopilot.NewMetricsAlerter(autopilotController, alertsEngine)
+		// GH-34: register the breaker-trip hook so an open per-PR circuit
+		// breaker drives the PagerDuty escalation path, not just the counter.
+		metricsAlerter.AttachToController(autopilotController)
 		go metricsAlerter.Run(ctx)
 	}
 
