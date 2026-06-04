@@ -20,6 +20,11 @@ let package = Package(
                 .product(name: "SwiftTerm", package: "SwiftTerm")
             ],
             path: "Sources/Pilot91"
+        ),
+        .testTarget(
+            name: "Pilot91Tests",
+            dependencies: ["Pilot91"],
+            path: "Tests/Pilot91Tests"
         )
     ]
 )
