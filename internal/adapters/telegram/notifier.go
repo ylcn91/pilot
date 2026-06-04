@@ -37,7 +37,7 @@ func DefaultApprovalConfig() *ApprovalConfig {
 type LLMClassifierConfig struct {
 	Enabled        bool          `yaml:"enabled"`         // Enable LLM classification (default: false)
 	APIKey         string        `yaml:"api_key"`         // Anthropic API key (falls back to ANTHROPIC_API_KEY env)
-	TimeoutSeconds int           `yaml:"timeout_seconds"` // Timeout for classification (default: 2)
+	TimeoutSeconds int           `yaml:"timeout_seconds"` // Classification request timeout; applied via AnthropicClient.SetTimeout (default: 5s when unset)
 	HistorySize    int           `yaml:"history_size"`    // Messages to keep per chat (default: 10)
 	HistoryTTL     time.Duration `yaml:"history_ttl"`     // TTL for conversation history (default: 30m)
 }
