@@ -59,7 +59,10 @@ type ControllerOption func(*Controller)
 
 // WithProjectBoardSync wires a GitHub Projects V2 board sync into the controller.
 // doneStatus: merged PRs; failStatus: CI/exec failures; reviewStatus: PR created (In Progress → Review);
-// inProgressStatus: reserved for future use (wired for symmetry, not yet emitted).
+// inProgressStatus: the In-Progress column. The poller — not autopilot — emits
+// this on confirmed dispatch (github.Poller.syncBoardStatusInProgress), which is
+// the moment work actually starts; autopilot's lifecycle begins at PR-created,
+// already past In-Progress, so the controller never emits it.
 func WithProjectBoardSync(bs projectBoardSyncer, doneStatus, failStatus, reviewStatus, inProgressStatus string) ControllerOption {
 	return func(c *Controller) {
 		c.boardSync = bs
@@ -143,6 +146,14 @@ func (c *Controller) SetReleaseSummaryGenerator(gen *ReleaseSummaryGenerator) {
 // phantom re-dispatch. GH-3271.
 func (c *Controller) SetOnIssueDone(fn func(issueNumber int)) {
 	c.onIssueDone = fn
+}
+
+// SetCircuitBreakerTripHook registers a callback invoked whenever a per-PR
+// circuit breaker is found open in ProcessPR. Wire it to
+// MetricsAlerter.RecordCircuitBreakerTrip so the PagerDuty escalation path runs
+// (the no-arg metrics counter only feeds the Prometheus gauge). nil disables it.
+func (c *Controller) SetCircuitBreakerTripHook(fn func(prNumber int, reason string)) {
+	c.circuitBreakerTripHook = fn
 }
 
 // SetGuardrailsGate wires the per-PR architectural guardrails gate. When set and

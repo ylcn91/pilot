@@ -147,6 +147,37 @@ func parseBumpFromMessage(msg string) BumpType {
 	}
 }
 
+// DetectBumpFromLabels analyzes PR labels and returns the highest bump type
+// requested. Used by the "pr_labels" version strategy. Recognised labels (case-
+// insensitive): semver:major / semver:minor / semver:patch, and the convenience
+// aliases breaking (major), feature/feat (minor), and fix/bugfix (patch). When no
+// recognised label is present it returns BumpNone (no release).
+func DetectBumpFromLabels(labels []github.Label) BumpType {
+	maxBump := BumpNone
+	for _, l := range labels {
+		bump := parseBumpFromLabel(l.Name)
+		if bumpPriority(bump) > bumpPriority(maxBump) {
+			maxBump = bump
+		}
+	}
+	return maxBump
+}
+
+// parseBumpFromLabel maps a single label name to a bump type, or BumpNone when
+// the label is not a recognised version label.
+func parseBumpFromLabel(name string) BumpType {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "semver:major", "breaking", "breaking-change", "breaking change":
+		return BumpMajor
+	case "semver:minor", "feature", "feat":
+		return BumpMinor
+	case "semver:patch", "fix", "bugfix":
+		return BumpPatch
+	default:
+		return BumpNone
+	}
+}
+
 // bumpPriority returns priority for comparison (higher = more significant).
 func bumpPriority(b BumpType) int {
 	switch b {
@@ -164,55 +195,6 @@ func bumpPriority(b BumpType) int {
 // GetCurrentVersion returns the current version from latest release or tags.
 func (r *Releaser) GetCurrentVersion(ctx context.Context) (SemVer, error) {
 	return r.GetCurrentVersionForRepo(ctx, r.owner, r.repo)
-}
-
-// GenerateChangelog generates a changelog from commits.
-func GenerateChangelog(commits []*github.Commit, prNumber int) string {
-	var features, fixes, others []string
-
-	for _, commit := range commits {
-		msg := commit.Commit.Message
-		// Get first line
-		if idx := strings.Index(msg, "\n"); idx > 0 {
-			msg = msg[:idx]
-		}
-
-		matches := conventionalCommitRegex.FindStringSubmatch(msg)
-		if matches == nil {
-			others = append(others, fmt.Sprintf("- %s", msg))
-			continue
-		}
-
-		commitType := strings.ToLower(matches[1])
-		description := matches[4]
-
-		switch commitType {
-		case "feat", "feature":
-			features = append(features, fmt.Sprintf("- %s", description))
-		case "fix", "bugfix":
-			fixes = append(fixes, fmt.Sprintf("- %s", description))
-		default:
-			others = append(others, fmt.Sprintf("- %s", description))
-		}
-	}
-
-	var sections []string
-
-	if len(features) > 0 {
-		sections = append(sections, "## Features\n"+strings.Join(features, "\n"))
-	}
-	if len(fixes) > 0 {
-		sections = append(sections, "## Bug Fixes\n"+strings.Join(fixes, "\n"))
-	}
-	if len(others) > 0 {
-		sections = append(sections, "## Other Changes\n"+strings.Join(others, "\n"))
-	}
-
-	if len(sections) == 0 {
-		return fmt.Sprintf("Release from PR #%d", prNumber)
-	}
-
-	return strings.Join(sections, "\n\n")
 }
 
 // CreateTag creates a lightweight git tag for the new version.

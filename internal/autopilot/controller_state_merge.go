@@ -49,6 +49,17 @@ func (c *Controller) applyMergeLabels(ctx context.Context, issueNumber int, lg m
 
 // handleMerging merges the PR.
 func (c *Controller) handleMerging(ctx context.Context, prState *PRState) error {
+	// GH max_merges_per_hour throttle: when the rolling-window cap is reached,
+	// defer this PR without consuming a merge attempt. It stays in StageMerging
+	// and is retried on the next poll once the window frees up.
+	if !c.autoMerger.MergeAllowed() {
+		c.log.Warn("handleMerging: merge throttled, deferring to next cycle",
+			"pr", prState.PRNumber,
+			"max_merges_per_hour", c.config.MaxMergesPerHour,
+		)
+		return nil
+	}
+
 	prState.MergeAttempts++
 
 	c.log.Info("handleMerging: attempting merge",

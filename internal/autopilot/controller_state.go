@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // removePR removes PR from tracking and cleans up the remote branch.
@@ -128,7 +130,9 @@ func (c *Controller) recordPRFailure(prNumber int) {
 	)
 
 	// Persist outside lock
-	go c.persistPRFailures(prNumber, state)
+	logging.SafeGo("autopilot.persistPRFailures", func() {
+		c.persistPRFailures(prNumber, state)
+	})
 }
 
 // resetPRFailures clears the failure counter for a specific PR after success.

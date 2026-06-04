@@ -520,7 +520,6 @@ orchestrator:
       trigger: "on_merge"
       version_strategy: "conventional_commits"
       tag_prefix: "v"
-      generate_changelog: true
       notify_on_release: true
       require_ci: true
 ```
@@ -548,7 +547,6 @@ orchestrator:
 | `release.trigger` | string | `"on_merge"` | When to trigger release |
 | `release.version_strategy` | string | `"conventional_commits"` | How to determine version bump |
 | `release.tag_prefix` | string | `"v"` | Git tag prefix |
-| `release.generate_changelog` | bool | `true` | Auto-generate changelog |
 | `release.require_ci` | bool | `true` | Require CI pass before release |
 
 ---
