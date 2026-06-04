@@ -25,6 +25,18 @@ func TestCheckClaudeAvailable(t *testing.T) {
 	// If no error, claude is installed and working
 }
 
+func TestCheckBackendCLIWithCommandOverride(t *testing.T) {
+	ctx := context.Background()
+	command := filepath.Join(t.TempDir(), "custom-claude")
+	if err := os.WriteFile(command, []byte("#!/bin/sh\necho custom-claude-version\n"), 0755); err != nil {
+		t.Fatalf("failed to write command: %v", err)
+	}
+
+	if err := checkBackendCLIWithCommand(ctx, BackendTypeClaudeCode, command); err != nil {
+		t.Fatalf("expected custom backend command to pass preflight: %v", err)
+	}
+}
+
 func TestCheckGitRepo(t *testing.T) {
 	ctx := context.Background()
 

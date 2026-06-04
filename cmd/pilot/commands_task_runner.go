@@ -23,7 +23,7 @@ import (
 // registers `defer teamCleanup()` whenever a non-nil func is returned, matching
 // the original `defer runTeamCleanup()` placement. teamCleanup is nil when no
 // access scoping was enabled.
-func setupTaskRunner(ctx context.Context, cmd *cobra.Command, projectPath, teamID, teamMember string) (*executor.Runner, *config.Config, func(), error) {
+func setupTaskRunner(ctx context.Context, cmd *cobra.Command, projectPath, teamID, teamMember string, skipSelfReview bool) (*executor.Runner, *config.Config, func(), error) {
 	// Load config for runner setup
 	configPath := cfgFile
 	if configPath == "" {
@@ -36,6 +36,12 @@ func setupTaskRunner(ctx context.Context, cmd *cobra.Command, projectPath, teamI
 
 	// Apply team flag overrides (GH-635)
 	applyTeamOverrides(cfg, cmd, teamID, teamMember)
+	if skipSelfReview {
+		if cfg.Executor == nil {
+			cfg.Executor = executor.DefaultBackendConfig()
+		}
+		cfg.Executor.SkipSelfReview = true
+	}
 
 	// Create the executor runner with config (GH-956: enables worktree isolation, decomposer, model routing)
 	runner, runnerErr := executor.NewRunnerWithConfig(cfg.Executor)

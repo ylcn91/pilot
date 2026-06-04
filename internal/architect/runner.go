@@ -46,6 +46,9 @@ type RunOptions struct {
 	// DryRun, when true, computes and reports proposals/would-be issues but
 	// creates nothing.
 	DryRun bool
+	// SuppressDryRunOutput keeps dry-run issue previews out of stdout. It is
+	// intended for JSON callers that need a clean machine-readable stream.
+	SuppressDryRunOutput bool
 	// Limit caps how many top-ranked proposals are emitted. Zero (the default)
 	// applies defaultEmitLimit; a negative value means no cap.
 	Limit int
@@ -103,6 +106,9 @@ func Run(ctx context.Context, cfg RunConfig, opts RunOptions) (RunResult, error)
 	log.Info("propose complete", slog.Int("findings", len(ranked)))
 
 	emitter := NewEmitter(cfg.Creator, cfg.Searcher, cfg.Owner, cfg.Repo, cfg.Labels)
+	if opts.SuppressDryRunOutput {
+		emitter.SuppressDryRunOutput()
+	}
 	created, skipped, err := emitter.Emit(ctx, ranked, opts.DryRun, opts.effectiveLimit())
 	if err != nil {
 		return RunResult{Findings: ranked}, fmt.Errorf("architect: emit: %w", err)

@@ -73,7 +73,11 @@ func executeTaskWithProgress(
 		}
 	})
 
-	fmt.Println("⏳ Executing task with Claude Code...")
+	backendName := "active backend"
+	if backend := runner.GetBackend(); backend != nil {
+		backendName = backend.Name()
+	}
+	fmt.Printf("⏳ Executing task with %s...\n", backendName)
 	if verbose {
 		fmt.Println("   (streaming raw JSON)")
 	}

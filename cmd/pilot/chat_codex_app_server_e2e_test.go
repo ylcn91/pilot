@@ -37,6 +37,17 @@ func TestRunChatCodexAppServerE2E(t *testing.T) {
 	}
 }
 
+func TestChatAppServerArgs(t *testing.T) {
+	if got := chatAppServerArgs(""); got != nil {
+		t.Fatalf("chatAppServerArgs(empty) = %#v, want nil", got)
+	}
+	got := chatAppServerArgs("work")
+	want := []string{"--profile", "work", "app-server", "--stdio"}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("chatAppServerArgs() = %#v, want %#v", got, want)
+	}
+}
+
 func requireCodexE2E(t *testing.T) string {
 	t.Helper()
 

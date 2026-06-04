@@ -289,6 +289,7 @@ func NewRunnerWithConfig(config *BackendConfig) (*Runner, error) {
 			}
 			if config.ClaudeCode != nil {
 				classifier.SetUseStructuredOutput(config.ClaudeCode.UseStructuredOutput)
+				classifier.SetCommand(config.ClaudeCode.Command)
 			}
 			if config.DefaultModel != "" {
 				classifier.model = config.DefaultModel
@@ -315,6 +316,7 @@ func NewRunnerWithConfig(config *BackendConfig) (*Runner, error) {
 			}
 			if config.ClaudeCode != nil {
 				complexityClassifier.SetUseStructuredOutput(config.ClaudeCode.UseStructuredOutput)
+				complexityClassifier.SetCommand(config.ClaudeCode.Command)
 			}
 			runner.decomposer.SetClassifier(complexityClassifier)
 		}

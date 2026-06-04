@@ -3,6 +3,8 @@ package executor
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -105,5 +107,25 @@ func TestComplexityClassifier_NilTask(t *testing.T) {
 	result := classifier.Classify(context.Background(), nil)
 	if result != ComplexityMedium {
 		t.Errorf("expected MEDIUM for nil task, got %s", result)
+	}
+}
+
+func TestComplexityClassifier_UsesConfiguredCommand(t *testing.T) {
+	dir := t.TempDir()
+	command := filepath.Join(dir, "claude-custom")
+	if err := os.WriteFile(command, []byte("#!/bin/sh\necho '{\"complexity\":\"SIMPLE\",\"reason\":\"custom command\"}'\n"), 0755); err != nil {
+		t.Fatalf("write command: %v", err)
+	}
+
+	classifier := NewComplexityClassifier()
+	classifier.SetCommand(command)
+
+	result := classifier.Classify(context.Background(), &Task{
+		ID:          "GH-custom-complexity",
+		Title:       "Fix typo",
+		Description: "Fix one typo.",
+	})
+	if result != ComplexitySimple {
+		t.Fatalf("expected configured command result, got %s", result)
 	}
 }

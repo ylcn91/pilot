@@ -76,6 +76,13 @@ logs/
 .claude/scripts/
 .claude/scheduled_tasks.lock
 
+# Codex worktrees (full repo clones, never commit)
+.Codex/worktrees/
+.codex/
+
+# Pilot local task notes created by ad hoc desktop/CLI verification runs
+.agent/tasks/task-*.md
+
 # Secrets
 *.pem
 *.key
@@ -104,6 +111,9 @@ desktop/frontend/wailsjs/
 desktop/frontend/package.json.md5
 desktop/build/bin/
 desktop/build/darwin/Info.dev.plist
+
+# Native macOS SwiftPM build artifacts
+native-macos/Pilot91/.build/
 
 # Embedded dashboard build artifact (created by make build-with-dashboard)
 cmd/pilot/dashboard_dist/

@@ -23,8 +23,10 @@ func New(cfg *config.Config, opts ...Option) (*Pilot, error) {
 		linearTasks: make(map[string]linearTaskInfo),
 	}
 
+	memoryPath := config.MemoryPathOrDefault(cfg)
+
 	// Initialize memory store
-	store, err := memory.NewStore(cfg.Memory.Path)
+	store, err := memory.NewStore(memoryPath)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("failed to create memory store: %w", err)
@@ -32,7 +34,7 @@ func New(cfg *config.Config, opts ...Option) (*Pilot, error) {
 	p.store = store
 
 	// Initialize knowledge graph
-	graph, err := memory.NewKnowledgeGraph(cfg.Memory.Path)
+	graph, err := memory.NewKnowledgeGraph(memoryPath)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("failed to create knowledge graph: %w", err)

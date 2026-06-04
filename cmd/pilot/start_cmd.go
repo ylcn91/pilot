@@ -16,6 +16,7 @@ import (
 	"github.com/ylcn91/pilot/internal/config"
 	"github.com/ylcn91/pilot/internal/executor"
 	"github.com/ylcn91/pilot/internal/logging"
+	"github.com/ylcn91/pilot/internal/memory"
 	"github.com/ylcn91/pilot/internal/pilot"
 	"github.com/ylcn91/pilot/internal/quality"
 	"github.com/ylcn91/pilot/internal/tunnel"
@@ -233,6 +234,14 @@ Examples:
 				if gwTeamCleanup != nil {
 					defer gwTeamCleanup()
 				}
+			} else {
+				store, storeErr := memory.NewStore(startMemoryPath(cfg))
+				if storeErr != nil {
+					logging.WithComponent("start").Warn("Failed to open memory store for gateway dashboard", slog.Any("error", storeErr))
+				} else {
+					gw.Store = store
+					defer func() { _ = store.Close() }()
+				}
 			}
 
 			// Enable Telegram polling in gateway mode only if --telegram flag was explicitly passed (GH-351)
@@ -320,6 +329,9 @@ Examples:
 			if err := p.Start(); err != nil {
 				return fmt.Errorf("failed to start Pilot: %w", err)
 			}
+			if gw.ArchitectScheduler != nil {
+				defer gw.ArchitectScheduler.Stop()
+			}
 
 			// Start tunnel if enabled
 			if cfg.Tunnel != nil && cfg.Tunnel.Enabled {
@@ -375,4 +387,8 @@ Examples:
 	registerStartFlags(cmd, f)
 
 	return cmd
+}
+
+func startMemoryPath(cfg *config.Config) string {
+	return config.MemoryPathOrDefault(cfg)
 }

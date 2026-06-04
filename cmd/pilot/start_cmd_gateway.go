@@ -15,6 +15,7 @@ import (
 	"github.com/ylcn91/pilot/internal/adapters/telegram"
 	"github.com/ylcn91/pilot/internal/alerts"
 	"github.com/ylcn91/pilot/internal/approval"
+	"github.com/ylcn91/pilot/internal/architect"
 	"github.com/ylcn91/pilot/internal/autopilot"
 	"github.com/ylcn91/pilot/internal/budget"
 	"github.com/ylcn91/pilot/internal/config"
@@ -42,6 +43,8 @@ type gatewayInfra struct {
 	TgApprovalHandler   *approval.TelegramHandler
 	Enforcer            *budget.Enforcer
 	TeamAdapter         *teams.ServiceAdapter // GH-634: RBAC lookups, threaded instead of a package global
+	ArchitectStore      *architect.FindingsStore
+	ArchitectScheduler  *architect.Scheduler
 }
 
 // buildGatewayInfra constructs the shared runner, store, dispatcher, monitor,
@@ -96,7 +99,7 @@ func buildGatewayInfra(cfg *config.Config, cmd *cobra.Command, projectPath strin
 
 	// Create memory store for dispatcher
 	var storeErr error
-	gw.Store, storeErr = memory.NewStore(cfg.Memory.Path)
+	gw.Store, storeErr = memory.NewStore(startMemoryPath(cfg))
 	if storeErr != nil {
 		logging.WithComponent("start").Warn("Failed to open memory store for gateway polling", slog.Any("error", storeErr))
 	}

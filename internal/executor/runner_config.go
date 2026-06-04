@@ -15,6 +15,27 @@ func (r *Runner) backendType() string {
 	return BackendTypeCodexExec
 }
 
+func (r *Runner) backendCommand() string {
+	if r.config == nil {
+		return ""
+	}
+	switch r.backendType() {
+	case BackendTypeClaudeCode:
+		if r.config.ClaudeCode != nil {
+			return r.config.ClaudeCode.Command
+		}
+	case BackendTypeCodexExec:
+		if r.config.CodexExec != nil {
+			return r.config.CodexExec.Command
+		}
+	case BackendTypeQwenCode:
+		if r.config.QwenCode != nil {
+			return r.config.QwenCode.Command
+		}
+	}
+	return ""
+}
+
 // selfReviewTimeout returns the per-backend timeout for the self-review phase.
 // OpenCode runs are legitimately slower than Claude Code (server-managed
 // session, larger streaming overhead); a 2-minute cap cancels review while the

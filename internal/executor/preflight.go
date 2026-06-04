@@ -45,6 +45,9 @@ type PreflightOptions struct {
 	// When set, the CLI availability check matches the active backend instead of
 	// always requiring 'claude'.
 	BackendType string
+
+	// BackendCommand overrides the default CLI command for BackendType.
+	BackendCommand string
 }
 
 // RunPreflightChecks executes all default pre-flight checks.
@@ -60,7 +63,7 @@ func RunPreflightChecksWithOptions(ctx context.Context, projectPath string, opts
 	checks := DefaultPreflightChecks
 
 	// GH-1483: Replace hardcoded claude check with backend-aware check
-	if opts.BackendType != "" && opts.BackendType != "claude-code" {
+	if opts.BackendType != "" && (opts.BackendType != "claude-code" || opts.BackendCommand != "") {
 		var filtered []PreflightCheck
 		for _, c := range checks {
 			if c.Name == "claude_available" {
@@ -74,11 +77,15 @@ func RunPreflightChecksWithOptions(ctx context.Context, projectPath string, opts
 						},
 					})
 				} else {
+					name := "backend_available"
+					if opts.BackendType == BackendTypeClaudeCode {
+						name = "claude_available"
+					}
 					filtered = append(filtered, PreflightCheck{
-						Name:        "backend_available",
+						Name:        name,
 						Description: fmt.Sprintf("Verify %s CLI is available", opts.BackendType),
 						Check: func(ctx context.Context, _ string) error {
-							return checkBackendCLI(ctx, opts.BackendType)
+							return checkBackendCLIWithCommand(ctx, opts.BackendType, opts.BackendCommand)
 						},
 					})
 				}
@@ -157,15 +164,23 @@ var backendCLICommands = map[string]struct {
 
 // checkBackendCLI verifies the CLI for the given backend type is available.
 func checkBackendCLI(ctx context.Context, backendType string) error {
+	return checkBackendCLIWithCommand(ctx, backendType, "")
+}
+
+func checkBackendCLIWithCommand(ctx context.Context, backendType, commandOverride string) error {
 	info, ok := backendCLICommands[backendType]
 	if !ok {
 		// Unknown backend — skip check rather than block
 		return nil
 	}
-	cmd := exec.CommandContext(ctx, info.command, info.versionFlag)
+	command := strings.TrimSpace(commandOverride)
+	if command == "" {
+		command = info.command
+	}
+	cmd := exec.CommandContext(ctx, command, info.versionFlag)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%s command not available: %w (output: %s)", info.command, err, strings.TrimSpace(string(output)))
+		return fmt.Errorf("%s command not available: %w (output: %s)", command, err, strings.TrimSpace(string(output)))
 	}
 	return nil
 }

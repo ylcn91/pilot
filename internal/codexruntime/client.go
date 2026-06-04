@@ -61,6 +61,9 @@ func (e *RPCError) Error() string {
 	if e == nil {
 		return ""
 	}
+	if len(e.Data) > 0 {
+		return fmt.Sprintf("%s: %s", e.Message, string(e.Data))
+	}
 	return e.Message
 }
 

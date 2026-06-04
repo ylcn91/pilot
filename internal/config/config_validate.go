@@ -29,7 +29,6 @@ func (c *Config) Validate() error {
 	if c.Auth != nil && c.Auth.Type == gateway.AuthTypeAPIToken && c.Auth.Token == "" {
 		return fmt.Errorf("API token is required when auth type is api-token")
 	}
-
 	// GH-914: Validate effort routing if enabled
 	if c.Executor != nil && c.Executor.EffortRouting != nil && c.Executor.EffortRouting.Enabled {
 		levels := map[string]string{

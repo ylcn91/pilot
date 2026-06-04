@@ -38,18 +38,18 @@ uncommitted changes and a graveyard of stashes.
 
 - ❌ **NEVER `git checkout <branch>` / `git switch` in the repo root**
   (this fork's root is `/Volumes/doksanbir/repos/pilot`; on other machines
-  use whatever path the fork is cloned to). Keep the root pinned to `main`;
-  treat it as reference + build-from-main only.
+  use whatever path the fork is cloned to). Keep this fork's root pinned to
+  `dev`; treat it as reference + build-from-dev only.
 - ✅ **Do all branch work in your own worktree.** Interactive Codex sessions:
   use the worktree flow (sessions land in `.Codex/worktrees/<name>`). The
   Pilot daemon already isolates via `pilot-worktree-GH-*` — leave those alone.
-- ✅ Base worktrees on `origin/main` (fresh), not on whatever the root
+- ✅ Base worktrees on `dev` / `origin/dev` (fresh), not on whatever the root
   happens to be pointing at.
 - ✅ Commit in your worktree branch; push it; open a PR. Never pile unrelated
   work onto someone else's branch/PR.
 - ❌ Do not `git stash pop` blindly in the root — a pathspec-limited stash or
   a worktree is safer when other sessions may have uncommitted work there.
-- If you find the root on a non-`main` branch with uncommitted changes you
+- If you find the root on a non-`dev` branch with uncommitted changes you
   did not make, **STOP** — that's another session's work. Don't checkout,
   don't reset, don't commit it. Flag it.
 

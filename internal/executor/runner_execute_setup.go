@@ -135,8 +135,9 @@ func (r *Runner) executePreflight(s *executeState) (*ExecutionResult, error) {
 	// create dirty git state after our install script commits.
 	if !r.skipPreflightChecks {
 		preflightOpts := PreflightOptions{
-			SkipGitClean: task.LocalMode || (r.config != nil && r.config.UseWorktree),
-			BackendType:  r.backendType(),
+			SkipGitClean:   task.LocalMode || (r.config != nil && r.config.UseWorktree),
+			BackendType:    r.backendType(),
+			BackendCommand: r.backendCommand(),
 		}
 		if err := RunPreflightChecksWithOptions(ctx, executionPath, preflightOpts); err != nil {
 			r.log.Warn("Pre-flight check failed",

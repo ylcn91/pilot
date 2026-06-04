@@ -113,12 +113,13 @@ func (c *linearIssueCreator) CreatePilotIssue(ctx context.Context, _, _, title, 
 // issues. It owns the issue creator, the dedup tracker, the target owner/repo,
 // and the labels to apply. Emit is the single entry point.
 type Emitter struct {
-	creator IssueCreator
-	deduper *Deduper
-	owner   string
-	repo    string
-	labels  []string
-	log     *slog.Logger
+	creator           IssueCreator
+	deduper           *Deduper
+	owner             string
+	repo              string
+	labels            []string
+	log               *slog.Logger
+	quietDryRunOutput bool
 }
 
 // NewEmitter builds an Emitter targeting owner/repo. creator may be nil to force
@@ -138,6 +139,13 @@ func NewEmitter(creator IssueCreator, searcher IssueSearcher, owner, repo string
 		labels:  labels,
 		log:     logging.WithComponent("architect.emit"),
 	}
+}
+
+// SuppressDryRunOutput keeps dry-run issue previews out of stdout. The CLI uses
+// this for --json so machine-readable output stays parseable.
+func (e *Emitter) SuppressDryRunOutput() *Emitter {
+	e.quietDryRunOutput = true
+	return e
 }
 
 // Emit files issues for the top-N proposals, deduping along the way, and reports
@@ -209,7 +217,9 @@ func (e *Emitter) emit(ctx context.Context, ranked []pilotapi.Finding, dryRun bo
 				slog.String("title", title),
 				slog.String("hash", hash),
 			)
-			fmt.Printf("--- architect (dry-run) would create issue ---\n%s\n\n%s\n\n", title, body)
+			if !e.quietDryRunOutput {
+				fmt.Printf("--- architect (dry-run) would create issue ---\n%s\n\n%s\n\n", title, body)
+			}
 			created++
 			continue
 		}

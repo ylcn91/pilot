@@ -10,6 +10,7 @@ import (
 
 	"github.com/ylcn91/pilot/internal/architect"
 	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // architectFlags are the parsed CLI knobs for `pilot architect`.
@@ -129,8 +130,13 @@ func runArchitect(ctx context.Context, f *architectFlags) error {
 	}
 
 	opts := architect.RunOptions{
-		DryRun: f.dryRun,
-		Limit:  resolveArchitectLimit(f.limit, ac),
+		DryRun:               f.dryRun,
+		SuppressDryRunOutput: f.jsonOut,
+		Limit:                resolveArchitectLimit(f.limit, ac),
+	}
+
+	if f.jsonOut {
+		logging.Suppress()
 	}
 
 	result, err := architect.Run(ctx, runCfg, opts)

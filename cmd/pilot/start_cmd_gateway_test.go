@@ -9,6 +9,7 @@ import (
 	"github.com/ylcn91/pilot/internal/alerts"
 	"github.com/ylcn91/pilot/internal/approval"
 	"github.com/ylcn91/pilot/internal/config"
+	"github.com/ylcn91/pilot/internal/gateway"
 	"github.com/ylcn91/pilot/internal/testutil"
 )
 
@@ -173,5 +174,50 @@ func TestBuildGatewayAlertsEngine(t *testing.T) {
 				gw.AlertsEngine.Stop()
 			}
 		})
+	}
+}
+
+func TestWireGatewayArchitect_StartsScheduler(t *testing.T) {
+	root := t.TempDir()
+	writeOversizedGoFixture(t, root)
+
+	cfg := &config.Config{
+		Architect: &config.ArchitectConfig{
+			Enabled:  true,
+			Schedule: "0 9 * * *",
+			Timezone: "UTC",
+		},
+	}
+	server := gateway.NewServer(&gateway.Config{Host: "127.0.0.1", Port: 0})
+	gw := &gatewayInfra{}
+
+	wireGatewayArchitect(gw, cfg, root, server)
+
+	if gw.ArchitectStore == nil {
+		t.Fatal("gateway architect wiring must create a findings store")
+	}
+	if gw.ArchitectScheduler == nil {
+		t.Fatal("gateway architect wiring must create a scheduler")
+	}
+	defer gw.ArchitectScheduler.Stop()
+
+	if !gw.ArchitectScheduler.IsRunning() {
+		t.Fatal("gateway architect scheduler must be running")
+	}
+	waitForStore(t, gw.ArchitectStore, 1)
+}
+
+func TestWireGatewayArchitect_DisabledIsNoop(t *testing.T) {
+	cfg := &config.Config{Architect: &config.ArchitectConfig{Enabled: false, Schedule: "0 9 * * *"}}
+	server := gateway.NewServer(&gateway.Config{Host: "127.0.0.1", Port: 0})
+	gw := &gatewayInfra{}
+
+	wireGatewayArchitect(gw, cfg, t.TempDir(), server)
+
+	if gw.ArchitectStore != nil {
+		t.Fatal("disabled gateway architect must not create a findings store")
+	}
+	if gw.ArchitectScheduler != nil {
+		t.Fatal("disabled gateway architect must not create a scheduler")
 	}
 }

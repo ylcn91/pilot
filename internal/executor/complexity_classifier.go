@@ -24,6 +24,7 @@ type ComplexityClassifier struct {
 	timeout             time.Duration
 	log                 *slog.Logger
 	useStructuredOutput bool
+	command             string
 
 	// cmdRunner is the function that executes the claude command.
 	// Can be overridden for testing.
@@ -60,6 +61,7 @@ func NewComplexityClassifier() *ComplexityClassifier {
 		model:   "claude-haiku-4-5-20251001",
 		timeout: 30 * time.Second,
 		log:     logging.WithComponent("complexity-classifier"),
+		command: "claude",
 		cache:   make(map[string]Complexity),
 	}
 	c.cmdRunner = c.defaultCmdRunner
@@ -68,7 +70,11 @@ func NewComplexityClassifier() *ComplexityClassifier {
 
 // defaultCmdRunner executes the claude command.
 func (c *ComplexityClassifier) defaultCmdRunner(ctx context.Context, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "claude", args...)
+	command := c.command
+	if command == "" {
+		command = "claude"
+	}
+	cmd := exec.CommandContext(ctx, command, args...)
 	return cmd.Output()
 }
 
@@ -82,6 +88,12 @@ func newComplexityClassifierWithRunner(runner func(ctx context.Context, args ...
 // SetUseStructuredOutput configures whether to use Claude Code's --json-schema structured output.
 func (c *ComplexityClassifier) SetUseStructuredOutput(enabled bool) {
 	c.useStructuredOutput = enabled
+}
+
+func (c *ComplexityClassifier) SetCommand(command string) {
+	if command != "" {
+		c.command = command
+	}
 }
 
 // Classify determines task complexity using Claude Code subprocess.

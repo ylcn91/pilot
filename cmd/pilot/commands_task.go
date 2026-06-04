@@ -23,6 +23,7 @@ func newTaskCmd() *cobra.Command {
 	var enableBudget bool
 	var localMode bool    // GH-2103: problem-solving prompt without PR constraints
 	var resultJSON string // Write ExecutionResult as JSON to file
+	var skipSelfReview bool
 	var teamID string     // GH-635: team project access scoping
 	var teamMember string // GH-635: member email for access scoping
 
@@ -88,6 +89,9 @@ Examples:
 			if hasNavigator {
 				fmt.Printf("   Navigator: ✓ enabled\n")
 			}
+			if skipSelfReview {
+				fmt.Printf("   Review:    skipped\n")
+			}
 			fmt.Println()
 			fmt.Println("📋 Task:")
 			fmt.Printf("   %s\n", taskDesc)
@@ -143,7 +147,7 @@ Examples:
 			}
 
 			// Load config and build the executor runner with all task wiring
-			runner, cfg, teamCleanup, runnerErr := setupTaskRunner(ctx, cmd, projectPath, teamID, teamMember)
+			runner, cfg, teamCleanup, runnerErr := setupTaskRunner(ctx, cmd, projectPath, teamID, teamMember, skipSelfReview)
 			if runnerErr != nil {
 				return runnerErr
 			}
@@ -167,6 +171,7 @@ Examples:
 	cmd.Flags().BoolVar(&enableAlerts, "alerts", false, "Enable alerts for task execution")
 	cmd.Flags().BoolVar(&enableBudget, "budget", false, "Enable budget enforcement for this task")
 	cmd.Flags().BoolVar(&localMode, "local", false, "Use problem-solving prompt without PR/Navigator constraints")
+	cmd.Flags().BoolVar(&skipSelfReview, "skip-self-review", false, "Skip the self-review phase for this task")
 	cmd.Flags().StringVar(&resultJSON, "result-json", "", "Write execution result as JSON to file path")
 	cmd.Flags().StringVar(&teamID, "team", "", "Team ID or name for project access scoping (overrides config)")
 	cmd.Flags().StringVar(&teamMember, "team-member", "", "Member email for team access scoping (overrides config)")

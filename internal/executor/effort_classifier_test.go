@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -133,6 +135,27 @@ func TestNewEffortClassifier(t *testing.T) {
 	classifier.SetUseStructuredOutput(true)
 	if classifier.useStructuredOutput != true {
 		t.Errorf("expected structured output to be set to true")
+	}
+}
+
+func TestEffortClassifier_UsesConfiguredCommand(t *testing.T) {
+	dir := t.TempDir()
+	command := filepath.Join(dir, "claude-custom")
+	if err := os.WriteFile(command, []byte("#!/bin/sh\necho '{\"effort\":\"low\",\"reason\":\"custom command\"}'\n"), 0755); err != nil {
+		t.Fatalf("write command: %v", err)
+	}
+
+	classifier := NewEffortClassifier()
+	classifier.apiKey = ""
+	classifier.SetCommand(command)
+
+	result := classifier.Classify(context.Background(), &Task{
+		ID:          "GH-custom-effort",
+		Title:       "Fix typo",
+		Description: "Fix one typo.",
+	})
+	if result != "low" {
+		t.Fatalf("expected configured command result, got %q", result)
 	}
 }
 

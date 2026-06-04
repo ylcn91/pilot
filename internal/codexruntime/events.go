@@ -63,7 +63,7 @@ func MapNotification(msg Message) (Event, error) {
 		ItemID:    rawString(fields, "itemId"),
 		Delta:     rawString(fields, "delta"),
 		Diff:      rawString(fields, "diff"),
-		Error:     rawString(fields, "message"),
+		Error:     firstRawString(fields, "message", "error", "reason"),
 		RawParams: msg.Params,
 	}
 	if explanation := rawString(fields, "explanation"); explanation != "" {
@@ -139,6 +139,15 @@ func rawString(fields map[string]json.RawMessage, key string) string {
 		return ""
 	}
 	return text
+}
+
+func firstRawString(fields map[string]json.RawMessage, keys ...string) string {
+	for _, key := range keys {
+		if value := rawString(fields, key); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func decodeAny(raw json.RawMessage) any {

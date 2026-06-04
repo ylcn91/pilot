@@ -34,6 +34,7 @@ type EffortClassifier struct {
 	useStructuredOutput bool
 	apiKey              string // Anthropic API key or OAuth token for direct API mode
 	apiURL              string // API endpoint URL (default: https://api.anthropic.com/v1/messages)
+	command             string // Claude Code executable used for subprocess mode
 
 	// cmdRunner is the function that executes the claude command (subprocess mode).
 	// Can be overridden for testing.
@@ -81,6 +82,7 @@ func NewEffortClassifier() *EffortClassifier {
 	c := &EffortClassifier{
 		model:      "claude-haiku-4-5-20251001",
 		apiURL:     "https://api.anthropic.com/v1/messages",
+		command:    "claude",
 		timeout:    30 * time.Second,
 		log:        logging.WithComponent("effort-classifier"),
 		cache:      make(map[string]string),
@@ -106,7 +108,11 @@ func NewEffortClassifier() *EffortClassifier {
 
 // defaultCmdRunner executes the claude command.
 func (c *EffortClassifier) defaultCmdRunner(ctx context.Context, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "claude", args...)
+	command := c.command
+	if command == "" {
+		command = "claude"
+	}
+	cmd := exec.CommandContext(ctx, command, args...)
 	return cmd.Output()
 }
 
@@ -121,6 +127,12 @@ func newEffortClassifierWithRunner(runner func(ctx context.Context, args ...stri
 // SetUseStructuredOutput configures whether to use Claude Code's --json-schema structured output.
 func (c *EffortClassifier) SetUseStructuredOutput(enabled bool) {
 	c.useStructuredOutput = enabled
+}
+
+func (c *EffortClassifier) SetCommand(command string) {
+	if command != "" {
+		c.command = command
+	}
 }
 
 // Classify determines task effort level using LLM.

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <filter id="lift" x="-14%" y="-14%" width="128%" height="128%">
+      <feDropShadow dx="0" dy="18" stdDeviation="16" flood-color="#FFFFFF" flood-opacity="0.18"/>
+      <feDropShadow dx="0" dy="26" stdDeviation="22" flood-color="#000000" flood-opacity="0.34"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#lift)" fill="#050505">
+    <rect x="98" y="206" width="448" height="96"/>
+    <rect x="98" y="302" width="96" height="192"/>
+    <rect x="450" y="302" width="96" height="384"/>
+    <rect x="98" y="494" width="448" height="96"/>
+    <rect x="98" y="782" width="448" height="96"/>
+
+    <rect x="706" y="206" width="96" height="96"/>
+    <rect x="610" y="302" width="192" height="96"/>
+    <rect x="706" y="398" width="96" height="384"/>
+    <rect x="610" y="782" width="288" height="96"/>
+  </g>
+</svg>

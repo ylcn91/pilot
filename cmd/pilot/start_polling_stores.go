@@ -22,9 +22,10 @@ func (p *pollingRuntime) setupStores() func() {
 	projectPath := p.projectPath
 	tgApprovalHandlerImpl := p.tgApprovalHandlerImpl
 	autopilotControllers := p.autopilotControllers
+	memoryPath := startMemoryPath(cfg)
 
 	// Initialize memory store early for dashboard persistence (GH-367)
-	store, err := memory.NewStore(cfg.Memory.Path)
+	store, err := memory.NewStore(memoryPath)
 	var closeStore func()
 	if err != nil {
 		logging.WithComponent("start").Warn("Failed to open memory store", slog.Any("error", err))
@@ -111,8 +112,8 @@ func (p *pollingRuntime) setupStores() func() {
 	}
 
 	// GH-1814: Initialize learning system
-	if store != nil && (cfg.Memory.Learning == nil || cfg.Memory.Learning.Enabled) {
-		patternStore, patternErr := memory.NewGlobalPatternStore(cfg.Memory.Path)
+	if store != nil && (cfg.Memory == nil || cfg.Memory.Learning == nil || cfg.Memory.Learning.Enabled) {
+		patternStore, patternErr := memory.NewGlobalPatternStore(memoryPath)
 		if patternErr != nil {
 			logging.WithComponent("learning").Warn("Failed to create pattern store, learning disabled", slog.Any("error", patternErr))
 		} else {
@@ -140,7 +141,7 @@ func (p *pollingRuntime) setupStores() func() {
 			logging.WithComponent("learning").Info("Model outcome tracker initialized")
 
 			// GH-2016: Wire knowledge graph into runner
-			kg, kgErr := memory.NewKnowledgeGraph(cfg.Memory.Path)
+			kg, kgErr := memory.NewKnowledgeGraph(memoryPath)
 			if kgErr != nil {
 				logging.WithComponent("learning").Warn("Failed to create knowledge graph", slog.Any("error", kgErr))
 			} else {
@@ -163,7 +164,7 @@ func (p *pollingRuntime) setupStores() func() {
 							logging.WithComponent("learning").Info("Applied pattern decay", slog.Int("patterns_decayed", n))
 						}
 						minConfidence := 0.1
-						if cfg.Memory.Learning != nil && cfg.Memory.Learning.MinConfidence > 0 {
+						if cfg.Memory != nil && cfg.Memory.Learning != nil && cfg.Memory.Learning.MinConfidence > 0 {
 							minConfidence = cfg.Memory.Learning.MinConfidence
 						}
 						if n, depErr := learningLoop.DeprecateLowConfidencePatterns(ctx, minConfidence); depErr != nil {

@@ -3,6 +3,8 @@ package architect
 import (
 	"context"
 	"errors"
+	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -46,6 +48,26 @@ func TestEmit_DryRunWithNilCreator(t *testing.T) {
 	}
 }
 
+func TestEmit_DryRunCanSuppressIssuePreview(t *testing.T) {
+	e := NewEmitter(nil, nil, "o", "r", nil).SuppressDryRunOutput()
+
+	out := captureStdout(t, func() {
+		created, _, err := e.Emit(context.Background(), []pilotapi.Finding{
+			finding("x", "refactor", pilotapi.RiskHigh, "a.go"),
+		}, true, 0)
+		if err != nil {
+			t.Fatalf("Emit: %v", err)
+		}
+		if created != 1 {
+			t.Errorf("would-create = %d, want 1", created)
+		}
+	})
+
+	if strings.Contains(out, "architect (dry-run)") || strings.Contains(out, "Filed by the Pilot Architect") {
+		t.Fatalf("dry-run preview leaked to stdout: %q", out)
+	}
+}
+
 func TestEmit_CreatesIssues(t *testing.T) {
 	creator := newMockCreator()
 	e := NewEmitter(creator, nil, "owner", "repo", []string{"pilot", "architect"})
@@ -71,6 +93,31 @@ func TestEmit_CreatesIssues(t *testing.T) {
 	if strings.Join(first.labels, ",") != "pilot,architect" {
 		t.Errorf("labels = %v, want [pilot architect]", first.labels)
 	}
+}
+
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stdout: %v", err)
+	}
+	os.Stdout = w
+	defer func() {
+		os.Stdout = old
+	}()
+
+	fn()
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("close stdout pipe: %v", err)
+	}
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("read stdout pipe: %v", err)
+	}
+	return string(out)
 }
 
 func TestEmit_DedupBySearch(t *testing.T) {

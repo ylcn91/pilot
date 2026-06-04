@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -24,9 +27,260 @@ func newConfigCmd() *cobra.Command {
 		newConfigEditCmd(),
 		newConfigValidateCmd(),
 		newConfigPathCmd(),
+		newConfigSetCmd(),
 	)
 
 	return cmd
+}
+
+func newConfigSetCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "set <key> <value> [<key> <value>...]",
+		Short: "Set configuration values",
+		Long: `Set one or more configuration values and validate the result.
+
+Values are typed automatically: true/false become booleans, numbers become
+numbers, and JSON/YAML flow values like ["Bug","Task"] become sequences.`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) < 2 || len(args)%2 != 0 {
+				return fmt.Errorf("expected key/value pairs")
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configPath := cfgFile
+			if configPath == "" {
+				configPath = config.DefaultConfigPath()
+			}
+
+			doc, err := loadConfigDocument(configPath)
+			if err != nil {
+				return err
+			}
+
+			root := configDocumentRoot(doc)
+			for i := 0; i < len(args); i += 2 {
+				key := strings.TrimSpace(args[i])
+				if key == "" {
+					return fmt.Errorf("config key cannot be empty")
+				}
+				if err := setYAMLPath(root, key, configValueNode(args[i+1])); err != nil {
+					return fmt.Errorf("%s: %w", key, err)
+				}
+			}
+
+			data, err := yaml.Marshal(doc)
+			if err != nil {
+				return fmt.Errorf("failed to marshal config: %w", err)
+			}
+
+			cfg := config.DefaultConfig()
+			if err := yaml.Unmarshal([]byte(os.ExpandEnv(string(data))), cfg); err != nil {
+				return fmt.Errorf("failed to parse updated config: %w", err)
+			}
+			if err := cfg.Validate(); err != nil {
+				return fmt.Errorf("updated config is invalid: %w", err)
+			}
+
+			if err := writeConfigBytes(configPath, data); err != nil {
+				return err
+			}
+
+			fmt.Printf("Updated %s\n", configPath)
+			for i := 0; i < len(args); i += 2 {
+				fmt.Printf("  %s\n", args[i])
+			}
+			return nil
+		},
+	}
+}
+
+func loadConfigDocument(path string) (*yaml.Node, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("failed to read config: %w", err)
+		}
+		defaultData, marshalErr := yaml.Marshal(config.DefaultConfig())
+		if marshalErr != nil {
+			return nil, fmt.Errorf("failed to build default config: %w", marshalErr)
+		}
+		data = defaultData
+	}
+	if strings.TrimSpace(string(data)) == "" {
+		defaultData, marshalErr := yaml.Marshal(config.DefaultConfig())
+		if marshalErr != nil {
+			return nil, fmt.Errorf("failed to build default config: %w", marshalErr)
+		}
+		data = defaultData
+	}
+
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("failed to parse config: %w", err)
+	}
+	return &doc, nil
+}
+
+func configDocumentRoot(doc *yaml.Node) *yaml.Node {
+	if doc.Kind != yaml.DocumentNode {
+		*doc = yaml.Node{Kind: yaml.DocumentNode}
+	}
+	if len(doc.Content) == 0 {
+		doc.Content = []*yaml.Node{{Kind: yaml.MappingNode}}
+	}
+	if doc.Content[0].Kind == 0 {
+		doc.Content[0].Kind = yaml.MappingNode
+	}
+	return doc.Content[0]
+}
+
+func writeConfigBytes(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+	_ = os.Chmod(dir, 0700)
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+	if err := os.Chmod(path, 0600); err != nil {
+		return fmt.Errorf("failed to chmod config to 0600: %w", err)
+	}
+	return nil
+}
+
+func setYAMLPath(root *yaml.Node, key string, value *yaml.Node) error {
+	parts := strings.Split(key, ".")
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			return fmt.Errorf("empty path segment")
+		}
+	}
+	return setYAMLPathParts(root, parts, value)
+}
+
+func setYAMLPathParts(node *yaml.Node, parts []string, value *yaml.Node) error {
+	if len(parts) == 0 {
+		return nil
+	}
+	part := parts[0]
+	if len(parts) == 1 {
+		if idx, ok := configPathIndex(part); ok {
+			ensureSequenceNode(node)
+			ensureSequenceIndex(node, idx, yaml.MappingNode)
+			node.Content[idx] = value
+			return nil
+		}
+		ensureMappingNode(node)
+		setMappingValue(node, part, value)
+		return nil
+	}
+
+	if idx, ok := configPathIndex(part); ok {
+		ensureSequenceNode(node)
+		ensureSequenceIndex(node, idx, containerKind(parts[1]))
+		return setYAMLPathParts(node.Content[idx], parts[1:], value)
+	}
+
+	ensureMappingNode(node)
+	child := mappingValue(node, part)
+	if child == nil {
+		child = &yaml.Node{Kind: containerKind(parts[1])}
+		node.Content = append(node.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: part}, child)
+	} else if child.Kind == yaml.ScalarNode {
+		child.Kind = containerKind(parts[1])
+		child.Tag = ""
+		child.Value = ""
+		child.Content = nil
+	}
+	return setYAMLPathParts(child, parts[1:], value)
+}
+
+func configValueNode(raw string) *yaml.Node {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: ""}
+	}
+	if strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "{") {
+		var doc yaml.Node
+		if err := yaml.Unmarshal([]byte(trimmed), &doc); err == nil && len(doc.Content) > 0 {
+			return doc.Content[0]
+		}
+	}
+	if value, err := strconv.ParseBool(trimmed); err == nil {
+		if value {
+			return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"}
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "false"}
+	}
+	if _, err := strconv.ParseInt(trimmed, 10, 64); err == nil {
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: trimmed}
+	}
+	if _, err := strconv.ParseFloat(trimmed, 64); err == nil && strings.Contains(trimmed, ".") {
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!float", Value: trimmed}
+	}
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: raw}
+}
+
+func ensureMappingNode(node *yaml.Node) {
+	if node.Kind == yaml.MappingNode {
+		return
+	}
+	node.Kind = yaml.MappingNode
+	node.Tag = ""
+	node.Value = ""
+	node.Content = nil
+}
+
+func ensureSequenceNode(node *yaml.Node) {
+	if node.Kind == yaml.SequenceNode {
+		return
+	}
+	node.Kind = yaml.SequenceNode
+	node.Tag = ""
+	node.Value = ""
+	node.Content = nil
+}
+
+func ensureSequenceIndex(node *yaml.Node, idx int, kind yaml.Kind) {
+	for len(node.Content) <= idx {
+		node.Content = append(node.Content, &yaml.Node{Kind: kind})
+	}
+	if node.Content[idx].Kind == 0 {
+		node.Content[idx].Kind = kind
+	}
+}
+
+func mappingValue(node *yaml.Node, key string) *yaml.Node {
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == key {
+			return node.Content[i+1]
+		}
+	}
+	return nil
+}
+
+func setMappingValue(node *yaml.Node, key string, value *yaml.Node) {
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == key {
+			node.Content[i+1] = value
+			return
+		}
+	}
+	node.Content = append(node.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}, value)
+}
+
+func configPathIndex(value string) (int, bool) {
+	idx, err := strconv.Atoi(value)
+	return idx, err == nil && idx >= 0
+}
+
+func containerKind(next string) yaml.Kind {
+	if _, ok := configPathIndex(next); ok {
+		return yaml.SequenceNode
+	}
+	return yaml.MappingNode
 }
 
 func newConfigShowCmd() *cobra.Command {
@@ -208,6 +462,48 @@ func newConfigValidateCmd() *cobra.Command {
 					hasAdapter = true
 					if cfg.Adapters.GitHub.Token == "" && os.Getenv("GITHUB_TOKEN") == "" {
 						warnings = append(warnings, "GitHub enabled but token not set")
+					}
+				}
+				if cfg.Adapters.GitLab != nil && cfg.Adapters.GitLab.Enabled {
+					hasAdapter = true
+					if cfg.Adapters.GitLab.Token == "" && os.Getenv("GITLAB_TOKEN") == "" {
+						warnings = append(warnings, "GitLab enabled but token not set")
+					}
+				}
+				if cfg.Adapters.Bitbucket != nil && cfg.Adapters.Bitbucket.Enabled {
+					hasAdapter = true
+					if cfg.Adapters.Bitbucket.Token == "" && os.Getenv("BITBUCKET_TOKEN") == "" {
+						warnings = append(warnings, "Bitbucket enabled but token not set")
+					}
+				}
+				if cfg.Adapters.AzureDevOps != nil && cfg.Adapters.AzureDevOps.Enabled {
+					hasAdapter = true
+					if cfg.Adapters.AzureDevOps.PAT == "" && os.Getenv("AZURE_DEVOPS_PAT") == "" {
+						warnings = append(warnings, "Azure DevOps enabled but pat not set")
+					}
+				}
+				if cfg.Adapters.Jira != nil && cfg.Adapters.Jira.Enabled {
+					hasAdapter = true
+					if cfg.Adapters.Jira.APIToken == "" && os.Getenv("JIRA_API_TOKEN") == "" {
+						warnings = append(warnings, "Jira enabled but api_token not set")
+					}
+				}
+				if cfg.Adapters.Asana != nil && cfg.Adapters.Asana.Enabled {
+					hasAdapter = true
+					if cfg.Adapters.Asana.AccessToken == "" && os.Getenv("ASANA_ACCESS_TOKEN") == "" {
+						warnings = append(warnings, "Asana enabled but access_token not set")
+					}
+				}
+				if cfg.Adapters.Plane != nil && cfg.Adapters.Plane.Enabled {
+					hasAdapter = true
+					if cfg.Adapters.Plane.APIKey == "" && os.Getenv("PLANE_API_KEY") == "" {
+						warnings = append(warnings, "Plane enabled but api_key not set")
+					}
+				}
+				if cfg.Adapters.Discord != nil && cfg.Adapters.Discord.Enabled {
+					hasAdapter = true
+					if cfg.Adapters.Discord.BotToken == "" && os.Getenv("DISCORD_BOT_TOKEN") == "" {
+						warnings = append(warnings, "Discord enabled but bot_token not set")
 					}
 				}
 				if !hasAdapter {

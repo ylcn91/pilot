@@ -21,6 +21,8 @@ import (
 type chatOptions struct {
 	cwd       string
 	command   string
+	profile   string
+	env       []string
 	model     string
 	sandbox   string
 	prompt    string
@@ -59,6 +61,8 @@ Examples:
 
 	cmd.Flags().StringVar(&opts.cwd, "cwd", ".", "Repository working directory")
 	cmd.Flags().StringVar(&opts.command, "command", "codex", "Codex CLI command")
+	cmd.Flags().StringVar(&opts.profile, "profile", "", "Codex config profile passed to app-server")
+	cmd.Flags().StringArrayVar(&opts.env, "env", nil, "Environment variable passed to app-server process as KEY=value")
 	cmd.Flags().StringVar(&opts.model, "model", "", "Model override for this thread")
 	cmd.Flags().StringVar(&opts.sandbox, "sandbox", string(codexruntime.SandboxReadOnly), "Sandbox mode: read-only, workspace-write, danger-full-access")
 	cmd.Flags().BoolVar(&opts.noPriming, "no-priming", false, "Skip injecting .agent guidance on the first turn")
@@ -109,7 +113,9 @@ func runChat(ctx context.Context, opts chatOptions, stdout, stderr io.Writer) er
 
 	client, err := codexruntime.Start(ctx, codexruntime.Config{
 		Command: opts.command,
+		Args:    chatAppServerArgs(opts.profile),
 		Cwd:     cwd,
+		Env:     opts.env,
 		Stderr:  stderr,
 	})
 	if err != nil {
@@ -118,10 +124,10 @@ func runChat(ctx context.Context, opts chatOptions, stdout, stderr io.Writer) er
 	defer client.Close()
 
 	if err := initializeChat(ctx, client); err != nil {
-		return err
+		return fmt.Errorf("initialize app-server: %w", err)
 	}
 	if err := client.Notify("initialized", nil); err != nil {
-		return err
+		return fmt.Errorf("notify initialized: %w", err)
 	}
 
 	ephemeral := true
@@ -136,7 +142,7 @@ func runChat(ctx context.Context, opts chatOptions, stdout, stderr io.Writer) er
 		SessionStartSource: codexruntime.ThreadStartSourceStartup,
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("thread/start: %w", err)
 	}
 
 	// Prime the first turn with .agent guidance so the codex-app-server backend
@@ -156,16 +162,20 @@ func runChat(ctx context.Context, opts chatOptions, stdout, stderr io.Writer) er
 		Input:          []codexruntime.UserInput{codexruntime.TextUserInput(firstPrompt)},
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("turn/start: %w", err)
 	}
 	_ = turn
 
 	assistantStarted := false
+	traceChat := os.Getenv("PILOT_CHAT_TRACE") == "1"
 	for {
 		select {
 		case msg, ok := <-client.Notifications():
 			if !ok {
 				return errors.New("codex app-server closed before turn completed")
+			}
+			if traceChat {
+				_, _ = fmt.Fprintf(stderr, "[app-server notification] method=%s params=%s\n", msg.Method, string(msg.Params))
 			}
 			event, err := codexruntime.MapNotification(msg)
 			if err != nil {
@@ -185,7 +195,11 @@ func runChat(ctx context.Context, opts chatOptions, stdout, stderr io.Writer) er
 				}
 			case codexruntime.EventError:
 				if event.Error == "" {
-					event.Error = "codex app-server error"
+					if len(event.RawParams) > 0 {
+						event.Error = fmt.Sprintf("codex app-server error: %s", string(event.RawParams))
+					} else {
+						event.Error = "codex app-server error"
+					}
 				}
 				return errors.New(event.Error)
 			case codexruntime.EventTurnCompleted:
@@ -197,6 +211,9 @@ func runChat(ctx context.Context, opts chatOptions, stdout, stderr io.Writer) er
 		case req, ok := <-client.ServerRequests():
 			if !ok {
 				continue
+			}
+			if traceChat {
+				_, _ = fmt.Fprintf(stderr, "[app-server request] method=%s params=%s\n", req.Method, string(req.Params))
 			}
 			if err := denyChatServerRequest(client, req); err != nil {
 				return err
@@ -213,6 +230,14 @@ func runChat(ctx context.Context, opts chatOptions, stdout, stderr io.Writer) er
 			return ctx.Err()
 		}
 	}
+}
+
+func chatAppServerArgs(profile string) []string {
+	profile = strings.TrimSpace(profile)
+	if profile == "" {
+		return nil
+	}
+	return []string{"--profile", profile, "app-server", "--stdio"}
 }
 
 func initializeChat(ctx context.Context, client *codexruntime.Client) error {

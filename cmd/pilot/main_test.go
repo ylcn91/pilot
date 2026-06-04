@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/ylcn91/pilot/internal/config"
 )
 
 // TestStartCommandFlags verifies all expected flags exist on the start command
@@ -36,6 +37,52 @@ func TestStartCommandFlags(t *testing.T) {
 		if ef.shorthand != "" && flag.Shorthand != ef.shorthand {
 			t.Errorf("flag --%s: expected shorthand -%s, got -%s", ef.name, ef.shorthand, flag.Shorthand)
 		}
+	}
+}
+
+func TestStartMemoryPathFallsBackToDefault(t *testing.T) {
+	defaultPath := config.DefaultConfig().Memory.Path
+
+	tests := []struct {
+		name string
+		cfg  *config.Config
+		want string
+	}{
+		{
+			name: "nil memory",
+			cfg: func() *config.Config {
+				cfg := config.DefaultConfig()
+				cfg.Memory = nil
+				return cfg
+			}(),
+			want: defaultPath,
+		},
+		{
+			name: "empty memory path",
+			cfg: func() *config.Config {
+				cfg := config.DefaultConfig()
+				cfg.Memory.Path = " "
+				return cfg
+			}(),
+			want: defaultPath,
+		},
+		{
+			name: "configured memory path",
+			cfg: func() *config.Config {
+				cfg := config.DefaultConfig()
+				cfg.Memory.Path = "/tmp/pilot-memory"
+				return cfg
+			}(),
+			want: "/tmp/pilot-memory",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := startMemoryPath(tt.cfg); got != tt.want {
+				t.Fatalf("startMemoryPath() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

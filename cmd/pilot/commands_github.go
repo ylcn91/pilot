@@ -288,7 +288,11 @@ Examples:
 			}
 
 			fmt.Println()
-			fmt.Println("⏳ Executing task with Claude Code...")
+			backendName := "active backend"
+			if backend := runner.GetBackend(); backend != nil {
+				backendName = backend.Name()
+			}
+			fmt.Printf("⏳ Executing task with %s...\n", backendName)
 			fmt.Println()
 
 			result, err := runner.Execute(ctx, task)

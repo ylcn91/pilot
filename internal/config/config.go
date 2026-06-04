@@ -113,6 +113,19 @@ func DefaultConfig() *Config {
 	}
 }
 
+func MemoryPathOrDefault(config *Config) string {
+	if config != nil && config.Memory != nil {
+		if strings.TrimSpace(config.Memory.Path) != "" {
+			return config.Memory.Path
+		}
+	}
+	defaultConfig := DefaultConfig()
+	if defaultConfig.Memory == nil {
+		return ""
+	}
+	return defaultConfig.Memory.Path
+}
+
 // Load reads and parses configuration from a YAML file at the given path.
 // Environment variables in the file are expanded using os.ExpandEnv syntax.
 // If the file does not exist, default configuration is returned.

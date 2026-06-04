@@ -5,9 +5,11 @@ import (
 	"log/slog"
 
 	"github.com/ylcn91/pilot/internal/adapters/github"
+	"github.com/ylcn91/pilot/internal/architect"
 	"github.com/ylcn91/pilot/internal/config"
 	"github.com/ylcn91/pilot/internal/dashboard"
 	"github.com/ylcn91/pilot/internal/executor"
+	"github.com/ylcn91/pilot/internal/gateway"
 	"github.com/ylcn91/pilot/internal/logging"
 	"github.com/ylcn91/pilot/internal/memory"
 	"github.com/ylcn91/pilot/internal/pilot"
@@ -49,6 +51,7 @@ func wireGatewayPilot(p *pilot.Pilot, gw *gatewayInfra, cfg *config.Config, proj
 		p.Gateway().SetDashboardStore(gw.Store)
 		p.Gateway().SetLogStreamStore(gw.Store)
 	}
+	wireGatewayArchitect(gw, cfg, projectPath, p.Gateway())
 
 	// GH-1633: Wire git graph fetcher to gateway so /api/v1/gitgraph returns live git data
 	p.Gateway().SetGitGraphFetcher(func(path string, limit int) interface{} {
@@ -57,8 +60,9 @@ func wireGatewayPilot(p *pilot.Pilot, gw *gatewayInfra, cfg *config.Config, proj
 	p.Gateway().SetGitGraphPath(projectPath)
 
 	// GH-1935: Wire learning system into gateway mode (mirrors polling-mode wiring)
-	if gw.Store != nil && (cfg.Memory.Learning == nil || cfg.Memory.Learning.Enabled) {
-		gwPatternStore, gwPatternErr := memory.NewGlobalPatternStore(cfg.Memory.Path)
+	if gw.Store != nil && gw.Runner != nil && (cfg.Memory == nil || cfg.Memory.Learning == nil || cfg.Memory.Learning.Enabled) {
+		memoryPath := startMemoryPath(cfg)
+		gwPatternStore, gwPatternErr := memory.NewGlobalPatternStore(memoryPath)
 		if gwPatternErr != nil {
 			logging.WithComponent("learning").Warn("Failed to create pattern store, learning disabled (gateway mode)", slog.Any("error", gwPatternErr))
 		} else {
@@ -82,7 +86,7 @@ func wireGatewayPilot(p *pilot.Pilot, gw *gatewayInfra, cfg *config.Config, proj
 			}
 
 			// GH-2016: Wire knowledge graph into gateway runner
-			gwKG, gwKGErr := memory.NewKnowledgeGraph(cfg.Memory.Path)
+			gwKG, gwKGErr := memory.NewKnowledgeGraph(memoryPath)
 			if gwKGErr != nil {
 				logging.WithComponent("learning").Warn("Failed to create knowledge graph (gateway mode)", slog.Any("error", gwKGErr))
 			} else {
@@ -93,4 +97,32 @@ func wireGatewayPilot(p *pilot.Pilot, gw *gatewayInfra, cfg *config.Config, proj
 			logging.WithComponent("learning").Info("Learning system initialized (gateway mode)")
 		}
 	}
+}
+
+func wireGatewayArchitect(gw *gatewayInfra, cfg *config.Config, projectPath string, server *gateway.Server) {
+	if gw == nil || server == nil || !architectEnabled(cfg) {
+		return
+	}
+
+	store := architect.NewFindingsStore()
+	server.SetArchitectProvider(store)
+	gw.ArchitectStore = store
+
+	scheduler := architect.NewScheduler(
+		architectRadarConfig(cfg, projectPath),
+		architectSchedulerConfig(cfg),
+		store,
+		slog.Default(),
+	)
+	if err := scheduler.Start(context.Background()); err != nil {
+		logging.WithComponent("start").Warn("Failed to start architect radar scheduler", slog.Any("error", err))
+		return
+	}
+
+	logging.WithComponent("start").Info("architect radar scheduler started",
+		slog.String("schedule", cfg.Architect.Schedule),
+		slog.String("timezone", cfg.Architect.Timezone),
+		slog.String("project_path", projectPath),
+	)
+	gw.ArchitectScheduler = scheduler
 }
