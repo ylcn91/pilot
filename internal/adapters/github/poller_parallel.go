@@ -10,6 +10,7 @@ import (
 
 	"github.com/ylcn91/pilot/internal/adapters/skipreason"
 	"github.com/ylcn91/pilot/internal/executor"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // checkForNewIssues fetches issues and dispatches new ones concurrently (parallel mode)
@@ -269,6 +270,7 @@ func (p *Poller) checkForNewIssues(ctx context.Context) {
 		p.activeWg.Add(1)
 		p.wgMu.Unlock()
 		go func(issue *Issue) {
+			defer logging.Recover("github.poller.dispatchIssue")
 			defer p.activeWg.Done()
 			defer func() { <-p.semaphore }() // release slot
 

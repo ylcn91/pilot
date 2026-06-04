@@ -136,6 +136,7 @@ func (h *Handler) cleanupLoop(ctx context.Context) {
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go func() {
+		defer logging.Recover("slack.handler.cleanupCancelWatch")
 		select {
 		case <-h.stopCh:
 			cancel()
