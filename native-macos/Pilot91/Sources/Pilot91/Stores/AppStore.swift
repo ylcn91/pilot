@@ -216,7 +216,7 @@ final class AppStore: ObservableObject {
     }
 
     func connectRuntime() {
-        runtime.connect(gatewayURL: settings.gatewayURL)
+        runtime.connect(gatewayURL: settings.gatewayURL, authToken: settings.authToken)
     }
 
     func runCommand(_ command: PilotCommandDefinition, rawArguments: String, prompt: String) async {
