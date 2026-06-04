@@ -30,6 +30,9 @@ func (p *pollingRuntime) setupGateway() {
 	var gwServer *gateway.Server // hoisted so TASK-332 alert-metrics wiring can run after alerts engine is created
 	if !p.noGateway && cfg.Gateway != nil {
 		gwServer = gateway.NewServer(cfg.Gateway)
+		// GH-14: report the real build version on /api/v1/status instead of the
+		// gateway's hardcoded default.
+		gwServer.SetVersion(version)
 		if autopilotController != nil {
 			gwServer.SetAutopilotProvider(&autopilotProviderAdapter{controller: autopilotController})
 			gwServer.SetMetricsSource(autopilotController.Metrics())
