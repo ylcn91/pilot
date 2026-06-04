@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/ylcn91/pilot/internal/logging"
 )
@@ -19,6 +20,13 @@ type WebhookHandler struct {
 	webhookSecret string
 	pilotTag      string
 	onTask        func(context.Context, *Task) error
+
+	// pilotTagGID caches the resolved GID of the pilot tag so a tag-add change
+	// that only carries a GID (no name) can be matched without fetching the
+	// whole task. Guarded by pilotTagGIDMu; resolved lazily on first need.
+	pilotTagGIDMu sync.Mutex
+	pilotTagGID   string
+	pilotTagGIDOK bool
 }
 
 // NewWebhookHandler creates a new webhook handler
@@ -102,7 +110,7 @@ func (h *WebhookHandler) handleTaskEvent(ctx context.Context, event WebhookEvent
 
 	// Check if this is a tag change event - if so, verify pilot tag was added
 	if event.Change != nil && event.Change.Field == "tags" {
-		if !h.wasTagAdded(event.Change) {
+		if !h.wasTagAdded(ctx, event.Change) {
 			logging.WithComponent("asana").Debug("Tag change but pilot tag not added, skipping",
 				slog.String("task_gid", taskGID))
 			return nil
@@ -165,27 +173,64 @@ func (h *WebhookHandler) hasPilotTag(task *Task) bool {
 	return false
 }
 
-// wasTagAdded checks if the pilot tag was added in this change
-func (h *WebhookHandler) wasTagAdded(change *WebhookChange) bool {
+// wasTagAdded checks if the pilot tag was added in this change. When the change
+// carries the tag name, it is matched directly. When only a GID is present
+// (Asana sometimes omits the name), the pilot tag's GID is resolved once and
+// cached, then compared — instead of optimistically returning true, which
+// forced a full task fetch for every unrelated tag-add.
+func (h *WebhookHandler) wasTagAdded(ctx context.Context, change *WebhookChange) bool {
 	if change.Action != "added" {
 		return false
 	}
 
-	// AddedValue might be a map with tag info
-	if addedTag, ok := change.AddedValue.(map[string]interface{}); ok {
-		if name, ok := addedTag["name"].(string); ok {
-			return strings.EqualFold(name, h.pilotTag)
-		}
-		// Check by GID if name not available
-		if gid, ok := addedTag["gid"].(string); ok {
-			// Would need to look up tag name, for now just log
-			logging.WithComponent("asana").Debug("Tag added by GID",
-				slog.String("gid", gid))
-			return true // Optimistically assume it might be pilot tag
-		}
+	addedTag, ok := change.AddedValue.(map[string]interface{})
+	if !ok {
+		return false
 	}
 
-	return false
+	if name, ok := addedTag["name"].(string); ok {
+		return strings.EqualFold(name, h.pilotTag)
+	}
+
+	// Name absent: compare the added tag's GID against the resolved pilot tag GID.
+	gid, ok := addedTag["gid"].(string)
+	if !ok {
+		return false
+	}
+	pilotGID, ok := h.resolvePilotTagGID(ctx)
+	if !ok {
+		// Could not resolve the pilot tag (e.g. transient API error): skip rather
+		// than fetch the whole task on an unverifiable tag-add.
+		logging.WithComponent("asana").Debug("Tag added by GID but pilot tag GID unresolved, skipping",
+			slog.String("gid", gid))
+		return false
+	}
+	return gid == pilotGID
+}
+
+// resolvePilotTagGID returns the GID of the configured pilot tag, looking it up
+// via the workspace tags on first call and caching the result.
+func (h *WebhookHandler) resolvePilotTagGID(ctx context.Context) (string, bool) {
+	h.pilotTagGIDMu.Lock()
+	defer h.pilotTagGIDMu.Unlock()
+
+	if h.pilotTagGIDOK {
+		return h.pilotTagGID, h.pilotTagGID != ""
+	}
+
+	tag, err := h.client.FindTagByName(ctx, h.pilotTag)
+	if err != nil {
+		// Don't cache a transient failure; allow a later retry.
+		logging.WithComponent("asana").Debug("Failed to resolve pilot tag GID",
+			slog.Any("error", err))
+		return "", false
+	}
+
+	h.pilotTagGIDOK = true
+	if tag != nil {
+		h.pilotTagGID = tag.GID
+	}
+	return h.pilotTagGID, h.pilotTagGID != ""
 }
 
 // HandleRaw processes a raw webhook payload (for use with net/http handlers)

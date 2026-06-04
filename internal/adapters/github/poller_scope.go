@@ -126,3 +126,33 @@ func (p *Poller) syncBoardStatusInProgress(ctx context.Context, issue *Issue) {
 			slog.Any("error", err))
 	}
 }
+
+// syncBoardStatusBlocked moves the issue card to the configured blocked status
+// on the Projects V2 board when work is rejected pre-flight or fails, so the
+// card transitions out of In Progress instead of orphaning there (#17).
+// Best-effort: logs errors but never fails the caller. No-op when boardSync is
+// nil or blockedStatus is empty.
+func (p *Poller) syncBoardStatusBlocked(ctx context.Context, issue *Issue) {
+	if p.board.boardSync == nil || p.board.blockedStatus == "" {
+		return
+	}
+
+	nodeID := issue.NodeID
+	if nodeID == "" {
+		var err error
+		nodeID, err = p.client.GetIssueNodeID(ctx, p.owner, p.repo, issue.Number)
+		if err != nil {
+			p.logger.Warn("board sync: failed to resolve issue node ID for blocked status",
+				slog.Int("issue", issue.Number),
+				slog.Any("error", err))
+			return
+		}
+	}
+
+	if err := p.board.boardSync.UpdateProjectItemStatus(ctx, nodeID, p.board.blockedStatus); err != nil {
+		p.logger.Warn("board sync: failed to update project item status to blocked",
+			slog.Int("issue", issue.Number),
+			slog.String("status", p.board.blockedStatus),
+			slog.Any("error", err))
+	}
+}

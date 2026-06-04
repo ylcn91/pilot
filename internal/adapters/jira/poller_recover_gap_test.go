@@ -188,7 +188,7 @@ func TestRecoverOrphanedIssues_SearchErrorIsTolerated(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, testutil.FakeJiraUsername, testutil.FakeJiraAPIToken, PlatformCloud)
+	client := newClientNoRetry(server.URL, testutil.FakeJiraUsername, testutil.FakeJiraAPIToken, PlatformCloud)
 	config := &Config{PilotLabel: "pilot"}
 	poller := NewPoller(client, config, 30*time.Second)
 

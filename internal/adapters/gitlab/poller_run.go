@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ylcn91/pilot/internal/adapters/skipreason"
+	"github.com/ylcn91/pilot/internal/executor"
 )
 
 // recoverOrphanedIssues finds issues with pilot-in-progress label from a previous run
@@ -115,6 +116,19 @@ func (p *Poller) startSequential(ctx context.Context) {
 
 		result, err := p.processIssueSequential(ctx, issue)
 		if err != nil {
+			// GH-3252 parity: a rate-limit error is transient. Marking the issue
+			// processed would drop it until restart, so leave it unprocessed and
+			// let the next poll cycle pick it up once the limit resets.
+			if executor.IsRateLimitError(err.Error()) {
+				p.logger.Warn("Rate limited processing issue, deferring for retry",
+					slog.Int("iid", issue.IID),
+					slog.Any("error", err),
+				)
+				p.recordSkip(skipreason.ReasonTaskQueued)
+				// DON'T mark as processed - retry on the next poll cycle.
+				continue
+			}
+
 			p.logger.Error("Failed to process issue",
 				slog.Int("iid", issue.IID),
 				slog.Any("error", err),
@@ -245,7 +259,7 @@ func (p *Poller) findOldestUnprocessedIssue(ctx context.Context) (*Issue, error)
 		}
 
 		if HasLabel(issue, LabelInProgress) || HasLabel(issue, LabelDone) {
-			p.recordSkip(skipreason.ReasonStatusLabel)
+			p.recordSkip(p.statusLabelSkipReason(issue))
 			continue
 		}
 

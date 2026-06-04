@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ylcn91/pilot/internal/adapters/skipreason"
+	"github.com/ylcn91/pilot/internal/executor"
 )
 
 // recoverOrphanedWorkItems finds work items with pilot-in-progress tag from a previous run
@@ -92,6 +93,19 @@ func (p *Poller) startSequential(ctx context.Context) {
 
 		result, err := p.processWorkItemSequential(ctx, wi)
 		if err != nil {
+			// GH-3252 parity: a rate-limit error is transient. Marking the work
+			// item processed would drop it until restart, so leave it unprocessed
+			// and let the next poll cycle pick it up once the limit resets.
+			if executor.IsRateLimitError(err.Error()) {
+				p.logger.Warn("Rate limited processing work item, deferring for retry",
+					slog.Int("id", wi.ID),
+					slog.Any("error", err),
+				)
+				p.recordSkip(skipreason.ReasonTaskQueued)
+				// DON'T mark as processed - retry on the next poll cycle.
+				continue
+			}
+
 			p.logger.Error("Failed to process work item",
 				slog.Int("id", wi.ID),
 				slog.Any("error", err),
@@ -221,7 +235,7 @@ func (p *Poller) findOldestUnprocessedWorkItem(ctx context.Context) (*WorkItem, 
 		}
 
 		if HasTag(wi, TagInProgress) || HasTag(wi, TagDone) {
-			p.recordSkip(skipreason.ReasonStatusTag)
+			p.recordSkip(p.statusTagSkipReason(wi))
 			continue
 		}
 

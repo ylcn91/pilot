@@ -68,22 +68,26 @@ func TestAzurePoller_SkipMetric_StatusTag(t *testing.T) {
 		name           string
 		tags           string
 		wantSkip       int
+		wantReason     string
 		wantDispatched int
 	}{
 		{
-			name:     "in_progress tag → status_tag skip",
-			tags:     "pilot; " + TagInProgress,
-			wantSkip: 1,
+			name:       "in_progress tag → in_progress skip",
+			tags:       "pilot; " + TagInProgress,
+			wantSkip:   1,
+			wantReason: skipreason.ReasonInProgress,
 		},
 		{
-			name:     "done tag → status_tag skip",
-			tags:     "pilot; " + TagDone,
-			wantSkip: 1,
+			name:       "done tag → done skip",
+			tags:       "pilot; " + TagDone,
+			wantSkip:   1,
+			wantReason: skipreason.ReasonDone,
 		},
 		{
-			name:     "failed tag → status_tag skip",
-			tags:     "pilot; " + TagFailed,
-			wantSkip: 1,
+			name:       "failed tag → failed_skip skip",
+			tags:       "pilot; " + TagFailed,
+			wantSkip:   1,
+			wantReason: skipreason.ReasonFailedSkip,
 		},
 		{
 			name:           "no status tag → dispatched",
@@ -122,9 +126,9 @@ func TestAzurePoller_SkipMetric_StatusTag(t *testing.T) {
 			defer m.mu.Unlock()
 
 			if tt.wantSkip > 0 {
-				got := m.skipped[skipreason.ReasonStatusTag]
+				got := m.skipped[tt.wantReason]
 				if got != tt.wantSkip {
-					t.Errorf("skipped[status_tag] = %d, want %d", got, tt.wantSkip)
+					t.Errorf("skipped[%s] = %d, want %d", tt.wantReason, got, tt.wantSkip)
 				}
 			}
 			if tt.wantDispatched > 0 && m.dispatched != tt.wantDispatched {

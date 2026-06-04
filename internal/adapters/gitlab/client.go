@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/ylcn91/pilot/internal/adapters/httpretry"
 )
 
 const (
@@ -19,8 +21,9 @@ const (
 type Client struct {
 	token      string
 	httpClient *http.Client
-	baseURL    string // For testing - defaults to gitlabAPIURL
-	projectID  string // URL-encoded project path (namespace%2Fproject)
+	baseURL    string                 // For testing - defaults to gitlabAPIURL
+	projectID  string                 // URL-encoded project path (namespace%2Fproject)
+	retryOpts  httpretry.RetryOptions // Retry config for doRequest; disabled in tests
 }
 
 // NewClient creates a new GitLab client
@@ -30,68 +33,80 @@ func NewClient(token, project string) *Client {
 		token:     token,
 		baseURL:   gitlabAPIURL,
 		projectID: url.PathEscape(project),
+		retryOpts: httpretry.DefaultRetryOptions(),
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 	}
 }
 
-// NewClientWithBaseURL creates a new GitLab client with a custom base URL (for testing)
+// NewClientWithBaseURL creates a new GitLab client with a custom base URL (for testing).
+// Retry is disabled by default so unit tests fail fast; set client.retryOpts to enable.
 func NewClientWithBaseURL(token, project, baseURL string) *Client {
 	return &Client{
 		token:     token,
 		baseURL:   baseURL,
 		projectID: url.PathEscape(project),
+		retryOpts: httpretry.RetryOptions{MaxRetries: 0},
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 	}
 }
 
-// doRequest performs an HTTP request to the GitLab API
+// doRequest performs an HTTP request to the GitLab API with automatic retry on
+// transient errors (429 + Retry-After, 5xx, network failures). The request body
+// is buffered once before the retry loop so it can be replayed on each attempt.
 func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}, result interface{}) error {
-	var bodyReader io.Reader
+	var bodyBytes []byte
 	if body != nil {
-		bodyBytes, err := json.Marshal(body)
+		var err error
+		bodyBytes, err = json.Marshal(body)
 		if err != nil {
 			return fmt.Errorf("failed to marshal request body: %w", err)
 		}
-		bodyReader = bytes.NewReader(bodyBytes)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bodyReader)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("PRIVATE-TOKEN", c.token)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(respBody))
-	}
-
-	if result != nil && len(respBody) > 0 {
-		if err := json.Unmarshal(respBody, result); err != nil {
-			return fmt.Errorf("failed to parse response: %w", err)
+	return httpretry.WithRetryVoid(ctx, func() error {
+		var bodyReader io.Reader
+		if bodyBytes != nil {
+			bodyReader = bytes.NewReader(bodyBytes)
 		}
-	}
 
-	return nil
+		req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bodyReader)
+		if err != nil {
+			return fmt.Errorf("failed to create request: %w", err)
+		}
+
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("PRIVATE-TOKEN", c.token)
+		if bodyBytes != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("failed to execute request: %w", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read response: %w", err)
+		}
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return httpretry.ClassifyResponse(resp, respBody)
+		}
+
+		if result != nil && len(respBody) > 0 {
+			if err := json.Unmarshal(respBody, result); err != nil {
+				return fmt.Errorf("failed to parse response: %w", err)
+			}
+		}
+
+		return nil
+	}, c.retryOpts)
 }
 
 // GetProject fetches project info

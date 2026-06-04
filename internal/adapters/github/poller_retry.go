@@ -42,6 +42,10 @@ func (p *Poller) handlePreFlightReject(ctx context.Context, issue *Issue, verdic
 				slog.Any("error", err))
 		}
 	}
+
+	// #17: move the board card out of In Progress so a rejected issue doesn't
+	// orphan there. Best-effort; no-op unless a blocked status is configured.
+	p.syncBoardStatusBlocked(ctx, issue)
 }
 
 // hasMergedWork checks if the issue already has merged PRs (e.g. "GH-123" in title).

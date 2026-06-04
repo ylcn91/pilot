@@ -29,6 +29,25 @@ func TestNewAnthropicClient(t *testing.T) {
 	}
 }
 
+func TestAnthropicClientSetTimeout(t *testing.T) {
+	client := NewAnthropicClient("test-api-key")
+
+	client.SetTimeout(2 * time.Second)
+	if client.httpClient.Timeout != 2*time.Second {
+		t.Errorf("after SetTimeout(2s): Timeout = %v, want %v", client.httpClient.Timeout, 2*time.Second)
+	}
+
+	// Non-positive values are ignored so a misconfigured zero can't disable the timeout.
+	client.SetTimeout(0)
+	if client.httpClient.Timeout != 2*time.Second {
+		t.Errorf("after SetTimeout(0): Timeout = %v, want unchanged %v", client.httpClient.Timeout, 2*time.Second)
+	}
+	client.SetTimeout(-1 * time.Second)
+	if client.httpClient.Timeout != 2*time.Second {
+		t.Errorf("after SetTimeout(-1s): Timeout = %v, want unchanged %v", client.httpClient.Timeout, 2*time.Second)
+	}
+}
+
 func TestAnthropicClientClassify(t *testing.T) {
 	tests := []struct {
 		name           string

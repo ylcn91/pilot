@@ -144,6 +144,86 @@ func TestPoller_SkipMetric_IncrementsByReason(t *testing.T) {
 	}
 }
 
+// TestPoller_SequentialSkipMetric_IncrementsByReason locks in GH #23: the
+// sequential fetch path (findOldestUnprocessedIssue) records the same skip
+// reasons as the parallel path, which previously recorded none.
+func TestPoller_SequentialSkipMetric_IncrementsByReason(t *testing.T) {
+	pilot := Label{Name: "pilot"}
+	tests := []struct {
+		name          string
+		issues        []*Issue
+		wantReason    string
+		wantSkipCount int
+	}{
+		{
+			name:          "in_progress label",
+			issues:        []*Issue{{Number: 1, Title: "t", Labels: []Label{pilot, {Name: LabelInProgress}}}},
+			wantReason:    skipreason.ReasonInProgress,
+			wantSkipCount: 1,
+		},
+		{
+			name:          "done label",
+			issues:        []*Issue{{Number: 1, Title: "t", Labels: []Label{pilot, {Name: LabelDone}}}},
+			wantReason:    skipreason.ReasonDone,
+			wantSkipCount: 1,
+		},
+		{
+			name:          "blocked label",
+			issues:        []*Issue{{Number: 1, Title: "t", Labels: []Label{pilot, {Name: LabelBlocked}}}},
+			wantReason:    skipreason.ReasonBlocked,
+			wantSkipCount: 1,
+		},
+		{
+			name:          "needs_clarification label",
+			issues:        []*Issue{{Number: 1, Title: "t", Labels: []Label{pilot, {Name: LabelNeedsClarification}}}},
+			wantReason:    skipreason.ReasonNeedsClarification,
+			wantSkipCount: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+				lastSegment := ""
+				if len(parts) > 0 {
+					lastSegment = parts[len(parts)-1]
+				}
+				isSingleGet := len(lastSegment) > 0 && lastSegment[0] >= '0' && lastSegment[0] <= '9'
+				if isSingleGet && len(tt.issues) > 0 {
+					_ = json.NewEncoder(w).Encode(tt.issues[0])
+					return
+				}
+				_ = json.NewEncoder(w).Encode(tt.issues)
+			}))
+			defer server.Close()
+
+			client := NewClientWithBaseURL(testutil.FakeGitHubToken, server.URL)
+			m := newFakePollerMetrics()
+
+			poller, _ := NewPoller(client, "owner/repo", "pilot", 30*time.Second,
+				WithOnIssue(func(ctx context.Context, issue *Issue) error { return nil }),
+				WithPollerMetrics(m),
+			)
+
+			issue, err := poller.findOldestUnprocessedIssue(context.Background())
+			if err != nil {
+				t.Fatalf("findOldestUnprocessedIssue error: %v", err)
+			}
+			if issue != nil {
+				t.Errorf("expected no dispatchable issue, got #%d", issue.Number)
+			}
+
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			if got := m.skipped[tt.wantReason]; got != tt.wantSkipCount {
+				t.Errorf("skipped[%q] = %d, want %d", tt.wantReason, got, tt.wantSkipCount)
+			}
+		})
+	}
+}
+
 func TestPoller_ScopeOverlapDeferral_IncrementsMetric(t *testing.T) {
 	// Two issues both referencing internal/auth — scope-overlap guard defers #2.
 	// groupByOverlappingScope uses directory extraction from issue bodies, not titles.

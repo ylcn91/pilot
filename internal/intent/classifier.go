@@ -34,16 +34,28 @@ type AnthropicClient struct {
 	apiURL     string
 }
 
-// NewAnthropicClient creates a new Anthropic API client
+// NewAnthropicClient creates a new Anthropic API client.
+// The default request timeout is 5s; override it with SetTimeout to honor a
+// configured value (e.g. telegram/discord llm_classifier.timeout_seconds).
 func NewAnthropicClient(apiKey string) *AnthropicClient {
 	return &AnthropicClient{
 		apiKey: apiKey,
 		httpClient: &http.Client{
-			Timeout: 5 * time.Second, // Fast timeout for classification
+			Timeout: 5 * time.Second, // default; override via SetTimeout
 		},
 		model:  "claude-haiku-4-5-20251001",
 		apiURL: "https://api.anthropic.com/v1/messages",
 	}
+}
+
+// SetTimeout overrides the HTTP timeout used for classification requests.
+// Non-positive durations are ignored so a misconfigured zero can't disable the
+// timeout and let a slow classification hang the message path.
+func (c *AnthropicClient) SetTimeout(d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	c.httpClient.Timeout = d
 }
 
 // SetModel overrides the model used for classification.

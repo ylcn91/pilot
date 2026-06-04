@@ -10,6 +10,7 @@ import (
 
 	"github.com/ylcn91/pilot/internal/adapters/skipreason"
 	"github.com/ylcn91/pilot/internal/executor"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // checkForNewIssues fetches issues and dispatches new ones concurrently (parallel mode)
@@ -269,6 +270,7 @@ func (p *Poller) checkForNewIssues(ctx context.Context) {
 		p.activeWg.Add(1)
 		p.wgMu.Unlock()
 		go func(issue *Issue) {
+			defer logging.Recover("github.poller.dispatchIssue")
 			defer p.activeWg.Done()
 			defer func() { <-p.semaphore }() // release slot
 
@@ -282,6 +284,9 @@ func (p *Poller) checkForNewIssues(ctx context.Context) {
 						slog.Int("number", issue.Number),
 						slog.Any("error", err),
 					)
+					// #17: move the card out of In Progress on failure so it
+					// doesn't orphan there after syncBoardStatusInProgress.
+					p.syncBoardStatusBlocked(ctx, issue)
 					// GH-2176: Unmark so retry path can re-pick after pilot-failed is removed
 					p.unmarkProcessed(issue.Number)
 					return
@@ -292,6 +297,8 @@ func (p *Poller) checkForNewIssues(ctx context.Context) {
 				// durable row is defense-in-depth so a daemon restart cannot re-dispatch until
 				// the human removes pilot-blocked (which clears the mark via the retry path).
 				if result != nil && !result.Success && result.PRNumber == 0 {
+					// #17: card transitions out of In Progress on a no-PR failure.
+					p.syncBoardStatusBlocked(ctx, issue)
 					if result.Error != nil && executor.IsPermanentFailure(result.Error.Error()) {
 						p.logger.Info("Permanent failure — retaining adapter_processed marker",
 							slog.Int("number", issue.Number),

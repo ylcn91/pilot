@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // isResumableCloseCode returns true for Discord close codes 4000-4009 that allow session resume.
@@ -38,6 +39,7 @@ func (g *GatewayClient) Listen(ctx context.Context) (<-chan GatewayEvent, error)
 	out := make(chan GatewayEvent, 64)
 
 	go func() {
+		defer logging.Recover("discord.gateway.listen")
 		defer close(out)
 
 		for {
@@ -125,6 +127,7 @@ func (g *GatewayClient) StartListening(ctx context.Context) (<-chan GatewayEvent
 	}
 
 	go func() {
+		defer logging.Recover("discord.gateway.listenWithReconnect")
 		defer close(out)
 
 		const (

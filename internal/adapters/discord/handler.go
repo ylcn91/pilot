@@ -118,6 +118,7 @@ func (h *Handler) cleanupLoop(ctx context.Context) {
 	defer h.wg.Done()
 	cctx, cancel := context.WithCancel(ctx)
 	go func() {
+		defer logging.Recover("discord.handler.cleanupCancelWatch")
 		select {
 		case <-h.stopCh:
 			cancel()
