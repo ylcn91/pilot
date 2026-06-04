@@ -112,6 +112,9 @@ func wireGatewayGitHubPolling(gw *gatewayInfra, cfg *config.Config, projectPath 
 		// Wire per-repo dispatch/skip counters (TASK-293) so the three poller
 		// counters are populated instead of staying zero.
 		pollerOpts = append(pollerOpts, github.WithPollerMetrics(gw.AutopilotController.Metrics()))
+		// GH-30: route non-2xx GitHub API errors into autopilot metrics so
+		// api_errors_total / api_error_rate become non-zero.
+		client.WithAPIErrorRecorder(gw.AutopilotController.Metrics())
 	}
 
 	// GH-2802: Wire pre-flight judge when enabled (GH-2817: uses CC subprocess, no API key)

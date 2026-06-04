@@ -61,6 +61,12 @@ func (p *pollingRuntime) startGitHubPolling() {
 
 		if token != "" {
 			client := github.NewClient(token)
+			// GH-30: route non-2xx GitHub API errors into autopilot metrics so
+			// api_errors_total / api_error_rate are non-zero and the
+			// api_error_rate_high alert can fire.
+			if p.autopilotController != nil {
+				client.WithAPIErrorRecorder(p.autopilotController.Metrics())
+			}
 			label := cfg.Adapters.GitHub.Polling.Label
 			if label == "" {
 				label = cfg.Adapters.GitHub.PilotLabel
