@@ -76,7 +76,12 @@ type PostExecutionSummary struct {
 
 // getPostExecutionSummary runs a structured output query to extract git state information.
 // This replaces brittle regex parsing of git output with reliable --json-schema extraction.
-func (r *Runner) getPostExecutionSummary(ctx context.Context) (*PostExecutionSummary, error) {
+//
+// worktreePath is the issue worktree the execution ran in. The claude subprocess
+// runs `git log`/`git branch`/`git diff` internally, so cmd.Dir MUST point at the
+// worktree — otherwise the subprocess inherits the daemon's CWD and harvests that
+// HEAD instead (#18), producing a ghost SHA from an unrelated repo.
+func (r *Runner) getPostExecutionSummary(ctx context.Context, worktreePath string) (*PostExecutionSummary, error) {
 	if r.config == nil || r.config.ClaudeCode == nil {
 		return nil, fmt.Errorf("claude code backend not configured")
 	}
@@ -95,6 +100,8 @@ func (r *Runner) getPostExecutionSummary(ctx context.Context) (*PostExecutionSum
 		"--output-format", "json",
 		"--json-schema", PostExecutionSummarySchema,
 	)
+	// #18: pin the subprocess (and the git commands it spawns) to the worktree.
+	cmd.Dir = worktreePath
 
 	output, err := cmd.Output()
 	if err != nil {
