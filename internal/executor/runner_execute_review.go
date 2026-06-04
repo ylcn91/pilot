@@ -9,44 +9,72 @@ import (
 	"github.com/ylcn91/pilot/internal/logging"
 )
 
-// revalidateAfterReview re-runs the quality gate once when self-review or the
-// intent-alignment retry committed new code after the gate already passed.
-// Those post-gate phases can mutate the tree, so without this re-check a PR
-// could ship changes that were never build/test-validated. It runs the gate a
-// single time (no retry loop) and fails the task if the re-check does not pass.
-// It is a no-op when no gate ran/passed or when HEAD is unchanged.
 func (r *Runner) revalidateAfterReview(s *executeState, headBeforeReview string) (*ExecutionResult, error) {
+	return r.revalidateAfterPostGateMutation(s, headBeforeReview, postGateRevalidation{
+		logReason:       "post-gate review changes",
+		progressReason:  "review changes",
+		errorPrefix:     "post-review",
+		failureMessage:  "quality gate failed after post-gate review changes",
+		failurePhase:    "post_review_revalidation",
+		failureGateName: "Post-Review Quality Gate",
+	})
+}
+
+func (r *Runner) revalidateAfterLint(s *executeState, headBeforeLint string) (*ExecutionResult, error) {
+	return r.revalidateAfterPostGateMutation(s, headBeforeLint, postGateRevalidation{
+		logReason:       "pre-push lint fixes",
+		progressReason:  "lint fixes",
+		errorPrefix:     "post-lint",
+		failureMessage:  "quality gate failed after pre-push lint fixes",
+		failurePhase:    "post_lint_revalidation",
+		failureGateName: "Post-Lint Quality Gate",
+	})
+}
+
+type postGateRevalidation struct {
+	logReason       string
+	progressReason  string
+	errorPrefix     string
+	failureMessage  string
+	failurePhase    string
+	failureGateName string
+}
+
+// revalidateAfterPostGateMutation re-runs the quality gate once when a phase
+// committed new code after the gate already passed. It runs a single check with
+// no retry loop and is a no-op when no gate ran/passed or HEAD is unchanged.
+func (r *Runner) revalidateAfterPostGateMutation(s *executeState, headBefore string, cfg postGateRevalidation) (*ExecutionResult, error) {
 	if !s.qualityGatesPassed || r.qualityCheckerFactory == nil || s.git == nil {
 		return nil, nil
 	}
 	headAfter, err := s.git.GetCurrentCommitSHA(s.ctx)
-	if err != nil || headAfter == "" || headAfter == headBeforeReview {
-		// No new commits (or HEAD unreadable) → nothing changed since the gate.
+	if err != nil || headAfter == "" || headAfter == headBefore {
+		// No new commits (or HEAD unreadable) means nothing changed since the gate.
 		return nil, nil
 	}
 
-	s.log.Info("Re-running quality gate after post-gate review changes",
+	s.log.Info("Re-running quality gate after "+cfg.logReason,
 		slog.String("task_id", s.task.ID),
-		slog.String("head_before", headBeforeReview),
+		slog.String("head_before", headBefore),
 		slog.String("head_after", headAfter),
 	)
-	r.reportProgress(s.task.ID, "Re-validating", 96, "Re-running quality checks after review changes...")
+	r.reportProgress(s.task.ID, "Re-validating", 96, "Re-running quality checks after "+cfg.progressReason+"...")
 
 	checker := r.qualityCheckerFactory(s.task.ID, s.executionPath)
 	outcome, qErr := checker.Check(s.ctx)
 	if qErr != nil {
 		s.result.Success = false
-		s.result.Error = fmt.Sprintf("post-review quality gate error: %v", qErr)
+		s.result.Error = fmt.Sprintf("%s quality gate error: %v", cfg.errorPrefix, qErr)
 		r.reportProgress(s.task.ID, "Quality Failed", 100, s.result.Error)
 		return r.failQualityGates(s, AlertEventTypeTaskFailed,
-			map[string]string{"phase": "post_review_revalidation"}, "Post-Review Quality Gate")
+			map[string]string{"phase": cfg.failurePhase}, cfg.failureGateName)
 	}
 	if !outcome.Passed {
 		s.result.Success = false
-		s.result.Error = "quality gate failed after post-gate review changes"
+		s.result.Error = cfg.failureMessage
 		r.reportProgress(s.task.ID, "Quality Failed", 100, s.result.Error)
 		return r.failQualityGates(s, AlertEventTypeTaskFailed,
-			map[string]string{"phase": "post_review_revalidation"}, "Post-Review Quality Gate")
+			map[string]string{"phase": cfg.failurePhase}, cfg.failureGateName)
 	}
 	return nil, nil
 }

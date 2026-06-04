@@ -85,7 +85,10 @@ Track autopilot activity:
 
 ```bash
 # View recent autopilot actions
-pilot logs --autopilot
+pilot autopilot status
+
+# Follow runtime logs
+pilot logs --follow
 
 # Dashboard with real-time updates
 pilot start --github --env=dev --dashboard

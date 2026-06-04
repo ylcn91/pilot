@@ -26,3 +26,16 @@ func TestResolveBaseBranch(t *testing.T) {
 		})
 	}
 }
+
+func TestGetDefaultBranchUsesCurrentUpstream(t *testing.T) {
+	localRepo, _ := setupSyncTestRepos(t, "dev")
+	runGit(t, localRepo, "update-ref", "-d", "refs/remotes/origin/HEAD")
+
+	got, err := NewGitOperations(localRepo).GetDefaultBranch(context.Background())
+	if err != nil {
+		t.Fatalf("GetDefaultBranch: %v", err)
+	}
+	if got != "dev" {
+		t.Fatalf("GetDefaultBranch() = %q, want dev", got)
+	}
+}

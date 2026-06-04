@@ -84,7 +84,7 @@ func (r *Runner) buildSelfReviewPrompt(task *Task) (prompt string) {
 	sb.WriteString("If parity missing: output `PARITY_GAP: <feature> in <file_a> but not <file_b>` and FIX it.\n\n")
 
 	sb.WriteString("### 8. Lint Check\n")
-	sb.WriteString("Run `golangci-lint run --new-from-rev=origin/main ./...` and fix any violations.\n")
+	sb.WriteString(fmt.Sprintf("Run `golangci-lint run --new-from-rev=%s ./...` and fix any violations.\n", selfReviewLintBaseRef(task)))
 	sb.WriteString("Common issue: unchecked return values in test mock handlers (w.Write, json.Encode, SendText).\n\n")
 
 	// GH-1966: Acceptance criteria verification in self-review
@@ -141,6 +141,16 @@ func (r *Runner) buildSelfReviewPrompt(task *Task) (prompt string) {
 	sb.WriteString("Work autonomously. Fix any issues you find.\n")
 
 	return sb.String()
+}
+
+func selfReviewLintBaseRef(task *Task) string {
+	base := "main"
+	if task != nil && strings.TrimSpace(task.BaseBranch) != "" {
+		base = strings.TrimSpace(task.BaseBranch)
+		base = strings.TrimPrefix(base, "origin/")
+		base = strings.TrimPrefix(base, "refs/heads/")
+	}
+	return "origin/" + base
 }
 
 // appendResearchContext adds research findings to the prompt (GH-217).

@@ -24,15 +24,8 @@ func (r *Runner) executeLintPushPR(s *executeState) (*ExecutionResult, error) {
 
 	if task.DirectCommit {
 		// Pre-push lint gate (GH-1376)
-		if r.config != nil && r.config.PrePushLint != nil && *r.config.PrePushLint {
-			r.reportProgress(task.ID, "Linting", 95, "Running pre-push lint check...")
-			lintResult := git.autoFixLint(ctx)
-			if !lintResult.Clean && !lintResult.FixedAll {
-				// Include unfixable lint issues in execution result for self-review
-				if len(lintResult.Issues) > 0 {
-					result.IntentWarning = "Lint issues detected but not auto-fixable:\n" + strings.Join(lintResult.Issues, "\n")
-				}
-			}
+		if res, err := r.runPrePushLint(s); res != nil || err != nil {
+			return res, err
 		}
 		r.reportProgress(task.ID, "Pushing", 96, "Pushing to main...")
 
@@ -82,15 +75,8 @@ func (r *Runner) executeLintPushPR(s *executeState) (*ExecutionResult, error) {
 		}
 
 		// Pre-push lint gate (GH-1376)
-		if r.config != nil && r.config.PrePushLint != nil && *r.config.PrePushLint {
-			r.reportProgress(task.ID, "Linting", 95, "Running pre-push lint check...")
-			lintResult := git.autoFixLint(ctx)
-			if !lintResult.Clean && !lintResult.FixedAll {
-				// Include unfixable lint issues in execution result for self-review
-				if len(lintResult.Issues) > 0 {
-					result.IntentWarning = "Lint issues detected but not auto-fixable:\n" + strings.Join(lintResult.Issues, "\n")
-				}
-			}
+		if res, err := r.runPrePushLint(s); res != nil || err != nil {
+			return res, err
 		}
 		// Push branch
 		if err := git.Push(ctx, task.Branch); err != nil {
@@ -243,6 +229,30 @@ func (r *Runner) executeLintPushPR(s *executeState) (*ExecutionResult, error) {
 		}
 	} else {
 		r.reportProgress(task.ID, "Completed", 100, "Task completed successfully")
+	}
+
+	return nil, nil
+}
+
+func (r *Runner) runPrePushLint(s *executeState) (*ExecutionResult, error) {
+	if r.config == nil || r.config.PrePushLint == nil || !*r.config.PrePushLint {
+		return nil, nil
+	}
+
+	headBeforeLint := ""
+	if s.git != nil {
+		headBeforeLint, _ = s.git.GetCurrentCommitSHA(s.ctx)
+	}
+
+	r.reportProgress(s.task.ID, "Linting", 95, "Running pre-push lint check...")
+	lintResult := s.git.autoFixLint(s.ctx)
+	if lintResult.FixedAll {
+		if res, err := r.revalidateAfterLint(s, headBeforeLint); res != nil || err != nil {
+			return res, err
+		}
+	}
+	if !lintResult.Clean && !lintResult.FixedAll && len(lintResult.Issues) > 0 {
+		s.result.IntentWarning = "Lint issues detected but not auto-fixable:\n" + strings.Join(lintResult.Issues, "\n")
 	}
 
 	return nil, nil

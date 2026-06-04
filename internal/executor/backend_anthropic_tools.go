@@ -27,6 +27,13 @@ var bashDenyPatterns = []string{
 	"rm -rf /;",
 	"rm -rf / ",
 	"rm -rf --no-preserve-root",
+	"git push --force",
+	"git push -f",
+	"git reset --hard",
+	"git clean -fd",
+	"sudo ",
+	"curl | sh",
+	"wget | sh",
 }
 
 // bashGuardViolation returns the matched deny pattern if the command is one of
@@ -39,12 +46,37 @@ func bashGuardViolation(command string) string {
 	if strings.Contains(strings.ReplaceAll(normalized, " ", ""), forkbomb) {
 		return "fork bomb"
 	}
+	if isBroadWorkspaceDelete(normalized) {
+		return "broad workspace delete"
+	}
+	if (strings.Contains(normalized, "curl ") || strings.Contains(normalized, "wget ")) &&
+		(strings.Contains(normalized, "| sh") || strings.Contains(normalized, "| bash")) {
+		return "download piped to shell"
+	}
 	for _, p := range bashDenyPatterns {
 		if strings.Contains(normalized, strings.ToLower(p)) {
 			return p
 		}
 	}
 	return ""
+}
+
+func isBroadWorkspaceDelete(normalized string) bool {
+	normalized = strings.TrimSpace(normalized)
+	for _, cmd := range []string{
+		"rm -rf .",
+		"rm -rf ./",
+		"rm -rf *",
+		"rm -rf -- .",
+		"rm -rf $pwd",
+		"rm -rf \"$pwd\"",
+		"rm -rf '$pwd'",
+	} {
+		if normalized == cmd {
+			return true
+		}
+	}
+	return false
 }
 
 // confineToWorkspace resolves path against the workspace cwd and rejects any
@@ -70,9 +102,59 @@ func confineToWorkspace(cwd, path string) (string, error) {
 	return target, nil
 }
 
+func bashWorkspaceViolation(command, cwd string) string {
+	for _, marker := range []string{"$HOME", "${HOME}", "~/"} {
+		if strings.Contains(command, marker) {
+			return fmt.Sprintf("home path marker %q is not allowed", marker)
+		}
+	}
+
+	for _, token := range shellPathTokens(command) {
+		for _, candidate := range shellPathCandidates(token) {
+			if strings.HasPrefix(candidate, "~") {
+				return fmt.Sprintf("home path %q is not allowed", candidate)
+			}
+			if _, err := confineToWorkspace(cwd, candidate); err != nil {
+				return err.Error()
+			}
+		}
+	}
+	return ""
+}
+
+func shellPathTokens(command string) []string {
+	return strings.FieldsFunc(command, func(r rune) bool {
+		switch r {
+		case ' ', '\t', '\n', '\r', ';', '|', '&', '(', ')', '{', '}', '<', '>':
+			return true
+		default:
+			return false
+		}
+	})
+}
+
+func shellPathCandidates(token string) []string {
+	token = strings.Trim(token, "\"'`")
+	if token == "" {
+		return nil
+	}
+	if eq := strings.Index(token, "="); eq >= 0 && eq < len(token)-1 {
+		token = token[eq+1:]
+		token = strings.Trim(token, "\"'`")
+	}
+	if token == ".." || strings.HasPrefix(token, "../") || strings.HasPrefix(token, "/") ||
+		strings.HasPrefix(token, "~") || strings.Contains(token, "/../") {
+		return []string{token}
+	}
+	return nil
+}
+
 func execBash(command string, timeout int, cwd string) string {
 	if reason := bashGuardViolation(command); reason != "" {
 		return fmt.Sprintf("[BLOCKED: command matches a destructive pattern (%s) and was not run]", reason)
+	}
+	if reason := bashWorkspaceViolation(command, cwd); reason != "" {
+		return fmt.Sprintf("[BLOCKED: bash command escapes the workspace (%s) and was not run]", reason)
 	}
 	if timeout <= 0 || timeout > 600 {
 		timeout = apiBashTimeout

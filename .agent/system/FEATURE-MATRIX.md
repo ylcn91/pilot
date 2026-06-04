@@ -1,7 +1,7 @@
 # Pilot Feature Matrix
 
-**Last Updated:** 2026-06-02 (v2.151.0) — snapshot; the current release
-(`docs/lib/version.ts`) is ahead, so features added since may not be listed yet.
+**Last Updated:** 2026-06-02 — snapshot; the current release is tracked in
+`docs/lib/version.ts`, so features added since may not be listed yet.
 Treat this as a point-in-time map, not a live inventory.
 
 ## Legend
@@ -571,7 +571,7 @@ quality:
 |---------|---------|---------|-------|
 | Poller skip-by-reason counters | v2.150.0 | adapters/github | `pilot_poller_skipped/dispatched/deferred` Prometheus counters (TASK-293 / GH-3064) |
 | `WithRetry` centralized in `doRequest` | v2.150.0 | adapters/github | All GitHub client methods now get retry; `RecordAPIError` wired (TASK-294 / GH-3065) |
-| Linear webhook Ed25519 verification | v2.149.4 | gateway + adapters/linear | `VerifyLinearSignature`; YAML wiring added in v2.151.0 (TASK-295 / GH-3060, GH-3066) |
+| Linear webhook Ed25519 verification | v2.149.4 | gateway + adapters/linear | `VerifyLinearSignature`; YAML wiring added in TASK-295 / GH-3060, GH-3066 |
 | `quality.parallel` defaults to `false` | v2.149.4 | executor | Eliminates shared build-cache race (TASK-289 / GH-3057) |
 | Config file mode 0600 | v2.149.4 | config | `~/.pilot/config.yaml` world-readable fixed (TASK-290 / GH-3058) |
 | Branch-aware post-CI monitoring | v2.149.4 | autopilot | Uses `ResolvedEnv().Branch` instead of hardcoded `main` (TASK-291 / GH-3059) |

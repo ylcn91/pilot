@@ -14,7 +14,8 @@ import (
 
 // WarmPool pre-creates poolSize worktrees for fast acquisition.
 // GH-1078: Called at Runner startup when worktree pooling is enabled.
-// Each pooled worktree is created in detached HEAD state at origin/main.
+// Each pooled worktree is created in detached HEAD state at the repo's default
+// remote-tracking branch, falling back to the local branch when needed.
 func (m *WorktreeManager) WarmPool(ctx context.Context) error {
 	if m.poolSize <= 0 {
 		return nil // Pooling disabled
@@ -67,13 +68,17 @@ func (m *WorktreeManager) createPooledWorktree(ctx context.Context, index int) (
 	pruneCmd.Dir = m.repoPath
 	_ = pruneCmd.Run()
 
-	// Fetch latest origin/main to ensure fresh base
-	fetchCmd := exec.CommandContext(ctx, "git", "fetch", "origin", "main")
+	baseBranchName, baseRef := m.resolvePoolBase(ctx)
+
+	// Fetch latest default base to ensure fresh warm-up state.
+	fetchCmd := exec.CommandContext(ctx, "git", "fetch", "origin", baseBranchName)
 	fetchCmd.Dir = m.repoPath
 	_, _ = fetchCmd.CombinedOutput() // Non-fatal if this fails
 
-	// Create worktree in detached HEAD state at origin/main
-	cmd := exec.CommandContext(ctx, "git", "worktree", "add", "--detach", worktreePath, "origin/main")
+	baseRef = m.resolvePoolBaseRef(ctx, baseBranchName, baseRef)
+
+	// Create worktree in detached HEAD state at the resolved base.
+	cmd := exec.CommandContext(ctx, "git", "worktree", "add", "--detach", worktreePath, baseRef)
 	cmd.Dir = m.repoPath
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -85,6 +90,50 @@ func (m *WorktreeManager) createPooledWorktree(ctx context.Context, index int) (
 		CreatedAt: time.Now(),
 		InUse:     false,
 	}, nil
+}
+
+func (m *WorktreeManager) resolvePoolBase(ctx context.Context) (branchName, baseRef string) {
+	if remoteHead, err := gitOutputTrimmed(ctx, m.repoPath, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil && remoteHead != "" {
+		branch := strings.TrimPrefix(remoteHead, "origin/")
+		return branch, "origin/" + branch
+	}
+
+	if upstream, err := gitOutputTrimmed(ctx, m.repoPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"); err == nil && upstream != "" {
+		branch := strings.TrimPrefix(upstream, "origin/")
+		return branch, upstream
+	}
+
+	if NewGitOperations(m.repoPath).refExists(ctx, "main") {
+		return "main", "origin/main"
+	}
+	if NewGitOperations(m.repoPath).refExists(ctx, "master") {
+		return "master", "origin/master"
+	}
+	if current, err := gitOutputTrimmed(ctx, m.repoPath, "branch", "--show-current"); err == nil && current != "" {
+		return current, "origin/" + current
+	}
+
+	return "main", "origin/main"
+}
+
+func (m *WorktreeManager) resolvePoolBaseRef(ctx context.Context, branchName, preferredRef string) string {
+	git := NewGitOperations(m.repoPath)
+	for _, ref := range []string{preferredRef, "origin/" + branchName, branchName} {
+		if ref != "" && git.refExists(ctx, ref) {
+			return ref
+		}
+	}
+	return preferredRef
+}
+
+func gitOutputTrimmed(ctx context.Context, dir string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = dir
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(output)), nil
 }
 
 // Acquire gets a worktree from the pool and prepares it for the given branch.

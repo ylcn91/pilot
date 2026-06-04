@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -156,4 +158,92 @@ func TestExecuteLintPushPR_DirectCommitPath_LintsOnce(t *testing.T) {
 	if got := counter.count(); got != 1 {
 		t.Fatalf("DirectCommit path ran the lint gate %d times, want exactly 1", got)
 	}
+}
+
+func TestExecuteLintPushPR_RevalidatesAfterLintAutoFix(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell stub requires a POSIX shell")
+	}
+
+	const branch = "pilot/GH-7003"
+	dir := setupLintGateRepo(t, branch)
+	installFakeGolangciLint(t)
+
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/lintfix\n\ngo 1.22\n"), 0644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	runGit(t, dir, "add", "go.mod")
+	runGit(t, dir, "commit", "-m", "chore: add go module")
+	headBeforeLint := headSHA(t, dir)
+
+	runner, _ := newCountingProgressRunner(t)
+	runner.config = &BackendConfig{PrePushLint: boolPtr(true)}
+	qualityChecks := 0
+	runner.SetQualityCheckerFactory(func(_, projectPath string) QualityChecker {
+		if projectPath != dir {
+			t.Fatalf("quality checker projectPath = %q, want %q", projectPath, dir)
+		}
+		qualityChecks++
+		return &mockQualityChecker{outcome: &QualityOutcome{Passed: false}}
+	})
+
+	task := &Task{
+		ID:          "GH-7003",
+		Title:       "feat: lint fix",
+		ProjectPath: dir,
+		Branch:      branch,
+		BaseBranch:  "main",
+		CreatePR:    true,
+	}
+	s := &executeState{
+		task:               task,
+		ctx:                context.Background(),
+		log:                runner.log,
+		git:                NewGitOperations(dir),
+		executionPath:      dir,
+		result:             &ExecutionResult{TaskID: task.ID, Success: true},
+		state:              &progressState{phase: "Starting"},
+		qualityGatesPassed: true,
+	}
+
+	res, err := runner.executeLintPushPR(s)
+	if err != nil {
+		t.Fatalf("executeLintPushPR: %v", err)
+	}
+	if res == nil || res.Success {
+		t.Fatalf("expected post-lint quality failure, got %+v", res)
+	}
+	if !strings.Contains(res.Error, "pre-push lint fixes") {
+		t.Fatalf("result error = %q, want post-lint failure", res.Error)
+	}
+	if qualityChecks != 1 {
+		t.Fatalf("quality checks = %d, want 1", qualityChecks)
+	}
+	if headAfterLint := headSHA(t, dir); headAfterLint == headBeforeLint {
+		t.Fatal("expected fake lint fix to amend the commit and move HEAD")
+	}
+}
+
+func installFakeGolangciLint(t *testing.T) {
+	t.Helper()
+	binDir := t.TempDir()
+	scriptPath := filepath.Join(binDir, "golangci-lint")
+	script := `#!/bin/sh
+if [ "$1" = "run" ] && [ "$2" = "--fix" ]; then
+  printf 'fixed\n' > lint-fixed.txt
+  exit 0
+fi
+if [ "$1" = "run" ]; then
+  if [ -f lint-fixed.txt ]; then
+    exit 0
+  fi
+  echo 'lint issue'
+  exit 1
+fi
+exit 0
+`
+	if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
+		t.Fatalf("write fake golangci-lint: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }

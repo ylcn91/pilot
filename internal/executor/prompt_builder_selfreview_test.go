@@ -11,6 +11,7 @@ func TestBuildSelfReviewPromptContainsLintCheck(t *testing.T) {
 		ID:          "GH-1797",
 		Title:       "Add lint check to self-review",
 		Description: "Test self-review lint section",
+		BaseBranch:  "dev",
 	}
 
 	prompt := runner.buildSelfReviewPrompt(task)
@@ -19,11 +20,28 @@ func TestBuildSelfReviewPromptContainsLintCheck(t *testing.T) {
 	if !strings.Contains(prompt, "### 8. Lint Check") {
 		t.Error("Self-review prompt should contain '### 8. Lint Check' section")
 	}
-	if !strings.Contains(prompt, "golangci-lint run --new-from-rev=origin/main") {
-		t.Error("Self-review prompt should contain golangci-lint command")
+	if !strings.Contains(prompt, "golangci-lint run --new-from-rev=origin/dev") {
+		t.Error("Self-review prompt should contain base-branch-aware golangci-lint command")
+	}
+	if strings.Contains(prompt, "new-from-rev=origin/main") {
+		t.Error("Self-review prompt should not hardcode origin/main when BaseBranch is set")
 	}
 	if !strings.Contains(prompt, "unchecked return values") {
 		t.Error("Self-review prompt should mention unchecked return values as common issue")
+	}
+}
+
+func TestBuildSelfReviewPromptLintCheckFallbackBase(t *testing.T) {
+	runner := NewRunner()
+	task := &Task{
+		ID:    "GH-1798",
+		Title: "Add lint check to self-review",
+	}
+
+	prompt := runner.buildSelfReviewPrompt(task)
+
+	if !strings.Contains(prompt, "golangci-lint run --new-from-rev=origin/main") {
+		t.Error("Self-review prompt should fall back to origin/main when BaseBranch is unresolved")
 	}
 }
 

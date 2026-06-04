@@ -1,6 +1,6 @@
 # Pilot Architecture
 
-**Last Updated:** 2026-05-26 (v2.151.0)
+**Last Updated:** 2026-05-26 — snapshot; see `docs/lib/version.ts` for the current release.
 
 ## System Overview
 

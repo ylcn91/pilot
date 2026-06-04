@@ -46,6 +46,31 @@ func TestWorktreePoolWarmup(t *testing.T) {
 	}
 }
 
+func TestWorktreePoolWarmupUsesTrackedDefaultBranch(t *testing.T) {
+	localRepo, _ := setupSyncTestRepos(t, "dev")
+
+	ctx := context.Background()
+	manager := NewWorktreeManagerWithPool(localRepo, 1)
+	defer manager.Close()
+
+	if err := manager.WarmPool(ctx); err != nil {
+		t.Fatalf("WarmPool failed: %v", err)
+	}
+	if available := manager.PoolAvailable(); available != 1 {
+		t.Fatalf("expected 1 available after warmup, got %d", available)
+	}
+
+	manager.poolMu.Lock()
+	pooledPath := manager.pool[0].Path
+	manager.poolMu.Unlock()
+
+	pooledHead := strings.TrimSpace(gitOutput(t, pooledPath, "rev-parse", "HEAD"))
+	devHead := strings.TrimSpace(gitOutput(t, localRepo, "rev-parse", "origin/dev"))
+	if pooledHead != devHead {
+		t.Fatalf("pooled HEAD = %s, want origin/dev %s", pooledHead, devHead)
+	}
+}
+
 // TestWorktreePoolAcquireRelease tests GH-1078: acquire and release cycle.
 func TestWorktreePoolAcquireRelease(t *testing.T) {
 	localRepo, remoteRepo := setupTestRepoWithRemote(t)

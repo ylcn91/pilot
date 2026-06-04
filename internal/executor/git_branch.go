@@ -53,13 +53,22 @@ func (g *GitOperations) GetCurrentBranch(ctx context.Context) (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-// GetDefaultBranch returns the default branch (main or master)
+// GetDefaultBranch returns the default branch.
 func (g *GitOperations) GetDefaultBranch(ctx context.Context) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", "symbolic-ref", "refs/remotes/origin/HEAD")
 	cmd.Dir = g.projectPath
 	output, err := cmd.Output()
 	if err != nil {
-		// Fallback to checking for main or master
+		upstreamCmd := exec.CommandContext(ctx, "git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+		upstreamCmd.Dir = g.projectPath
+		if upstreamOutput, upstreamErr := upstreamCmd.Output(); upstreamErr == nil {
+			upstream := strings.TrimSpace(string(upstreamOutput))
+			if upstream != "" {
+				return strings.TrimPrefix(upstream, "origin/"), nil
+			}
+		}
+
+		// Fallback to checking for main or master.
 		if g.branchExists(ctx, "main") {
 			return "main", nil
 		}
