@@ -133,7 +133,7 @@ func TestDoRequest_ErrorHandling(t *testing.T) {
 
 // Integration test helper - verifies client can be created and method signatures are correct
 func TestClientMethodSignatures(t *testing.T) {
-	client := NewClient("https://jira.example.com", "user", "token", PlatformCloud)
+	client := newClientNoRetry("https://jira.example.com", "user", "token", PlatformCloud)
 	ctx := context.Background()
 
 	// These won't actually work without a real API, but verify the signatures compile

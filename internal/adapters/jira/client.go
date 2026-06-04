@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/ylcn91/pilot/internal/adapters/httpretry"
 )
 
 // Client is a Jira API client
@@ -19,6 +21,7 @@ type Client struct {
 	apiToken   string
 	platform   string
 	httpClient *http.Client
+	retryOpts  httpretry.RetryOptions // Retry config for doRequest
 }
 
 // NewClient creates a new Jira client
@@ -27,14 +30,23 @@ func NewClient(baseURL, username, apiToken, platform string) *Client {
 	baseURL = strings.TrimSuffix(baseURL, "/")
 
 	return &Client{
-		baseURL:  baseURL,
-		username: username,
-		apiToken: apiToken,
-		platform: platform,
+		baseURL:   baseURL,
+		username:  username,
+		apiToken:  apiToken,
+		platform:  platform,
+		retryOpts: httpretry.DefaultRetryOptions(),
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+// newClientNoRetry creates a Jira client with retry disabled so unit tests
+// exercising 429/5xx error paths fail fast instead of backing off.
+func newClientNoRetry(baseURL, username, apiToken, platform string) *Client {
+	c := NewClient(baseURL, username, apiToken, platform)
+	c.retryOpts = httpretry.RetryOptions{MaxRetries: 0}
+	return c
 }
 
 // apiPath returns the correct API path based on platform
@@ -45,53 +57,63 @@ func (c *Client) apiPath() string {
 	return "/rest/api/2"
 }
 
-// doRequest performs an HTTP request to the Jira API
+// doRequest performs an HTTP request to the Jira API with automatic retry on
+// transient errors (429 + Retry-After, 5xx, network failures). The request body
+// is buffered once before the retry loop so it can be replayed on each attempt.
 func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}, result interface{}) error {
-	var bodyReader io.Reader
+	var bodyBytes []byte
 	if body != nil {
-		bodyBytes, err := json.Marshal(body)
+		var err error
+		bodyBytes, err = json.Marshal(body)
 		if err != nil {
 			return fmt.Errorf("failed to marshal request body: %w", err)
 		}
-		bodyReader = bytes.NewReader(bodyBytes)
 	}
 
 	url := c.baseURL + c.apiPath() + path
-	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
 
-	// Set authentication header (Basic Auth with email:api_token for Cloud, or username:token for Server)
-	auth := base64.StdEncoding.EncodeToString([]byte(c.username + ":" + c.apiToken))
-	req.Header.Set("Authorization", "Basic "+auth)
-	req.Header.Set("Accept", "application/json")
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(respBody))
-	}
-
-	if result != nil && len(respBody) > 0 {
-		if err := json.Unmarshal(respBody, result); err != nil {
-			return fmt.Errorf("failed to parse response: %w", err)
+	return httpretry.WithRetryVoid(ctx, func() error {
+		var bodyReader io.Reader
+		if bodyBytes != nil {
+			bodyReader = bytes.NewReader(bodyBytes)
 		}
-	}
 
-	return nil
+		req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+		if err != nil {
+			return fmt.Errorf("failed to create request: %w", err)
+		}
+
+		// Set authentication header (Basic Auth with email:api_token for Cloud, or username:token for Server)
+		auth := base64.StdEncoding.EncodeToString([]byte(c.username + ":" + c.apiToken))
+		req.Header.Set("Authorization", "Basic "+auth)
+		req.Header.Set("Accept", "application/json")
+		if bodyBytes != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("failed to execute request: %w", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read response: %w", err)
+		}
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return httpretry.ClassifyResponse(resp, respBody)
+		}
+
+		if result != nil && len(respBody) > 0 {
+			if err := json.Unmarshal(respBody, result); err != nil {
+				return fmt.Errorf("failed to parse response: %w", err)
+			}
+		}
+
+		return nil
+	}, c.retryOpts)
 }
 
 // GetIssue fetches an issue by key (e.g., "PROJ-42")
