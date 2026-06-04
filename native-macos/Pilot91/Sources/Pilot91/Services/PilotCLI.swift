@@ -14,6 +14,25 @@ struct PilotCLI {
     }
 }
 
+private final class LockedCommandData: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+
+    @discardableResult
+    func append(_ chunk: Data) -> Data {
+        lock.lock()
+        defer { lock.unlock() }
+        data.append(chunk)
+        return data
+    }
+
+    func snapshot() -> Data {
+        lock.lock()
+        defer { lock.unlock() }
+        return data
+    }
+}
+
 struct ShellCommand {
     var workingDirectory: String
 
@@ -38,30 +57,22 @@ struct ShellCommand {
                 process.standardOutput = outputPipe
                 let stderrPipe = includeStderr ? nil : Pipe()
                 process.standardError = includeStderr ? outputPipe : stderrPipe
-                let outputQueue = DispatchQueue(label: "pilot91.shell.output")
-                var outputData = Data()
+                let outputData = LockedCommandData()
                 outputPipe.fileHandleForReading.readabilityHandler = { handle in
                     let data = handle.availableData
                     guard !data.isEmpty else { return }
-                    var snapshot = Data()
-                    outputQueue.sync {
-                        outputData.append(data)
-                        snapshot = outputData
-                    }
+                    let snapshot = outputData.append(data)
                     if let onOutput, let text = String(data: snapshot, encoding: .utf8) {
                         DispatchQueue.main.async {
                             onOutput(text)
                         }
                     }
                 }
-                let stderrQueue = DispatchQueue(label: "pilot91.shell.stderr")
-                var stderrData = Data()
+                let stderrData = LockedCommandData()
                 stderrPipe?.fileHandleForReading.readabilityHandler = { handle in
                     let data = handle.availableData
                     guard !data.isEmpty else { return }
-                    stderrQueue.sync {
-                        stderrData.append(data)
-                    }
+                    stderrData.append(data)
                 }
                 if input != nil {
                     process.standardInput = Pipe()
@@ -78,8 +89,8 @@ struct ShellCommand {
                     stderrPipe?.fileHandleForReading.readabilityHandler = nil
                     try? outputPipe.fileHandleForReading.close()
                     try? stderrPipe?.fileHandleForReading.close()
-                    let data = outputQueue.sync { outputData }
-                    let errorData = stderrQueue.sync { stderrData }
+                    let data = outputData.snapshot()
+                    let errorData = stderrData.snapshot()
                     let output = String(data: data, encoding: .utf8) ?? ""
                     let stderr = String(data: errorData, encoding: .utf8) ?? ""
                     continuation.resume(returning: CommandRun(
