@@ -197,55 +197,6 @@ func (r *Releaser) GetCurrentVersion(ctx context.Context) (SemVer, error) {
 	return r.GetCurrentVersionForRepo(ctx, r.owner, r.repo)
 }
 
-// GenerateChangelog generates a changelog from commits.
-func GenerateChangelog(commits []*github.Commit, prNumber int) string {
-	var features, fixes, others []string
-
-	for _, commit := range commits {
-		msg := commit.Commit.Message
-		// Get first line
-		if idx := strings.Index(msg, "\n"); idx > 0 {
-			msg = msg[:idx]
-		}
-
-		matches := conventionalCommitRegex.FindStringSubmatch(msg)
-		if matches == nil {
-			others = append(others, fmt.Sprintf("- %s", msg))
-			continue
-		}
-
-		commitType := strings.ToLower(matches[1])
-		description := matches[4]
-
-		switch commitType {
-		case "feat", "feature":
-			features = append(features, fmt.Sprintf("- %s", description))
-		case "fix", "bugfix":
-			fixes = append(fixes, fmt.Sprintf("- %s", description))
-		default:
-			others = append(others, fmt.Sprintf("- %s", description))
-		}
-	}
-
-	var sections []string
-
-	if len(features) > 0 {
-		sections = append(sections, "## Features\n"+strings.Join(features, "\n"))
-	}
-	if len(fixes) > 0 {
-		sections = append(sections, "## Bug Fixes\n"+strings.Join(fixes, "\n"))
-	}
-	if len(others) > 0 {
-		sections = append(sections, "## Other Changes\n"+strings.Join(others, "\n"))
-	}
-
-	if len(sections) == 0 {
-		return fmt.Sprintf("Release from PR #%d", prNumber)
-	}
-
-	return strings.Join(sections, "\n\n")
-}
-
 // CreateTag creates a lightweight git tag for the new version.
 // The actual GitHub Release (with binary assets) is created by GoReleaser CI
 // which triggers on tag push. This avoids the conflict where both Pilot and

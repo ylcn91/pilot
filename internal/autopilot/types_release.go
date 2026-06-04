@@ -10,8 +10,6 @@ type ReleaseConfig struct {
 	VersionStrategy string `yaml:"version_strategy"`
 	// TagPrefix is prepended to version (default "v").
 	TagPrefix string `yaml:"tag_prefix"`
-	// GenerateChangelog enables changelog generation from commits.
-	GenerateChangelog bool `yaml:"generate_changelog"`
 	// NotifyOnRelease sends notification when release is created.
 	NotifyOnRelease bool `yaml:"notify_on_release"`
 	// RequireCI waits for post-merge CI before releasing.
@@ -27,7 +25,6 @@ func DefaultReleaseConfig() *ReleaseConfig {
 		Trigger:           "on_merge",
 		VersionStrategy:   "conventional_commits",
 		TagPrefix:         "v",
-		GenerateChangelog: true,
 		NotifyOnRelease:   true,
 		RequireCI:         true,
 		GenerateSummary:   true,
