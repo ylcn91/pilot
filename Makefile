@@ -1,4 +1,4 @@
-.PHONY: build run test test-e2e clean install lint fmt deps dev install-hooks check-secrets gate check-integration auto-fix test-short test-integration test-chaos test-wiring smoke-codex-runtime package release desktop-dev desktop-build desktop-build-windows desktop-build-linux desktop desktop-deps desktop-package desktop-dmg desktop-clean build-with-dashboard
+.PHONY: build run test test-e2e clean install lint fmt deps dev install-hooks check-secrets gate check-integration auto-fix test-short test-integration test-chaos test-wiring smoke-codex-runtime package release native-build native-test native-bundle native-package native-clean build-with-dashboard
 
 # Variables
 BINARY_NAME=pilot
@@ -194,6 +194,29 @@ build-with-dashboard: desktop-deps
 	@echo "Building $(BINARY_NAME) with embedded dashboard..."
 	go build -tags embed_dashboard $(LDFLAGS) -o bin/$(BINARY_NAME) ./cmd/pilot
 	@rm -rf cmd/pilot/dashboard_dist
+
+# Native macOS app (Pilot 91, SwiftUI) — the primary desktop surface.
+# Signing/notarization are deliberately out of scope here (see
+# .agent/system/native-desktop-migration.md); the bundle is ad-hoc signed
+# for local runs only.
+NATIVE_DIR := native-macos/Pilot91
+
+native-build:
+	cd $(NATIVE_DIR) && swift build -c release
+
+native-test:
+	cd $(NATIVE_DIR) && swift test
+
+native-bundle:
+	CONFIG=release VERSION=$(VERSION) ./$(NATIVE_DIR)/scripts/bundle-app.sh
+
+native-package: native-bundle
+	@mkdir -p bin
+	cd $(NATIVE_DIR)/dist && ditto -c -k --sequesterRsrc --keepParent Pilot91.app ../../../bin/Pilot91-macOS-$(VERSION).zip
+	@echo "Created bin/Pilot91-macOS-$(VERSION).zip"
+
+native-clean:
+	rm -rf $(NATIVE_DIR)/.build $(NATIVE_DIR)/dist
 
 # Desktop app (Wails v2 + React)
 desktop-deps:
