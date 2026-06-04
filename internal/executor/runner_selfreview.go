@@ -75,10 +75,19 @@ func (r *Runner) runSelfReview(ctx context.Context, task *Task, state *progressS
 		}
 	}
 
+	// Review (and any review fixes) must run in the isolated worktree, not the
+	// shared project root. state.executionPath is set after worktree setup; fall
+	// back to task.ProjectPath only when unset (unit tests / no worktree). This
+	// restores GH-936 worktree isolation that the execute/retry paths already have.
+	reviewPath := state.executionPath
+	if reviewPath == "" {
+		reviewPath = task.ProjectPath
+	}
+
 	reviewAllowed, reviewMCP := r.executionToolOptions()
 	result, err := selfReviewBackend.Execute(reviewCtx, ExecuteOptions{
 		Prompt:          reviewPrompt,
-		ProjectPath:     task.ProjectPath,
+		ProjectPath:     reviewPath,
 		Verbose:         task.Verbose,
 		Model:           selectedModel,
 		Effort:          selectedEffort,

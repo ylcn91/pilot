@@ -253,3 +253,64 @@ func TestLocalModeRunsQualityGates(t *testing.T) {
 		t.Errorf("quality checker factory was NOT called in LocalMode — quality gates should run")
 	}
 }
+
+// pathCapturingReviewBackend records the ProjectPath passed to Execute so the
+// self-review worktree-isolation test can assert which tree review runs in.
+type pathCapturingReviewBackend struct{ gotPath string }
+
+func (b *pathCapturingReviewBackend) Name() string      { return "capture" }
+func (b *pathCapturingReviewBackend) IsAvailable() bool { return true }
+func (b *pathCapturingReviewBackend) Execute(_ context.Context, opts ExecuteOptions) (*BackendResult, error) {
+	b.gotPath = opts.ProjectPath
+	return &BackendResult{Success: true, Output: "REVIEW_PASSED"}, nil
+}
+
+// TestRunSelfReview_RunsInWorktreeNotProjectRoot guards GH-936 worktree
+// isolation: self-review must run in state.executionPath (the worktree), not
+// task.ProjectPath (the shared project root).
+func TestRunSelfReview_RunsInWorktreeNotProjectRoot(t *testing.T) {
+	backend := &pathCapturingReviewBackend{}
+	runner := NewRunnerWithBackend(backend)
+	runner.skipPreflightChecks = true
+
+	worktree := t.TempDir()
+	task := &Task{
+		ID:          "SR-WT-1",
+		Title:       "Add complex multi-component feature spanning several files",
+		Description: "Implement a non-trivial feature so self-review is not skipped as trivial",
+		ProjectPath: t.TempDir(), // shared project root — must NOT be used for review
+	}
+	state := &progressState{executionPath: worktree}
+
+	if err := runner.runSelfReview(context.Background(), task, state); err != nil {
+		t.Fatalf("runSelfReview: %v", err)
+	}
+	if backend.gotPath != worktree {
+		t.Errorf("self-review ProjectPath = %q, want worktree %q (not project root %q)",
+			backend.gotPath, worktree, task.ProjectPath)
+	}
+}
+
+// TestRunSelfReview_FallsBackToProjectPath confirms the fallback when no
+// worktree path is set (unit-test / no-worktree mode preserves old behavior).
+func TestRunSelfReview_FallsBackToProjectPath(t *testing.T) {
+	backend := &pathCapturingReviewBackend{}
+	runner := NewRunnerWithBackend(backend)
+	runner.skipPreflightChecks = true
+
+	proj := t.TempDir()
+	task := &Task{
+		ID:          "SR-WT-2",
+		Title:       "Add complex multi-component feature spanning several files",
+		Description: "Implement a non-trivial feature so self-review is not skipped as trivial",
+		ProjectPath: proj,
+	}
+	state := &progressState{} // no executionPath
+
+	if err := runner.runSelfReview(context.Background(), task, state); err != nil {
+		t.Fatalf("runSelfReview: %v", err)
+	}
+	if backend.gotPath != proj {
+		t.Errorf("fallback ProjectPath = %q, want %q", backend.gotPath, proj)
+	}
+}

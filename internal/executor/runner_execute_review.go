@@ -21,6 +21,9 @@ func (r *Runner) executeSelfReviewIntent(s *executeState) (*ExecutionResult, err
 	result := s.result
 	state := s.state
 	executionPath := s.executionPath
+	// Make the worktree path available to the self-review phase so it reviews
+	// (and commits fixes in) the isolated worktree rather than the project root.
+	state.executionPath = executionPath
 	selectedModel := s.selectedModel
 	selectedEffort := s.selectedEffort
 	agentPath := s.agentPath
