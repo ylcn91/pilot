@@ -67,20 +67,25 @@ func (g *Generator) Generate(period BriefPeriod) (*Brief, error) {
 		return nil, err
 	}
 
-	// Get metrics
-	metricsData, err := g.store.GetBriefMetrics(query)
-	if err != nil {
-		return nil, err
+	// Get metrics — skip collection entirely when metrics are disabled.
+	var metrics BriefMetrics
+	if g.config.Content.IncludeMetrics {
+		metricsData, err := g.store.GetBriefMetrics(query)
+		if err != nil {
+			return nil, err
+		}
+		metrics = convertMetrics(metricsData)
 	}
 
 	brief := &Brief{
-		GeneratedAt: time.Now(),
-		Period:      period,
-		Completed:   []TaskSummary{},
-		InProgress:  []TaskSummary{},
-		Blocked:     []BlockedTask{},
-		Upcoming:    []TaskSummary{},
-		Metrics:     convertMetrics(metricsData),
+		GeneratedAt:    time.Now(),
+		Period:         period,
+		Completed:      []TaskSummary{},
+		InProgress:     []TaskSummary{},
+		Blocked:        []BlockedTask{},
+		Upcoming:       []TaskSummary{},
+		Metrics:        metrics,
+		IncludeMetrics: g.config.Content.IncludeMetrics,
 	}
 
 	// First pass: collect completed task IDs to filter out retried failures
