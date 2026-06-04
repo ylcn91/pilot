@@ -3,6 +3,8 @@ package autopilot
 import (
 	"context"
 	"time"
+
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // Run starts the autopilot processing loop.
@@ -23,7 +25,9 @@ func (c *Controller) Run(ctx context.Context) error {
 	currentInterval := basePollInterval
 
 	// GH-3113: Periodic reconciliation loop — registers orphan PRs that OnPRCreated missed.
-	go c.startReconciler(ctx)
+	logging.SafeGo("autopilot.startReconciler", func() {
+		c.startReconciler(ctx)
+	})
 
 	// GH-2251: Periodic scan for externally-merged PRs.
 	// Use half the scan window as the interval so merges are detected well within the window.

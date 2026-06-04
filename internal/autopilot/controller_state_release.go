@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ylcn91/pilot/internal/logging"
 	"github.com/ylcn91/pilot/internal/memory"
 )
 
@@ -349,13 +350,13 @@ func (c *Controller) handleReleasing(ctx context.Context, prState *PRState) erro
 	// Runs in a goroutine because it polls for GoReleaser to publish the release
 	// (up to 5 min) and we don't want to block the notification or PR cleanup.
 	if c.releaseSummary != nil && rel.GenerateSummary {
-		go func() {
+		logging.SafeGo("autopilot.enrichRelease", func() {
 			enrichCtx, cancel := context.WithTimeout(context.Background(), releasePollTimeout+releaseSummaryTimeout)
 			defer cancel()
 			if err := c.releaseSummary.EnrichRelease(enrichCtx, owner, repo, tagName, commits); err != nil {
 				c.log.Warn("failed to enrich release notes", "tag", tagName, "error", err)
 			}
-		}()
+		})
 	}
 
 	// Send notification
