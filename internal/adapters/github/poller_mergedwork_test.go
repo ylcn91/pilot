@@ -152,3 +152,67 @@ func TestPoller_HasMergedWork_NoMerges_NoFallbackBlock(t *testing.T) {
 		t.Error("hasMergedWork() should return false when no merged PRs exist on branch")
 	}
 }
+
+func TestPoller_HasMergedWork_DBFallback_CompletedRow(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/search/issues":
+			_, _ = w.Write([]byte(`{"total_count": 0}`))
+		case "/repos/owner/repo/pulls":
+			_, _ = w.Write([]byte(`[]`))
+		case "/repos/owner/repo/issues/42/labels":
+			if r.Method == http.MethodPost {
+				w.WriteHeader(http.StatusOK)
+			}
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL(testutil.FakeGitHubToken, server.URL)
+	execChecker := &mockExecutionChecker{
+		completed: map[string]bool{
+			"GH-42:/project": true,
+		},
+	}
+	poller, _ := NewPoller(client, "owner/repo", "pilot", 30*time.Second,
+		WithExecutionChecker(execChecker, "/project"),
+	)
+
+	issue := &Issue{Number: 42, Title: "Test issue"}
+	if !poller.hasMergedWork(context.Background(), issue) {
+		t.Error("hasMergedWork() should return true when DB has a completed row")
+	}
+}
+
+func TestPoller_HasMergedWork_DBFallback_SkipsRetryReady(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/search/issues":
+			_, _ = w.Write([]byte(`{"total_count": 0}`))
+		case "/repos/owner/repo/pulls":
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL(testutil.FakeGitHubToken, server.URL)
+	execChecker := &mockExecutionChecker{
+		completed: map[string]bool{
+			"GH-42:/project": true,
+		},
+	}
+	poller, _ := NewPoller(client, "owner/repo", "pilot", 30*time.Second,
+		WithExecutionChecker(execChecker, "/project"),
+	)
+
+	issue := &Issue{Number: 42, Title: "Test issue", Labels: []Label{{Name: LabelRetryReady}}}
+	if poller.hasMergedWork(context.Background(), issue) {
+		t.Error("hasMergedWork() should not use DB fallback for retry-ready issues")
+	}
+}

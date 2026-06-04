@@ -172,11 +172,19 @@ func TestPoller_FindOldestUnprocessedIssue_SkipsPullRequests(t *testing.T) {
 
 // mockExecutionChecker implements ExecutionChecker for testing.
 type mockExecutionChecker struct {
-	completed map[string]bool // key: "taskID:projectPath"
+	completed   map[string]bool // key: "taskID:projectPath"
+	invalidated []string
 }
 
 func (m *mockExecutionChecker) HasCompletedExecution(taskID, projectPath string) (bool, error) {
 	return m.completed[taskID+":"+projectPath], nil
+}
+
+func (m *mockExecutionChecker) InvalidateCompletion(taskID, projectPath string) error {
+	key := taskID + ":" + projectPath
+	m.invalidated = append(m.invalidated, key)
+	delete(m.completed, key)
+	return nil
 }
 
 func TestPoller_SkipsCompletedExecution(t *testing.T) {
@@ -261,5 +269,66 @@ func TestPoller_DispatchesWhenNoCompletedExecution(t *testing.T) {
 
 	if got := atomic.LoadInt32(&callCount); got != 1 {
 		t.Errorf("callback called %d times, want 1 (should dispatch when no completed execution)", got)
+	}
+}
+
+func TestPoller_RetryReady_InvalidatesCompletedExecution(t *testing.T) {
+	now := time.Now()
+	issues := []*Issue{
+		{
+			Number:    42,
+			State:     "open",
+			Title:     "Retry-ready with completed row",
+			Labels:    []Label{{Name: "pilot"}, {Name: LabelRetryReady}},
+			CreatedAt: now.Add(-1 * time.Hour),
+		},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodDelete:
+			w.WriteHeader(http.StatusOK)
+		case r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("[]"))
+		case r.URL.Path == "/search/issues":
+			_, _ = w.Write([]byte(`{"total_count": 0}`))
+		case strings.HasSuffix(r.URL.Path, "/pulls"):
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			_ = json.NewEncoder(w).Encode(issues)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL(testutil.FakeGitHubToken, server.URL)
+	execChecker := &mockExecutionChecker{
+		completed: map[string]bool{
+			"GH-42:/project": true,
+		},
+	}
+
+	var callCount int32
+	poller, _ := NewPoller(client, "owner/repo", "pilot", 30*time.Second,
+		WithRetryGracePeriod(0),
+		WithExecutionChecker(execChecker, "/project"),
+		WithOnIssue(func(ctx context.Context, issue *Issue) error {
+			atomic.AddInt32(&callCount, 1)
+			return nil
+		}),
+	)
+
+	poller.checkForNewIssues(context.Background())
+	poller.WaitForActive()
+
+	if len(execChecker.invalidated) == 0 {
+		t.Fatal("InvalidateCompletion was not called")
+	}
+	if execChecker.invalidated[0] != "GH-42:/project" {
+		t.Errorf("InvalidateCompletion called with %q, want %q", execChecker.invalidated[0], "GH-42:/project")
+	}
+	if got := atomic.LoadInt32(&callCount); got != 1 {
+		t.Errorf("callback called %d times, want 1", got)
 	}
 }

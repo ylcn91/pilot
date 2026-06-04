@@ -181,3 +181,119 @@ func TestNotifyExternalClose_SkipsRetryReadyWhenDone(t *testing.T) {
 		})
 	}
 }
+
+func TestNotifyExternalClose_SkipsRetryReadyForHumanRecoveryPR(t *testing.T) {
+	const botLogin = "pilot-bot"
+
+	tests := []struct {
+		name           string
+		openPRs        []github.PullRequest
+		wantRetryAdded bool
+	}{
+		{
+			name:           "no open PRs - retry-ready applied",
+			wantRetryAdded: true,
+		},
+		{
+			name: "human PR open - retry-ready skipped",
+			openPRs: []github.PullRequest{
+				{
+					Number:  99,
+					State:   "open",
+					HTMLURL: "https://github.com/owner/repo/pull/99",
+					User:    &github.User{Login: "alice"},
+				},
+			},
+			wantRetryAdded: false,
+		},
+		{
+			name: "only bot PR open - retry-ready applied",
+			openPRs: []github.PullRequest{
+				{
+					Number:  100,
+					State:   "open",
+					HTMLURL: "https://github.com/owner/repo/pull/100",
+					User:    &github.User{Login: botLogin},
+				},
+			},
+			wantRetryAdded: true,
+		},
+		{
+			name: "mixed bot and human PRs - retry-ready skipped",
+			openPRs: []github.PullRequest{
+				{Number: 100, State: "open", HTMLURL: "https://github.com/owner/repo/pull/100", User: &github.User{Login: botLogin}},
+				{Number: 101, State: "open", HTMLURL: "https://github.com/owner/repo/pull/101", User: &github.User{Login: "bob"}},
+			},
+			wantRetryAdded: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var retryReadyAdded bool
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.URL.Path == "/user" && r.Method == http.MethodGet:
+					w.WriteHeader(http.StatusOK)
+					_ = json.NewEncoder(w).Encode(github.User{Login: botLogin})
+
+				case r.URL.Path == "/repos/owner/repo/issues/10" && r.Method == http.MethodGet:
+					issue := github.Issue{Number: 10, State: "open", Labels: []github.Label{}}
+					w.WriteHeader(http.StatusOK)
+					_ = json.NewEncoder(w).Encode(issue)
+
+				case strings.HasPrefix(r.URL.Path, "/search/issues") && r.Method == http.MethodGet:
+					items := make([]map[string]interface{}, 0, len(tt.openPRs))
+					for _, pr := range tt.openPRs {
+						item := map[string]interface{}{
+							"id":       pr.Number,
+							"number":   pr.Number,
+							"title":    pr.Title,
+							"state":    pr.State,
+							"html_url": pr.HTMLURL,
+						}
+						if pr.User != nil {
+							item["user"] = map[string]interface{}{"login": pr.User.Login, "id": pr.User.ID}
+						}
+						items = append(items, item)
+					}
+					w.WriteHeader(http.StatusOK)
+					_ = json.NewEncoder(w).Encode(map[string]interface{}{
+						"total_count": len(items),
+						"items":       items,
+					})
+
+				case r.URL.Path == "/repos/owner/repo/issues/10/labels" && r.Method == http.MethodPost:
+					var body struct {
+						Labels []string `json:"labels"`
+					}
+					_ = json.NewDecoder(r.Body).Decode(&body)
+					for _, l := range body.Labels {
+						if l == github.LabelRetryReady {
+							retryReadyAdded = true
+						}
+					}
+					w.WriteHeader(http.StatusOK)
+					_, _ = w.Write([]byte("[]"))
+
+				case strings.HasPrefix(r.URL.Path, "/repos/owner/repo/issues/10/labels/") && r.Method == http.MethodDelete:
+					w.WriteHeader(http.StatusOK)
+
+				default:
+					w.WriteHeader(http.StatusOK)
+				}
+			}))
+			defer server.Close()
+
+			ghClient := github.NewClientWithBaseURL(testutil.FakeGitHubToken, server.URL)
+			c := NewController(DefaultConfig(), ghClient, nil, "owner", "repo")
+
+			c.notifyExternalClose(context.Background(), &PRState{PRNumber: 42, IssueNumber: 10})
+
+			if retryReadyAdded != tt.wantRetryAdded {
+				t.Errorf("pilot-retry-ready added = %v, want %v", retryReadyAdded, tt.wantRetryAdded)
+			}
+		})
+	}
+}

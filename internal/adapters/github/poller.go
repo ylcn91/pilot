@@ -48,6 +48,7 @@ type TaskChecker interface {
 // GH-2242: Prevents re-dispatch of completed tasks when pilot-done label is missing.
 type ExecutionChecker interface {
 	HasCompletedExecution(taskID, projectPath string) (bool, error)
+	InvalidateCompletion(taskID, projectPath string) error
 }
 
 // Verdict is the poller-side result of a pre-flight judgment.

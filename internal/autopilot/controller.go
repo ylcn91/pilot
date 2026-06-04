@@ -94,6 +94,9 @@ type Controller struct {
 	// race window before label propagation catches up.
 	onIssueDone func(issueNumber int)
 
+	// Cached authenticated GitHub login for guarding human recovery PRs.
+	cachedBotLogin string
+
 	// guardrailsGate evaluates repo-specific architectural rules per PR and
 	// surfaces them as a commit status + PR comment. Optional and fail-open:
 	// nil or disabled => handleCIPassed never touches it. It NEVER influences

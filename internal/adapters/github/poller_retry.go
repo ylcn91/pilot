@@ -70,12 +70,31 @@ func (p *Poller) hasMergedWork(ctx context.Context, issue *Issue) bool {
 			return false
 		}
 		if !branchFound {
-			return false
+			if p.dispatch.execChecker != nil && !HasLabel(issue, LabelRetryReady) {
+				taskID := fmt.Sprintf("GH-%d", issue.Number)
+				completed, cerr := p.dispatch.execChecker.HasCompletedExecution(taskID, p.dispatch.projectPath)
+				if cerr != nil {
+					p.logger.Warn("Failed to check completed execution fallback",
+						slog.Int("issue", issue.Number),
+						slog.Any("error", cerr),
+					)
+					return false
+				}
+				if !completed {
+					return false
+				}
+				p.logger.Debug("hasMergedWork: DB fallback hit",
+					slog.String("task_id", taskID),
+				)
+			} else {
+				return false
+			}
+		} else {
+			p.logger.Info("Merged PR found via branch lookup (Search API lag)",
+				slog.Int("issue", issue.Number),
+				slog.String("branch", branch),
+			)
 		}
-		p.logger.Info("Merged PR found via branch lookup (Search API lag)",
-			slog.Int("issue", issue.Number),
-			slog.String("branch", branch),
-		)
 	}
 
 	p.logger.Info("Issue already has merged PRs, marking as done",
@@ -300,6 +319,16 @@ func (p *Poller) shouldRetryRetryReadyIssue(ctx context.Context, issue *Issue) b
 
 	// GH-2432: the retry budget is now tracked entirely via the pilot-retry-N
 	// labels swapped above; no in-memory counter to bump.
+
+	if p.dispatch.execChecker != nil {
+		taskID := fmt.Sprintf("GH-%d", issue.Number)
+		if err := p.dispatch.execChecker.InvalidateCompletion(taskID, p.dispatch.projectPath); err != nil {
+			p.logger.Warn("InvalidateCompletion failed on retry-ready re-dispatch; proceeding",
+				slog.String("task_id", taskID),
+				slog.Any("error", err),
+			)
+		}
+	}
 
 	// Clear from processed map so the issue can be re-picked
 	p.ClearProcessed(issue.Number)

@@ -75,6 +75,25 @@ func (c *Controller) notifyExternalMerge(ctx context.Context, prState *PRState) 
 	}
 }
 
+func (c *Controller) getBotLogin(ctx context.Context) string {
+	c.mu.RLock()
+	login := c.cachedBotLogin
+	c.mu.RUnlock()
+	if login != "" {
+		return login
+	}
+
+	user, err := c.ghClient.GetAuthenticatedUser(ctx)
+	if err != nil {
+		c.log.Debug("could not fetch authenticated user login for retry guard", "error", err)
+		return ""
+	}
+	c.mu.Lock()
+	c.cachedBotLogin = user.Login
+	c.mu.Unlock()
+	return user.Login
+}
+
 // notifyExternalClose sends notification when a PR is closed externally without merge.
 // GH-1015: Marks the issue as pilot-retry-ready so it can be re-picked by the poller.
 func (c *Controller) notifyExternalClose(ctx context.Context, prState *PRState) {
@@ -95,6 +114,22 @@ func (c *Controller) notifyExternalClose(ctx context.Context, prState *PRState) 
 			c.log.Info("skipping pilot-retry-ready: issue already pilot-done", "issue", prState.IssueNumber, "pr", prState.PRNumber)
 			c.maybeCloseParentIssue(ctx, prState)
 			return
+		}
+
+		if botLogin := c.getBotLogin(ctx); botLogin != "" {
+			prs, searchErr := c.ghClient.SearchOpenPRsForIssue(ctx, c.owner, c.repo, prState.IssueNumber)
+			if searchErr == nil {
+				for _, pr := range prs {
+					if pr.User != nil && pr.User.Login != botLogin {
+						c.log.Info("skipping pilot-retry-ready: human recovery PR already open",
+							"issue", prState.IssueNumber,
+							"recovery_pr", pr.HTMLURL,
+							"author", pr.User.Login)
+						c.maybeCloseParentIssue(ctx, prState)
+						return
+					}
+				}
+			}
 		}
 
 		if err := c.ghClient.AddLabels(ctx, c.owner, c.repo, prState.IssueNumber, []string{github.LabelRetryReady}); err != nil {
