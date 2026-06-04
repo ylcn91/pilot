@@ -19,6 +19,15 @@ type CodexExecBackend struct {
 	config           *CodexExecConfig
 	heartbeatTimeout time.Duration
 	log              *slog.Logger
+
+	// subprocessLimits configures RSS telemetry and optional RLIMIT_AS cap. #27.
+	subprocessLimits *SubprocessLimitsConfig
+}
+
+// SetSubprocessLimits configures RSS telemetry and optional memory cap for the
+// Codex exec subprocess. #27 (mirrors ClaudeCodeBackend).
+func (b *CodexExecBackend) SetSubprocessLimits(cfg *SubprocessLimitsConfig) {
+	b.subprocessLimits = cfg
 }
 
 func NewCodexExecBackend(config *CodexExecConfig) *CodexExecBackend {
@@ -160,6 +169,17 @@ func (b *CodexExecBackend) Execute(ctx context.Context, opts ExecuteOptions) (*B
 	}
 	b.log.Debug("Codex exec started", slog.Int("pid", cmd.Process.Pid))
 
+	// #27: apply RSS cap (Linux: RLIMIT_AS via prlimit64; darwin/other: no-op)
+	// and start the RSS sampler — collects peak/final RSS for telemetry. Mirrors
+	// claude-code so OOM diagnosis works across subprocess backends.
+	applyResourceLimits(cmd.Process.Pid, b.subprocessLimits)
+	sampleInterval := 10 * time.Second
+	if b.subprocessLimits != nil && b.subprocessLimits.SampleIntervalSec > 0 {
+		sampleInterval = time.Duration(b.subprocessLimits.SampleIntervalSec) * time.Second
+	}
+	rssSamplerCtx, cancelRSSSampler := context.WithCancel(context.Background())
+	rssCh := StartRSSSampler(rssSamplerCtx, cmd.Process.Pid, sampleInterval)
+
 	result := &BackendResult{}
 	var stderrOutput strings.Builder
 	var wg sync.WaitGroup
@@ -176,6 +196,7 @@ func (b *CodexExecBackend) Execute(ctx context.Context, opts ExecuteOptions) (*B
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer logging.Recover("executor.codexexec.stdout")
 		scanner := bufio.NewScanner(stdout)
 		buf := make([]byte, 0, 64*1024)
 		scanner.Buffer(buf, 1024*1024)
@@ -227,6 +248,7 @@ func (b *CodexExecBackend) Execute(ctx context.Context, opts ExecuteOptions) (*B
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer logging.Recover("executor.codexexec.stderr")
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -243,6 +265,20 @@ func (b *CodexExecBackend) Execute(ctx context.Context, opts ExecuteOptions) (*B
 
 	err = cmd.Wait()
 	close(cmdDone)
+
+	// #27: collect RSS sample (cancelling the sampler triggers the final read).
+	cancelRSSSampler()
+	if rssSample, ok := <-rssCh; ok {
+		result.PeakRSSMB = rssSample.PeakMB
+		result.FinalRSSMB = rssSample.FinalMB
+		if rssSample.PeakMB > 0 {
+			b.log.Debug("Subprocess RSS telemetry",
+				slog.Int("peak_rss_mb", rssSample.PeakMB),
+				slog.Int("final_rss_mb", rssSample.FinalMB),
+			)
+		}
+	}
+
 	result.Stderr = stderrOutput.String()
 
 	if err != nil {
@@ -277,6 +313,7 @@ func (b *CodexExecBackend) Execute(ctx context.Context, opts ExecuteOptions) (*B
 }
 
 func (b *CodexExecBackend) monitorHeartbeat(ctx context.Context, cmdDone <-chan struct{}, cmd *exec.Cmd, opts ExecuteOptions, lastEventAt *atomic.Int64) {
+	defer logging.Recover("executor.codexexec.heartbeat")
 	ticker := time.NewTicker(HeartbeatCheckInterval)
 	defer ticker.Stop()
 	for {
@@ -318,6 +355,7 @@ func (b *CodexExecBackend) monitorWatchdog(cmdDone <-chan struct{}, cmd *exec.Cm
 		return
 	}
 	go func() {
+		defer logging.Recover("executor.codexexec.watchdog")
 		select {
 		case <-cmdDone:
 			return
@@ -343,6 +381,7 @@ func (b *CodexExecBackend) monitorWatchdog(cmdDone <-chan struct{}, cmd *exec.Cm
 }
 
 func (b *CodexExecBackend) monitorContext(ctx context.Context, cmdDone <-chan struct{}, cmd *exec.Cmd) {
+	defer logging.Recover("executor.codexexec.context")
 	select {
 	case <-cmdDone:
 		return

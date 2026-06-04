@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -76,12 +77,12 @@ func TestIsParentDone_LiveFallback(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			called := false
-			orig := isParentDoneLiveFallback
-			isParentDoneLiveFallback = func(taskID, dir string) bool {
+			orig := parentStateResolver
+			parentStateResolver = func(taskID, dir string) bool {
 				called = true
 				return tc.fallbackResult
 			}
-			t.Cleanup(func() { isParentDoneLiveFallback = orig })
+			t.Cleanup(func() { parentStateResolver = orig })
 
 			got := isParentDone(tc.task)
 			if got != tc.want {
@@ -89,6 +90,40 @@ func TestIsParentDone_LiveFallback(t *testing.T) {
 			}
 			if called != tc.fallbackCalled {
 				t.Errorf("fallback called = %v, want %v", called, tc.fallbackCalled)
+			}
+		})
+	}
+}
+
+// TestMustParentBeActionable verifies the #32 chokepoint: it returns
+// ErrParentDone for done parents (closed/merged state or terminal label) and
+// nil for actionable parents. parentStateResolver is pinned to a no-op by
+// TestMain, so empty-State GH-* tasks resolve to actionable here.
+func TestMustParentBeActionable(t *testing.T) {
+	cases := []struct {
+		name    string
+		task    *Task
+		wantErr bool
+	}{
+		{"nil task is actionable", nil, false},
+		{"open state actionable", &Task{ID: "GH-1", State: "open"}, false},
+		{"closed state done", &Task{ID: "GH-1", State: "closed"}, true},
+		{"merged state done", &Task{ID: "GH-1", State: "merged"}, true},
+		{"pilot-done label done", &Task{ID: "GH-1", Labels: []string{"pilot-done"}}, true},
+		{"pilot-skip label done", &Task{ID: "GH-1", Labels: []string{"pilot-skip"}}, true},
+		{"non-terminal label actionable", &Task{ID: "GH-1", Labels: []string{"pilot"}}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := MustParentBeActionable(tc.task)
+			if tc.wantErr && err == nil {
+				t.Fatalf("MustParentBeActionable = nil, want ErrParentDone")
+			}
+			if tc.wantErr && !errors.Is(err, ErrParentDone) {
+				t.Fatalf("MustParentBeActionable = %v, want ErrParentDone", err)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("MustParentBeActionable = %v, want nil", err)
 			}
 		})
 	}

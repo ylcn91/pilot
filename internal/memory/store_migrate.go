@@ -235,6 +235,11 @@ func (s *Store) migrate() error {
 		// GH-3028: RSS telemetry — peak and final resident set size for subprocess OOM diagnostics.
 		`ALTER TABLE executions ADD COLUMN peak_rss_mb INTEGER DEFAULT 0`,
 		`ALTER TABLE executions ADD COLUMN final_rss_mb INTEGER DEFAULT 0`,
+		// CS-2 (#32): persist Task.State across the dispatcher queue → worker
+		// round-trip so the parent-actionable gate (MustParentBeActionable) can
+		// read an authoritative state instead of relying on stale labels or a
+		// fail-open per-call `gh issue view` shellout.
+		`ALTER TABLE executions ADD COLUMN task_state TEXT DEFAULT ''`,
 	}
 
 	// Track applied migrations by their index in the slice so we don't blindly

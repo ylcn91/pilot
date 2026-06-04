@@ -251,6 +251,52 @@ func TestAnthropicBackend_CtxCancelDuringOverloadedBackoff(t *testing.T) {
 	}
 }
 
+// --- #24: LastAssistantText carries DECLINED marker on the API backend ---
+//
+// DECLINE detection (runner_execute_nocommit.go) reads result.LastAssistantText.
+// Before #24 it was only populated by the claude-code/codex-exec process
+// backends, so a DECLINE from the anthropic-api backend was invisible. This
+// asserts the final assistant text is captured and parseDeclinedReason matches.
+func TestAnthropicBackend_Execute_CapturesDeclinedText(t *testing.T) {
+	declined := "DECLINED: The requested module already exists in internal/auth."
+	sse := strings.Join([]string{
+		`data: {"type":"message_start","message":{"id":"msg1","type":"message","role":"assistant","model":"claude-opus-4-6","usage":{"input_tokens":10,"output_tokens":0}}}`,
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"` + declined + `"}}`,
+		`data: {"type":"content_block_stop","index":0}`,
+		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}`,
+		`data: {"type":"message_stop"}`,
+		``,
+	}, "\n\n")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, sse)
+	}))
+	defer srv.Close()
+
+	b := newTestAnthropicBackend(t, srv.URL)
+
+	result, err := b.Execute(context.Background(), ExecuteOptions{Prompt: "do the thing"})
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if result.LastAssistantText != declined {
+		t.Errorf("LastAssistantText = %q, want %q", result.LastAssistantText, declined)
+	}
+	reason, ok := parseDeclinedReason(result.LastAssistantText)
+	if !ok {
+		t.Fatalf("parseDeclinedReason(%q) returned ok=false", result.LastAssistantText)
+	}
+	if reason != "The requested module already exists in internal/auth." {
+		t.Errorf("declined reason = %q, unexpected", reason)
+	}
+}
+
 // --- No API key returns error ---
 
 func TestAnthropicBackend_NoAPIKey(t *testing.T) {

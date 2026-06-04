@@ -227,7 +227,7 @@ func (s *Store) GetQueuedTasksForProject(projectPath string, limit int) ([]*Exec
 			COALESCE(task_title, ''), COALESCE(task_description, ''), COALESCE(task_branch, ''),
 			COALESCE(task_base_branch, ''), COALESCE(task_create_pr, 0), COALESCE(task_verbose, 0),
 			COALESCE(task_source_adapter, ''), COALESCE(task_source_issue_id, ''),
-			COALESCE(task_labels, '')
+			COALESCE(task_labels, ''), COALESCE(task_state, '')
 		FROM executions
 		WHERE (status = 'queued' OR status = 'pending') AND project_path = ?
 		ORDER BY created_at ASC
@@ -245,7 +245,7 @@ func (s *Store) GetQueuedTasksForProject(projectPath string, limit int) ([]*Exec
 		var labelsJSON string
 		if err := rows.Scan(&exec.ID, &exec.TaskID, &exec.ProjectPath, &exec.Status, &exec.Output, &exec.Error, &exec.DurationMs, &exec.PRUrl, &exec.CommitSHA, &exec.CreatedAt, &completedAt,
 			&exec.TaskTitle, &exec.TaskDescription, &exec.TaskBranch, &exec.TaskBaseBranch, &exec.TaskCreatePR, &exec.TaskVerbose,
-			&exec.TaskSourceAdapter, &exec.TaskSourceIssueID, &labelsJSON); err != nil {
+			&exec.TaskSourceAdapter, &exec.TaskSourceIssueID, &labelsJSON, &exec.TaskState); err != nil {
 			return nil, err
 		}
 		if completedAt.Valid {

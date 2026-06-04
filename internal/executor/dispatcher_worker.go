@@ -169,6 +169,7 @@ func (w *ProjectWorker) processQueue(ctx context.Context) {
 			SourceAdapter: exec.TaskSourceAdapter,
 			SourceIssueID: exec.TaskSourceIssueID,
 			Labels:        exec.TaskLabels,
+			State:         exec.TaskState, // CS-2 (#32): restore state for the parent-actionable gate
 		}
 
 		// Execute (blocking)

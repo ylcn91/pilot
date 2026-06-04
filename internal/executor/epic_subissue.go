@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
-	"testing"
 )
 
 // conventionalSubtaskTitleRE mirrors the conventional-commit regex from the github
@@ -37,35 +36,19 @@ var ErrSubIssuesAlreadyExist = errors.New("open sub-issues already exist for thi
 // closed or skipped, so spawning sub-issues would be wasteful (GH-2867).
 var ErrParentDone = errors.New("parent task is already done; refusing to create sub-issues")
 
-// isParentDone reports whether a task should be treated as done based on its
-// labels (pilot-done, pilot-skip) or its state (closed, merged).
+// parentStateResolver fetches the authoritative done-state for a GitHub-sourced
+// task when the in-memory Task carries no State. It is a package-level seam:
+// production wires it to queryParentDoneViaGitHub; tests replace it with a
+// deterministic stub. This replaces the previous `testing.Testing()` guard
+// (which pulled the `testing` package into a production file) with a normal
+// dependency-injection point.
 //
-// Defensive fallback: whenever `State` is empty and the task ID looks like a
-// GitHub issue ("GH-N"), this function shells out to `gh issue view` to fetch
-// the authoritative state. This catches every code path that produces a Task
-// without `State`:
-//
-//   - The dispatcher worker (`dispatcher.go:639`) reconstructs Task from a
-//     persisted execution row; the `executions` schema has no `task_state`
-//     column.
-//   - The `task_labels` column may be populated but stale (frozen at queue
-//     time) — a parent queued with `["pilot"]` and later closed with
-//     `pilot-done` produces a Task whose labels still say `["pilot"]`.
-//
-// Both cases bypassed the gate during the 2026-05-08 GH-201 incident
-// (70+ spurious OAuth sub-issues). Non-fatal on lookup error: returns false
-// so this never blocks legitimate dispatches.
-//
-// Tests can override this var to assert the fallback path or to keep the
-// production default no-op when constructing tasks with deterministic GH-* IDs.
-var isParentDoneLiveFallback = func(taskID, dir string) bool {
-	// Never shell out during `go test` — tests override this var explicitly
-	// when they want to exercise the fallback path.
-	if testing.Testing() {
-		return false
-	}
-	return queryParentDoneViaGitHub(taskID, dir)
-}
+// CS-2 (#32): with task_state now persisted across the queue → worker
+// round-trip, dispatcher-restored Tasks carry an authoritative State and this
+// fallback rarely fires. It remains as a last resort for code paths that build
+// a Task without State (e.g. direct API callers), and is non-fatal: any lookup
+// error resolves to false so it never blocks a legitimate dispatch.
+var parentStateResolver = queryParentDoneViaGitHub
 
 func isParentDone(t *Task) bool {
 	if t == nil {
@@ -80,15 +63,28 @@ func isParentDone(t *Task) bool {
 		return true
 	}
 	// Live fallback when State is missing — Labels alone are not authoritative
-	// because dispatcher-restored Tasks carry stale labels from queue time.
-	// We only reach here when no terminal label was found above; the remaining
-	// label values are non-terminal and therefore inconclusive.
+	// because some code paths build a Task without State. We only reach here
+	// when no terminal label was found above; the remaining label values are
+	// non-terminal and therefore inconclusive.
 	if t.State == "" && strings.HasPrefix(t.ID, "GH-") {
-		if isParentDoneLiveFallback(t.ID, t.ProjectPath) {
+		if parentStateResolver(t.ID, t.ProjectPath) {
 			return true
 		}
 	}
 	return false
+}
+
+// MustParentBeActionable is the single chokepoint the dispatch path consults
+// before spawning sub-issues for a parent task. It returns ErrParentDone when
+// the parent is already closed/merged or carries a terminal label, and nil when
+// the parent is still actionable. Centralising the decision here (rather than
+// re-deriving it at each call site) keeps the closed-parent guard consistent
+// across CreateSubIssues and any future dispatch entry point. CS-2 (#32).
+func MustParentBeActionable(t *Task) error {
+	if isParentDone(t) {
+		return ErrParentDone
+	}
+	return nil
 }
 
 // queryParentDoneViaGitHub returns true when the GitHub issue identified by

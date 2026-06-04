@@ -47,7 +47,7 @@ func (r *Runner) executeCopyResult(s *executeState) {
 	// Post-execution summary via structured output (GH-1264)
 	// This replaces brittle regex parsing with reliable --json-schema output
 	if result.CommitSHA == "" && result.Success && r.config != nil && r.config.ClaudeCode != nil && r.config.ClaudeCode.UseStructuredOutput {
-		if summary, summaryErr := r.getPostExecutionSummary(ctx); summaryErr == nil {
+		if summary, summaryErr := r.getPostExecutionSummary(ctx, executionPath); summaryErr == nil {
 			if summary.CommitSHA != "" {
 				result.CommitSHA = summary.CommitSHA
 				log.Info("CommitSHA extracted via post-execution summary",

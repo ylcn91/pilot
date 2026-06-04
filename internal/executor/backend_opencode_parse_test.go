@@ -267,6 +267,34 @@ func TestOpenCodeBackendParseAssistantResponseError(t *testing.T) {
 	if result.Error != "bad key" {
 		t.Errorf("Error = %q, want %q", result.Error, "bad key")
 	}
+	// #25: ErrorType + Stderr must be set so persistBackendDiagnostics has
+	// something to write to execution_logs (previously empty for opencode).
+	if result.ErrorType != "ProviderAuthError" {
+		t.Errorf("ErrorType = %q, want %q", result.ErrorType, "ProviderAuthError")
+	}
+	if result.Stderr != "bad key" {
+		t.Errorf("Stderr = %q, want %q", result.Stderr, "bad key")
+	}
+}
+
+// TestOpenCodeBackendParseAssistantResponseCapturesDeclined verifies #24: the
+// last assistant text block is captured into LastAssistantText so a DECLINED
+// marker emitted by opencode is detectable by the no-commit retry path.
+func TestOpenCodeBackendParseAssistantResponseCapturesDeclined(t *testing.T) {
+	backend := NewOpenCodeBackend(nil)
+
+	declined := "DECLINED: The feature already exists."
+	body := `{"info": {"id":"msg_4","tokens":{"input":1,"output":1,"cache":{"read":0,"write":0}}}, "parts": [{"type":"text","text":"thinking..."},{"type":"text","text":"` + declined + `"}]}`
+	result := &BackendResult{}
+	if err := backend.parseAssistantResponse(strings.NewReader(body), ExecuteOptions{}, result); err != nil {
+		t.Fatalf("parseAssistantResponse error = %v", err)
+	}
+	if result.LastAssistantText != declined {
+		t.Errorf("LastAssistantText = %q, want %q", result.LastAssistantText, declined)
+	}
+	if _, ok := parseDeclinedReason(result.LastAssistantText); !ok {
+		t.Errorf("parseDeclinedReason(%q) returned ok=false", result.LastAssistantText)
+	}
 }
 
 // TestOpenCodeBackendResolveModelRef verifies model resolution into the

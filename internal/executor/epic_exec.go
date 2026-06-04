@@ -22,14 +22,18 @@ func (r *Runner) CreateSubIssues(ctx context.Context, plan *EpicPlan, executionP
 		return nil, fmt.Errorf("plan has no subtasks to create issues from")
 	}
 
-	if plan.ParentTask != nil && isParentDone(plan.ParentTask) {
-		// GH-2867: refuse to spawn sub-issues for a parent that is already done.
-		r.log.Info("Skipping sub-issue creation: parent is already done",
-			"parent_id", plan.ParentTask.ID,
-			"state", plan.ParentTask.State,
-			"labels", plan.ParentTask.Labels,
-		)
-		return nil, ErrParentDone
+	if plan.ParentTask != nil {
+		// GH-2867 / CS-2 (#32): refuse to spawn sub-issues for a parent that is
+		// already done. MustParentBeActionable is the single chokepoint for this
+		// decision so the closed-parent guard stays consistent across call sites.
+		if err := MustParentBeActionable(plan.ParentTask); err != nil {
+			r.log.Info("Skipping sub-issue creation: parent is already done",
+				"parent_id", plan.ParentTask.ID,
+				"state", plan.ParentTask.State,
+				"labels", plan.ParentTask.Labels,
+			)
+			return nil, err
+		}
 	}
 
 	if !r.issueCreationEnabled {
