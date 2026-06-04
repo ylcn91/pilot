@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 // Manager handles webhook delivery to configured endpoints.
@@ -76,6 +78,7 @@ func (m *Manager) Dispatch(ctx context.Context, event *Event) []DeliveryResult {
 
 		wg.Add(1)
 		go func(ep *EndpointConfig) {
+			defer logging.Recover("webhooks.manager.dispatch")
 			defer wg.Done()
 			result := m.deliver(ctx, ep, event)
 			m.mu.Lock()
