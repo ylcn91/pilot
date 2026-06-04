@@ -181,6 +181,7 @@ func (d *Dispatcher) queueDecomposedTask(ctx context.Context, parent *Task, resu
 		TaskSourceAdapter: parent.SourceAdapter,
 		TaskSourceIssueID: parent.SourceIssueID,
 		TaskLabels:        parent.Labels, // GH-2326: persist labels for no-decompose/autopilot-fix gates
+		TaskState:         parent.State,  // CS-2 (#32): persist state for the parent-actionable gate
 	}
 
 	if err := d.store.SaveExecution(parentExec); err != nil {
@@ -239,6 +240,7 @@ func (d *Dispatcher) queueSingleTask(ctx context.Context, task *Task) (string, e
 		TaskSourceAdapter: task.SourceAdapter,
 		TaskSourceIssueID: task.SourceIssueID,
 		TaskLabels:        task.Labels, // GH-2326: persist labels for no-decompose/autopilot-fix gates
+		TaskState:         task.State,  // CS-2 (#32): persist state for the parent-actionable gate
 	}
 
 	if err := d.store.SaveExecution(exec); err != nil {

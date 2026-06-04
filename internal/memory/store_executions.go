@@ -50,6 +50,10 @@ type Execution struct {
 	// GH-2326: persisted Task.Labels so label-driven gates (no-decompose, autopilot-fix, etc.)
 	// survive the dispatcher queue → worker round-trip.
 	TaskLabels []string
+	// CS-2 (#32): persisted Task.State ("open"/"closed"/"merged") so the
+	// parent-actionable gate survives the dispatcher queue → worker round-trip
+	// and no longer depends on a fail-open `gh issue view` shellout.
+	TaskState string
 	// Approval decision fields (GH-2667)
 	ApprovalRequestID  string
 	ApprovalDecision   string
@@ -72,13 +76,13 @@ func (s *Store) SaveExecution(exec *Execution) error {
 			INSERT INTO executions (id, task_id, project_path, status, output, error, duration_ms, pr_url, commit_sha, completed_at,
 				tokens_input, tokens_output, tokens_total, estimated_cost_usd, files_changed, lines_added, lines_removed, model_name,
 				task_title, task_description, task_branch, task_base_branch, task_create_pr, task_verbose,
-				task_source_adapter, task_source_issue_id, task_labels,
+				task_source_adapter, task_source_issue_id, task_labels, task_state,
 				approval_request_id, effort_level, complexity_level)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, exec.ID, exec.TaskID, exec.ProjectPath, exec.Status, exec.Output, exec.Error, exec.DurationMs, exec.PRUrl, exec.CommitSHA, exec.CompletedAt,
 			exec.TokensInput, exec.TokensOutput, exec.TokensTotal, exec.EstimatedCostUSD, exec.FilesChanged, exec.LinesAdded, exec.LinesRemoved, exec.ModelName,
 			exec.TaskTitle, exec.TaskDescription, exec.TaskBranch, exec.TaskBaseBranch, exec.TaskCreatePR, exec.TaskVerbose,
-			exec.TaskSourceAdapter, exec.TaskSourceIssueID, labelsJSON,
+			exec.TaskSourceAdapter, exec.TaskSourceIssueID, labelsJSON, exec.TaskState,
 			exec.ApprovalRequestID, exec.EffortLevel, exec.ComplexityLevel)
 		return err
 	})
@@ -122,7 +126,7 @@ func (s *Store) GetExecution(id string) (*Execution, error) {
 			COALESCE(task_title, ''), COALESCE(task_description, ''), COALESCE(task_branch, ''),
 			COALESCE(task_base_branch, ''), COALESCE(task_create_pr, 0), COALESCE(task_verbose, 0),
 			COALESCE(task_source_adapter, ''), COALESCE(task_source_issue_id, ''),
-			COALESCE(task_labels, ''),
+			COALESCE(task_labels, ''), COALESCE(task_state, ''),
 			COALESCE(approval_request_id, ''), COALESCE(approval_decision, ''),
 			approval_decision_at,
 			COALESCE(approval_decision_by, ''),
@@ -137,7 +141,7 @@ func (s *Store) GetExecution(id string) (*Execution, error) {
 	err := row.Scan(&exec.ID, &exec.TaskID, &exec.ProjectPath, &exec.Status, &exec.Output, &exec.Error, &exec.DurationMs, &exec.PRUrl, &exec.CommitSHA, &exec.CreatedAt, &completedAt,
 		&exec.TokensInput, &exec.TokensOutput, &exec.TokensTotal, &exec.EstimatedCostUSD, &exec.FilesChanged, &exec.LinesAdded, &exec.LinesRemoved, &exec.ModelName,
 		&exec.TaskTitle, &exec.TaskDescription, &exec.TaskBranch, &exec.TaskBaseBranch, &exec.TaskCreatePR, &exec.TaskVerbose,
-		&exec.TaskSourceAdapter, &exec.TaskSourceIssueID, &labelsJSON,
+		&exec.TaskSourceAdapter, &exec.TaskSourceIssueID, &labelsJSON, &exec.TaskState,
 		&exec.ApprovalRequestID, &exec.ApprovalDecision, &approvalDecisionAt, &exec.ApprovalDecisionBy,
 		&exec.EffortLevel, &exec.ComplexityLevel)
 	if err != nil {

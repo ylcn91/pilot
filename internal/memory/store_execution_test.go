@@ -305,6 +305,61 @@ func TestTaskLabelsRoundTrip(t *testing.T) {
 	}
 }
 
+// TestExecution_TaskStateRoundTrip verifies #32 (CS-2): Task.State persists
+// across SaveExecution → GetExecution and SaveExecution →
+// GetQueuedTasksForProject (the dispatcher worker's restore path). Before this,
+// the executions schema had no task_state column, so the parent-actionable
+// gate fell back to a fail-open `gh issue view` shellout.
+func TestExecution_TaskStateRoundTrip(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := NewStore(tmpDir)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	for i, state := range []string{"", "open", "closed", "merged"} {
+		execID := fmt.Sprintf("exec-state-%d", i)
+		input := &Execution{
+			ID:          execID,
+			TaskID:      fmt.Sprintf("GH-%d", i),
+			ProjectPath: "/project/state",
+			Status:      "queued",
+			TaskTitle:   "state test",
+			TaskState:   state,
+		}
+		if err := store.SaveExecution(input); err != nil {
+			t.Fatalf("SaveExecution: %v", err)
+		}
+
+		got, err := store.GetExecution(execID)
+		if err != nil {
+			t.Fatalf("GetExecution: %v", err)
+		}
+		if got.TaskState != state {
+			t.Errorf("GetExecution TaskState = %q, want %q", got.TaskState, state)
+		}
+
+		queued, err := store.GetQueuedTasksForProject("/project/state", 100)
+		if err != nil {
+			t.Fatalf("GetQueuedTasksForProject: %v", err)
+		}
+		var found *Execution
+		for _, e := range queued {
+			if e.ID == execID {
+				found = e
+				break
+			}
+		}
+		if found == nil {
+			t.Fatalf("execution %s not in queued list", execID)
+		}
+		if found.TaskState != state {
+			t.Errorf("queued read TaskState = %q, want %q", found.TaskState, state)
+		}
+	}
+}
+
 func TestGetStaleQueuedExecutions(t *testing.T) {
 	tmpDir := t.TempDir()
 	store, err := NewStore(tmpDir)
