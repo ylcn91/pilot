@@ -117,6 +117,16 @@ func (p *pollingRuntime) startBriefScheduler() {
 			Filters: briefs.FilterConfig{
 				Projects: briefCfg.Filters.Projects,
 			},
+			// #33: thread SMTP settings through so email briefs deliver from
+			// config alone; NewDeliveryService self-wires the sender from this.
+			Email: briefs.EmailConfig{
+				Host:          briefCfg.Email.Host,
+				Port:          briefCfg.Email.Port,
+				From:          briefCfg.Email.From,
+				Username:      briefCfg.Email.Username,
+				Password:      briefCfg.Email.Password,
+				AllowInsecure: briefCfg.Email.AllowInsecure,
+			},
 		}
 
 		// Convert channels

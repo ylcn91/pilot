@@ -102,6 +102,19 @@ type DailyBriefConfig struct {
 	Channels []BriefChannelConfig `yaml:"channels"`
 	Content  BriefContentConfig   `yaml:"content"`
 	Filters  BriefFilterConfig    `yaml:"filters"`
+	Email    BriefEmailConfig     `yaml:"email"` // SMTP settings for the email delivery channel
+}
+
+// BriefEmailConfig holds the SMTP settings used to deliver email briefs. It
+// mirrors briefs.EmailConfig so the cmd layer can thread it through to the
+// delivery service instead of dropping it (#33).
+type BriefEmailConfig struct {
+	Host          string `yaml:"host"`
+	Port          int    `yaml:"port"`
+	From          string `yaml:"from"`
+	Username      string `yaml:"username"`
+	Password      string `yaml:"password"`
+	AllowInsecure bool   `yaml:"allow_insecure"` // Permit sending without STARTTLS (trusted relays only)
 }
 
 // BriefChannelConfig defines a delivery channel for daily briefs (Slack or email).
