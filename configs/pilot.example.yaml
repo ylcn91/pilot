@@ -179,6 +179,36 @@ orchestrator:
     poll_interval: 30s         # How often to check PR status
     pr_timeout: 1h             # Max time to wait for PR merge
 
+  # Daily briefs / digest. Read at orchestrator.daily_brief.
+  daily_brief:
+    enabled: false
+    schedule: "0 9 * * 1-5"      # Cron: 9 AM weekdays
+    timezone: "America/New_York"
+    channels:
+      # Slack channel
+      - type: slack
+        channel: "#dev-updates"
+      # Telegram chat
+      - type: telegram
+        channel: "${TELEGRAM_CHAT_ID}"  # Your Telegram chat ID
+      # Email recipients
+      # - type: email
+      #   recipients:
+      #     - team@example.com
+    content:
+      include_metrics: true
+      include_errors: true
+      max_items_per_section: 10
+    # SMTP settings for the email delivery channel. When host + from are set the
+    # delivery service self-wires an SMTP sender; leave blank to disable email.
+    email:
+      host: ""                  # SMTP server host, e.g. smtp.example.com
+      port: 587                 # SMTP port (587 STARTTLS, 465 implicit TLS)
+      from: ""                  # From address, e.g. pilot@example.com
+      username: ""              # SMTP auth username (often same as from)
+      password: ""              # SMTP auth password / app password
+      allow_insecure: false     # Permit sending without STARTTLS (trusted relays only)
+
 # Executor settings
 executor:
   type: "codex-exec"           # "codex-exec", "claude-code", "qwen-code", "opencode", "anthropic-api", or "openai-api"
@@ -366,36 +396,6 @@ executor:
 #     approvers: []
 #     timeout: 1h
 #     default_action: rejected
-
-# Daily briefs configuration
-briefs:
-  enabled: false
-  schedule: "0 9 * * 1-5"      # Cron: 9 AM weekdays
-  timezone: "America/New_York"
-  channels:
-    # Slack channel
-    - type: slack
-      channel: "#dev-updates"
-    # Telegram chat
-    - type: telegram
-      channel: "${TELEGRAM_CHAT_ID}"  # Your Telegram chat ID
-    # Email recipients
-    # - type: email
-    #   recipients:
-    #     - team@example.com
-  content:
-    include_metrics: true
-    include_errors: true
-    max_items_per_section: 10
-  # SMTP settings for the email delivery channel. When host + from are set the
-  # delivery service self-wires an SMTP sender; leave blank to disable email.
-  email:
-    host: ""                  # SMTP server host, e.g. smtp.example.com
-    port: 587                 # SMTP port (587 STARTTLS, 465 implicit TLS)
-    from: ""                  # From address, e.g. pilot@example.com
-    username: ""              # SMTP auth username (often same as from)
-    password: ""              # SMTP auth password / app password
-    allow_insecure: false     # Permit sending without STARTTLS (trusted relays only)
 
 # Memory settings
 memory:
