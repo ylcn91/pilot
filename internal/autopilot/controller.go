@@ -35,7 +35,12 @@ type Controller struct {
 	doneStatus       string
 	failStatus       string
 	reviewStatus     string // GH-3260: board column for PR-created (In Progress → Review)
-	inProgressStatus string // GH-3260: reserved for symmetry; not yet emitted
+	inProgressStatus string // GH-3260: In-Progress column. The poller owns this
+	// transition (it emits inProgressStatus on confirmed dispatch — the actual
+	// "work started" moment — via github.Poller.syncBoardStatusInProgress). By the
+	// time autopilot first sees a PR the card is already past In-Progress, so the
+	// controller never emits it; the field is kept only so WithProjectBoardSync's
+	// status set stays complete for callers.
 	log              *slog.Logger
 
 	// State tracking

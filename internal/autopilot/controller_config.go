@@ -59,7 +59,10 @@ type ControllerOption func(*Controller)
 
 // WithProjectBoardSync wires a GitHub Projects V2 board sync into the controller.
 // doneStatus: merged PRs; failStatus: CI/exec failures; reviewStatus: PR created (In Progress → Review);
-// inProgressStatus: reserved for future use (wired for symmetry, not yet emitted).
+// inProgressStatus: the In-Progress column. The poller — not autopilot — emits
+// this on confirmed dispatch (github.Poller.syncBoardStatusInProgress), which is
+// the moment work actually starts; autopilot's lifecycle begins at PR-created,
+// already past In-Progress, so the controller never emits it.
 func WithProjectBoardSync(bs projectBoardSyncer, doneStatus, failStatus, reviewStatus, inProgressStatus string) ControllerOption {
 	return func(c *Controller) {
 		c.boardSync = bs
