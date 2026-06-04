@@ -78,6 +78,7 @@ func planePollerRegistration() PollerRegistration {
 				slog.Duration("interval", interval),
 			)
 			go func(p *plane.Poller) {
+				defer logging.Recover("plane.poller")
 				if err := p.Start(ctx); err != nil {
 					logging.WithComponent("plane").Error("Plane poller failed",
 						slog.Any("error", err),

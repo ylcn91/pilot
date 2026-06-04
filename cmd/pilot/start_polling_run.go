@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ylcn91/pilot/internal/dashboard"
+	"github.com/ylcn91/pilot/internal/logging"
 	"github.com/ylcn91/pilot/internal/upgrade"
 )
 
@@ -26,6 +27,10 @@ func (p *pollingRuntime) run() error {
 	architectScheduler := p.architectScheduler
 	architectStore := p.architectStore
 
+	// Drive the gateway liveness heartbeat from the main loop so the readiness
+	// check (gateway/server_health.go) reflects an alive daemon (GH-31).
+	p.startHeartbeat()
+
 	// Dashboard mode: run TUI and handle shutdown via TUI quit
 	if p.dashboardMode && program != nil {
 		fmt.Println("\n🖥️  Starting TUI dashboard...")
@@ -41,7 +46,7 @@ func (p *pollingRuntime) run() error {
 
 		// Set up hot upgrade goroutine - listens for upgrade requests from 'u' key press
 		// The channel is created above and passed to the dashboard model
-		go func() {
+		logging.SafeGo("start.dashboard.upgrade", func() {
 			for {
 				select {
 				case <-ctx.Done():
@@ -92,10 +97,10 @@ func (p *pollingRuntime) run() error {
 					}
 				}
 			}
-		}()
+		})
 
 		// Periodic refresh to catch any missed updates
-		go func() {
+		logging.SafeGo("start.dashboard.refresh", func() {
 			ticker := time.NewTicker(2 * time.Second)
 			defer ticker.Stop()
 
@@ -113,10 +118,10 @@ func (p *pollingRuntime) run() error {
 					}
 				}
 			}
-		}()
+		})
 
 		// Add startup logs after TUI starts (Send blocks if Run hasn't been called)
-		go func() {
+		logging.SafeGo("start.dashboard.startuplog", func() {
 			time.Sleep(100 * time.Millisecond) // Wait for Run() to start
 			program.Send(dashboard.AddLog(fmt.Sprintf("🚀 Pilot %s started - Polling mode", version))())
 			if p.hasTelegram {
@@ -196,7 +201,7 @@ func (p *pollingRuntime) run() error {
 					program.Send(dashboard.AddLog("✅ Pilot restarted (config reloaded)")())
 				}
 			}
-		}()
+		})
 
 		// Run TUI (blocks until quit via 'q' or Ctrl+C)
 		// Note: The upgrade callback is handled via upgradeRequestCh above

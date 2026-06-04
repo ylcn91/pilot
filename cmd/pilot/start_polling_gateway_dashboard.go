@@ -78,13 +78,15 @@ func (p *pollingRuntime) setupGateway() {
 			return dashboard.FetchGitGraph(path, limit)
 		})
 		gwServer.SetGitGraphPath(projectPath)
-		go func() {
+		// Forward recovered goroutine panics to this server's liveness tracker.
+		registerPanicServer(gwServer)
+		logging.SafeGo("gateway.background", func() {
 			addr := fmt.Sprintf("%s:%d", cfg.Gateway.Host, cfg.Gateway.Port)
 			logging.WithComponent("gateway").Info("gateway started in background", "addr", addr)
 			if err := gwServer.Start(ctx); err != nil && ctx.Err() == nil {
 				logging.WithComponent("gateway").Error("gateway background error", "error", err)
 			}
-		}()
+		})
 	}
 
 	p.gwServer = gwServer

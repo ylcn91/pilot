@@ -100,6 +100,7 @@ func linearPollerRegistration() PollerRegistration {
 					slog.Duration("interval", interval),
 				)
 				go func(p *linear.Poller, name string) {
+					defer logging.Recover("linear.poller")
 					if err := p.Start(ctx); err != nil {
 						logging.WithComponent("linear").Error("Linear poller failed",
 							slog.String("workspace", name),

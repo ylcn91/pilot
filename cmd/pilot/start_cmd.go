@@ -138,26 +138,18 @@ Examples:
 				cfg.Orchestrator.Execution.Mode = "sequential"
 			}
 
-			// Override autopilot config if flag provided
-			if f.envFlag != "" {
+			// Resolve autopilot environment with precedence:
+			// --env flag > autopilot.default_environment in config > built-in default.
+			// Previously default_environment was parsed but never selected the active
+			// env when --env was absent.
+			needsEnv := f.envFlag != "" ||
+				(cfg.Orchestrator.Autopilot != nil && cfg.Orchestrator.Autopilot.DefaultEnvironment != "")
+			if needsEnv {
 				if cfg.Orchestrator.Autopilot == nil {
 					cfg.Orchestrator.Autopilot = autopilot.DefaultConfig()
 				}
-				cfg.Orchestrator.Autopilot.Enabled = true
-
-				// Use SetActiveEnvironment to validate and resolve environment
-				if err := cfg.Orchestrator.Autopilot.SetActiveEnvironment(f.envFlag); err != nil {
-					// Show helpful error with available environments
-					availableEnvs := []string{"dev", "stage", "prod"}
-					if cfg.Orchestrator.Autopilot.Environments != nil {
-						for name := range cfg.Orchestrator.Autopilot.Environments {
-							availableEnvs = append(availableEnvs, name)
-						}
-					}
-					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-					fmt.Fprintf(os.Stderr, "Available environments: %v\n", availableEnvs)
-					fmt.Fprintf(os.Stderr, "\nTo add a custom environment, add to autopilot.environments in config.yaml:\n")
-					fmt.Fprintf(os.Stderr, "autopilot:\n  environments:\n    my-env:\n      branch: main\n      require_approval: true\n")
+				if available, err := resolveAutopilotEnv(cfg.Orchestrator.Autopilot, f.envFlag); err != nil {
+					printAutopilotEnvError(os.Stderr, err, available)
 					return err
 				}
 			}
@@ -329,6 +321,8 @@ Examples:
 			if err := p.Start(); err != nil {
 				return fmt.Errorf("failed to start Pilot: %w", err)
 			}
+			// Forward recovered goroutine panics to the gateway liveness tracker (GH-31).
+			registerPanicServer(p.Gateway())
 			if gw.ArchitectScheduler != nil {
 				defer gw.ArchitectScheduler.Stop()
 			}

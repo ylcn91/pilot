@@ -13,6 +13,7 @@ import (
 	"github.com/ylcn91/pilot/internal/alerts"
 	"github.com/ylcn91/pilot/internal/banner"
 	"github.com/ylcn91/pilot/internal/executor"
+	"github.com/ylcn91/pilot/internal/logging"
 )
 
 func newTaskCmd() *cobra.Command {
@@ -52,11 +53,11 @@ Examples:
 			// Handle Ctrl+C
 			sigCh := make(chan os.Signal, 1)
 			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-			go func() {
+			logging.SafeGo("task.signal", func() {
 				<-sigCh
 				fmt.Println("\n\n⚠️  Cancelling task...")
 				cancel()
-			}()
+			})
 
 			banner.Print()
 

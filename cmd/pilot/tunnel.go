@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ylcn91/pilot/internal/logging"
 	"github.com/ylcn91/pilot/internal/tunnel"
 )
 
@@ -144,11 +145,11 @@ By default, runs in background. Use --foreground to run interactively.`,
 			if foreground {
 				sigCh := make(chan os.Signal, 1)
 				signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-				go func() {
+				logging.SafeGo("tunnel.signal", func() {
 					<-sigCh
 					fmt.Println("\nStopping tunnel...")
 					cancel()
-				}()
+				})
 			}
 
 			fmt.Printf("Starting %s tunnel...\n", manager.Provider())

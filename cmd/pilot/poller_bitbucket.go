@@ -69,6 +69,7 @@ func bitbucketPollerRegistration() PollerRegistration {
 				slog.Duration("interval", interval),
 			)
 			go func(p *bitbucket.Poller) {
+				defer logging.Recover("bitbucket.poller")
 				p.Start(ctx)
 			}(bitbucketPoller)
 		},

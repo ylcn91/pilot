@@ -181,41 +181,29 @@ func onboardAsanaTickets(state *OnboardState) error {
 	}
 	state.Config.Adapters.Asana.AccessToken = token
 
-	// Validate connection
-	fmt.Print("  Validating... ")
-	workspaces, err := validateAsanaConn(token)
-	if err != nil {
-		fmt.Printf("✗ %v\n", err)
+	// Basic token presence check; the authenticated check happens once the
+	// workspace ID is known (Asana's API is workspace-scoped).
+	if _, err := validateAsanaConn(token); err != nil {
+		fmt.Printf("  ✗ %v\n", err)
 		return handleValidationFailure(state, "Asana", func() error {
 			return onboardAsanaTickets(state)
 		})
 	}
-	fmt.Println("✓ Connected")
 
-	// Workspace selection
-	if len(workspaces) > 1 {
-		fmt.Println()
-		fmt.Println("  Select workspace:")
-		for i, ws := range workspaces {
-			fmt.Printf("    %d  %s\n", i+1, ws)
-		}
-		fmt.Print("  ▸ ")
-		wsChoice := readOnboardLine(state.Reader)
-		idx := 0
-		if _, err := fmt.Sscanf(wsChoice, "%d", &idx); err == nil && idx >= 1 && idx <= len(workspaces) {
-			// Workspace ID would be extracted from the validation response
-			// For now, store the name and let the actual adapter handle lookup
-			fmt.Printf("  Selected: %s\n", workspaces[idx-1])
-		}
-	} else if len(workspaces) == 1 {
-		fmt.Printf("  Workspace: %s\n", workspaces[0])
-	}
-
-	// Prompt for workspace ID if needed
+	// Prompt for workspace ID, then verify the token against it.
 	fmt.Print("  Workspace ID (from URL): ")
 	workspaceID := readOnboardLine(state.Reader)
 	if workspaceID != "" {
 		state.Config.Adapters.Asana.WorkspaceID = workspaceID
+		fmt.Print("  Validating... ")
+		wsName, err := validateAsanaWorkspace(token, workspaceID)
+		if err != nil {
+			fmt.Printf("✗ %v\n", err)
+			return handleValidationFailure(state, "Asana", func() error {
+				return onboardAsanaTickets(state)
+			})
+		}
+		fmt.Printf("✓ Connected to %q\n", wsName)
 	}
 
 	// Tag

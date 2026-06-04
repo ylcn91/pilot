@@ -80,6 +80,9 @@ func (p *pollingRuntime) createRepoPoller(
 	// Wire issue metrics recorder for rate-limit tracking.
 	if controller != nil {
 		pollerOpts = append(pollerOpts, github.WithIssueMetricsRecorder(controller.Metrics()))
+		// Wire per-repo dispatch/skip counters (TASK-293) so the three poller
+		// counters are populated instead of staying zero.
+		pollerOpts = append(pollerOpts, github.WithPollerMetrics(controller.Metrics()))
 	}
 
 	// GH-2802: Wire pre-flight judge when enabled (GH-2817: uses CC subprocess, no API key)
@@ -225,6 +228,7 @@ func (p *pollingRuntime) startAutopilotLoops(
 
 		// Start controller run loop
 		go func(c *autopilot.Controller, repo string) {
+			defer logging.Recover("autopilot.controller.run")
 			if err := c.Run(ctx); err != nil && err != context.Canceled {
 				logging.WithComponent("autopilot").Error("autopilot controller stopped",
 					slog.String("repo", repo),
