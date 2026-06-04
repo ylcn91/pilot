@@ -39,8 +39,8 @@ final class RuntimeStore: ObservableObject {
         connected = false
         status = .disconnected
         error = nil
-        socket.sendPing { [weak self] error in
-            Task { @MainActor in
+        socket.sendPing { error in
+            Task { @MainActor [weak self] in
                 guard let self else { return }
                 if let error {
                     self.connected = false
@@ -125,8 +125,8 @@ final class RuntimeStore: ObservableObject {
     }
 
     private func receive() {
-        webSocket?.receive { [weak self] result in
-            Task { @MainActor in
+        webSocket?.receive { result in
+            Task { @MainActor [weak self] in
                 guard let self else { return }
                 switch result {
                 case .failure(let error):
@@ -216,9 +216,9 @@ final class RuntimeStore: ObservableObject {
             let envelope: [String: Any] = ["type": "task", "payload": payload]
             let data = try JSONSerialization.data(withJSONObject: envelope)
             let text = String(data: data, encoding: .utf8) ?? "{}"
-            webSocket.send(.string(text)) { [weak self] error in
+            webSocket.send(.string(text)) { error in
                 if let error {
-                    Task { @MainActor in
+                    Task { @MainActor [weak self] in
                         self?.status = .error
                         self?.error = error.localizedDescription
                     }
