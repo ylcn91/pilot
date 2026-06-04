@@ -48,6 +48,7 @@ type ProjectStatuses struct {
 	Review     string `yaml:"review"`      // e.g. "Ready for Review"
 	Done       string `yaml:"done"`        // e.g. "Done"
 	Failed     string `yaml:"failed"`      // Optional — e.g. "Blocked"
+	Blocked    string `yaml:"blocked"`     // #17: column for pre-flight reject / failed execution; cards don't orphan in In Progress. No-op when empty.
 }
 
 // GetStatuses returns the statuses config, or a zero value if the receiver is nil.

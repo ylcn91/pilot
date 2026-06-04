@@ -195,6 +195,9 @@ func wireGatewayGitHubPolling(gw *gatewayInfra, cfg *config.Config, projectPath 
 		// confirmed pickup. WithBoardSync is a no-op when InProgress is "".
 		boardWB := github.NewProjectBoardSync(client, cfg.Adapters.GitHub.ProjectBoard, repoOwner)
 		pollerOpts = append(pollerOpts, github.WithBoardSync(boardWB, cfg.Adapters.GitHub.ProjectBoard.GetStatuses().InProgress))
+		// #17: move the card to the blocked column on pre-flight reject / failed
+		// execution so cards don't orphan in In Progress. No-op when empty.
+		pollerOpts = append(pollerOpts, github.WithBoardBlockedStatus(cfg.Adapters.GitHub.ProjectBoard.GetStatuses().Blocked))
 	}
 
 	// GH-392: Configure with actual issue processing callbacks (same as polling mode)
