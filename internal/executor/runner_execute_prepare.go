@@ -69,8 +69,10 @@ func (r *Runner) executePrepare(s *executeState) (*ExecutionResult, error) {
 		Source:      "pilot",
 	})
 
-	// Initialize git operations in execution path (worktree or original)
-	git := NewGitOperations(executionPath)
+	// Initialize git operations in execution path (worktree or original).
+	// Carry the task base branch so lint diff-ranges resolve against it
+	// (e.g. "dev" on this fork) instead of a hardcoded origin/main.
+	git := NewGitOperations(executionPath).WithBaseBranch(task.BaseBranch)
 
 	// Create branch if specified (skip for direct commit mode and worktree mode)
 	// When using worktree, CreateWorktreeWithBranch already created the branch

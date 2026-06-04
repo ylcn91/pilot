@@ -74,13 +74,35 @@ func (g *GitOperations) autoFixLint(ctx context.Context) *LintResult {
 	return result
 }
 
-// runGoLint runs golangci-lint on changed files
+// refExists reports whether the given git ref resolves to a commit in the repo.
+func (g *GitOperations) refExists(ctx context.Context, ref string) bool {
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--verify", "--quiet", ref+"^{commit}")
+	cmd.Dir = g.projectPath
+	return cmd.Run() == nil
+}
+
+// runGoLint runs golangci-lint on files changed since the task's base branch.
+// The base is resolved from the task (e.g. "dev" on this fork) rather than
+// hardcoded to origin/main, so forks based off a non-main branch don't lint
+// their entire divergence as "new". Prefer the remote-tracking ref, fall back
+// to the local branch, then to a full lint when neither resolves.
 func (g *GitOperations) runGoLint(ctx context.Context) (string, error) {
-	// Run golangci-lint on changed files from origin/main
-	cmd := exec.CommandContext(ctx, "golangci-lint", "run",
-		"--new-from-rev=origin/main",
-		"./...",
-	)
+	base := g.resolveBaseBranch(ctx)
+	var newFromRev string
+	for _, ref := range []string{"origin/" + base, base} {
+		if g.refExists(ctx, ref) {
+			newFromRev = ref
+			break
+		}
+	}
+
+	args := []string{"run"}
+	if newFromRev != "" {
+		args = append(args, "--new-from-rev="+newFromRev)
+	}
+	args = append(args, "./...")
+
+	cmd := exec.CommandContext(ctx, "golangci-lint", args...)
 	cmd.Dir = g.projectPath
 	output, err := cmd.CombinedOutput()
 	outputStr := strings.TrimSpace(string(output))

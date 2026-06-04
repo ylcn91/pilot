@@ -43,22 +43,28 @@ func (m *WorktreeManager) CreateWorktreeWithBranch(ctx context.Context, taskID, 
 	m.createMu.Lock()
 	defer m.createMu.Unlock()
 
-	// GH-1211: Always fetch origin before creating worktree to prevent branching
-	// from stale local main. This avoids conflicts when local main diverges from origin.
-	fetchCmd := exec.CommandContext(ctx, "git", "fetch", "origin", "main")
+	// Determine the base ref and the branch to fetch. Default to main for
+	// backward compatibility; an explicit task base branch (e.g. a dev-based
+	// fork) overrides it so the worktree branches from the right base instead
+	// of a hardcoded origin/main.
+	baseBranchName := "main"
+	baseRef := "origin/main"
+	if baseBranch != "" {
+		baseBranchName = strings.TrimPrefix(baseBranch, "origin/")
+		baseRef = baseBranch
+	}
+
+	// GH-1211: Always fetch the base from origin before creating the worktree to
+	// prevent branching from a stale local ref.
+	fetchCmd := exec.CommandContext(ctx, "git", "fetch", "origin", baseBranchName)
 	fetchCmd.Dir = m.repoPath
 	if output, fetchErr := fetchCmd.CombinedOutput(); fetchErr != nil {
-		slog.Warn("Failed to fetch origin/main before worktree creation",
+		slog.Warn("Failed to fetch base branch before worktree creation",
+			slog.String("base", baseBranchName),
 			slog.Any("error", fetchErr),
 			slog.String("output", string(output)),
 		)
-		// Non-fatal: proceed with local HEAD as fallback
-	}
-
-	// Determine base ref — prefer origin/main for freshest base
-	baseRef := "origin/main"
-	if baseBranch != "" {
-		baseRef = baseBranch
+		// Non-fatal: proceed with whatever local ref resolves.
 	}
 
 	// GH-963: Clean up any stale worktree for this branch before creating.

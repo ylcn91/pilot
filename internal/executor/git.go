@@ -57,11 +57,36 @@ func isExcluded(path string) bool {
 // GitOperations handles git operations for tasks
 type GitOperations struct {
 	projectPath string
+	// baseBranch is the task's intended base branch (e.g. "dev" on this fork).
+	// Empty means "auto-detect": callers like runGoLint fall back to the repo's
+	// detected default branch rather than hardcoding origin/main.
+	baseBranch string
 }
 
 // NewGitOperations creates new git operations for a project
 func NewGitOperations(projectPath string) *GitOperations {
 	return &GitOperations{projectPath: projectPath}
+}
+
+// WithBaseBranch sets the task base branch used for diff-range operations
+// (e.g. lint --new-from-rev) and returns the receiver for chaining. An empty
+// value leaves auto-detection in place.
+func (g *GitOperations) WithBaseBranch(baseBranch string) *GitOperations {
+	g.baseBranch = baseBranch
+	return g
+}
+
+// resolveBaseBranch returns the branch name to diff against: the configured
+// task base branch (origin/ prefix stripped), else the repo's detected default
+// branch, else "main".
+func (g *GitOperations) resolveBaseBranch(ctx context.Context) string {
+	if g.baseBranch != "" {
+		return strings.TrimPrefix(g.baseBranch, "origin/")
+	}
+	if def, err := g.GetDefaultBranch(ctx); err == nil && def != "" {
+		return def
+	}
+	return "main"
 }
 
 // Commit stages filtered changes and commits. Files matching defaultExcludeDirs

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -156,14 +157,18 @@ func (m *WorktreeManager) Acquire(ctx context.Context, taskID, branchName, baseB
 // preparePooledWorktree cleans and switches a pooled worktree to the target branch.
 // Runs: git clean -fd && git checkout -B <branch> <base>
 func (m *WorktreeManager) preparePooledWorktree(ctx context.Context, wt *PooledWorktree, branchName, baseBranch string) error {
-	// Determine base ref
+	// Determine the base ref and the branch to fetch. Default to main for
+	// backward compatibility; an explicit task base branch (e.g. a dev-based
+	// fork) overrides it.
+	baseBranchName := "main"
 	baseRef := "origin/main"
 	if baseBranch != "" {
+		baseBranchName = strings.TrimPrefix(baseBranch, "origin/")
 		baseRef = baseBranch
 	}
 
-	// Fetch latest to ensure we have fresh refs
-	fetchCmd := exec.CommandContext(ctx, "git", "fetch", "origin", "main")
+	// Fetch the base from origin to ensure we have a fresh ref.
+	fetchCmd := exec.CommandContext(ctx, "git", "fetch", "origin", baseBranchName)
 	fetchCmd.Dir = wt.Path
 	_, _ = fetchCmd.CombinedOutput() // Non-fatal
 
