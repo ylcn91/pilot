@@ -22,6 +22,7 @@ func newTeamMemberCmd() *cobra.Command {
 		newTeamMemberRemoveCmd(),
 		newTeamMemberRoleCmd(),
 		newTeamMemberListCmd(),
+		newTeamMemberProjectsCmd(),
 	)
 
 	return cmd
