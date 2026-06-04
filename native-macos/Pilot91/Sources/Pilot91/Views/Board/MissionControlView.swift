@@ -19,12 +19,97 @@ struct MissionControlView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             dashboardHeader
+            daemonHealthStrip
             projectTabs
             board
         }
         .task {
             await store.refreshProjectWorkspaces()
         }
+    }
+
+    private var daemonHealthStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                healthChip(
+                    title: store.serverRunning ? "Daemon online" : "Daemon offline",
+                    value: daemonVersionLabel,
+                    systemImage: store.serverRunning ? "bolt.horizontal.circle.fill" : "bolt.slash.fill",
+                    tint: store.serverRunning ? .green : .secondary
+                )
+
+                if let liveness = store.liveness {
+                    healthChip(
+                        title: liveness.alive ? "Liveness OK" : "Liveness degraded",
+                        value: livenessDetail(liveness),
+                        systemImage: liveness.alive ? "heart.fill" : "heart.slash.fill",
+                        tint: liveness.alive ? .green : .red
+                    )
+
+                    if let panics = liveness.checks?.panics, let count = panics.count {
+                        healthChip(
+                            title: "Panics",
+                            value: panics.recent == true ? "\(count) · recent" : "\(count)",
+                            systemImage: "exclamationmark.triangle.fill",
+                            tint: (panics.recent == true) ? .red : (count > 0 ? .orange : .secondary)
+                        )
+                    }
+                }
+
+                if let rate = store.apiErrorRate {
+                    healthChip(
+                        title: "API errors/min",
+                        value: rate.formatted(.number.precision(.fractionLength(0...2))),
+                        systemImage: "chart.line.downtrend.xyaxis",
+                        tint: rate >= 10 ? .red : (rate > 0 ? .orange : .green)
+                    )
+                }
+
+                healthChip(
+                    title: "Active tasks",
+                    value: "\(store.tasks.count)",
+                    systemImage: "list.bullet.rectangle",
+                    tint: store.tasks.isEmpty ? .secondary : .blue
+                )
+            }
+        }
+    }
+
+    private var daemonVersionLabel: String {
+        if let version = store.serverStatus?.version, !version.isEmpty {
+            return "v\(version)"
+        }
+        return store.serverRunning ? "version unknown" : "not reachable"
+    }
+
+    private func livenessDetail(_ liveness: DaemonLiveness) -> String {
+        var parts: [String] = []
+        if let goroutines = liveness.checks?.goroutines?.count {
+            parts.append("\(goroutines) goroutines")
+        }
+        if let heartbeat = liveness.checks?.heartbeat?.lastSecondsAgo {
+            parts.append("hb \(heartbeat)s")
+        }
+        return parts.isEmpty ? (liveness.alive ? "healthy" : "degraded") : parts.joined(separator: " · ")
+    }
+
+    private func healthChip(title: String, value: String, systemImage: String, tint: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .foregroundStyle(tint)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var dashboardHeader: some View {

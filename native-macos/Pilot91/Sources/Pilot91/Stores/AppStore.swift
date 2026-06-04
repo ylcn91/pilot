@@ -28,6 +28,9 @@ final class AppStore: ObservableObject {
     @Published var gitGraph = GitGraphData()
     @Published var serverRunning = false
     @Published var serverStatus: ServerStatus?
+    @Published var tasks: [TaskInfo] = []
+    @Published var liveness: DaemonLiveness?
+    @Published var apiErrorRate: Double?
     @Published var lastError: String?
     @Published var commandRuns: [CommandRun] = []
     @Published var workspace = WorkspaceSnapshot()
@@ -81,6 +84,9 @@ final class AppStore: ObservableObject {
         do { autopilot = try await client.autopilot() } catch { errors.append(error.localizedDescription) }
         do { findings = try await client.architectFindings() } catch { errors.append(error.localizedDescription) }
         do { gitGraph = try await client.gitGraph(limit: 40) } catch { errors.append(error.localizedDescription) }
+        do { tasks = try await client.tasks() } catch { errors.append(error.localizedDescription) }
+        do { liveness = try await client.liveness() } catch { errors.append(error.localizedDescription) }
+        do { apiErrorRate = try await client.apiErrorRate() } catch { errors.append(error.localizedDescription) }
         refreshRecentRecordings()
         await refreshProviderStatuses()
         await refreshWorkspace()

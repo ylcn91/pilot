@@ -1,0 +1,50 @@
+name: Native macOS
+
+on:
+  push:
+    branches: [dev, main]
+    paths:
+      - 'native-macos/**'
+      - '.github/workflows/native-macos.yml'
+    tags:
+      - 'v*'
+  pull_request:
+    paths:
+      - 'native-macos/**'
+      - '.github/workflows/native-macos.yml'
+
+jobs:
+  build-test:
+    name: Build & test
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: native-macos/Pilot91
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift version
+        run: swift --version
+      - name: Build
+        run: swift build -c release
+      - name: Test
+        run: swift test
+
+  bundle:
+    name: Bundle .app
+    needs: build-test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bundle Pilot91.app
+        run: CONFIG=release VERSION="${GITHUB_REF_NAME#v}" ./native-macos/Pilot91/scripts/bundle-app.sh
+      - name: Package zip
+        run: |
+          mkdir -p bin
+          cd native-macos/Pilot91/dist
+          ditto -c -k --sequesterRsrc --keepParent Pilot91.app "${GITHUB_WORKSPACE}/bin/Pilot91-macOS-${GITHUB_REF_NAME#v}.zip"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pilot91-macOS
+          path: bin/Pilot91-macOS-*.zip

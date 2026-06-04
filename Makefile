@@ -1,4 +1,4 @@
-.PHONY: build run test test-e2e clean install lint fmt deps dev install-hooks check-secrets gate check-integration auto-fix test-short test-integration test-chaos test-wiring smoke-codex-runtime package release desktop-dev desktop-build desktop-build-windows desktop-build-linux desktop desktop-deps desktop-package desktop-dmg desktop-clean build-with-dashboard
+.PHONY: build run test test-e2e clean install lint fmt deps dev install-hooks check-secrets gate check-integration auto-fix test-short test-integration test-chaos test-wiring smoke-codex-runtime package release native-build native-test native-bundle native-package native-clean desktop-deps desktop-clean build-with-dashboard
 
 # Variables
 BINARY_NAME=pilot
@@ -161,7 +161,7 @@ gate:
 #
 # Tag-only by design: the tag push triggers .github/workflows/release.yml
 # (goreleaser), which builds the binaries and publishes the GitHub release
-# in the fork; release-desktop.yml ships the desktop bundles. Do NOT create
+# in the fork; native-macos.yml ships the Pilot 91 .app on v* tags. Do NOT create
 # the GitHub release or upload assets here — a local
 # `gh release create` races goreleaser and makes it fail with 422
 # "asset already_exists".
@@ -182,7 +182,7 @@ endif
 	git tag v$(V)
 	git push origin v$(V)
 	@echo "✅ Tag v$(V) pushed. CI (goreleaser) now builds binaries and publishes"
-	@echo "   the GitHub release, Homebrew tap, and Docker/Desktop bundles."
+	@echo "   the GitHub release, Homebrew tap, and Docker images."
 	@echo "   Track it: gh run list --workflow=Release"
 
 # Build with embedded React dashboard at /dashboard/ (GH-1612)
@@ -195,43 +195,38 @@ build-with-dashboard: desktop-deps
 	go build -tags embed_dashboard $(LDFLAGS) -o bin/$(BINARY_NAME) ./cmd/pilot
 	@rm -rf cmd/pilot/dashboard_dist
 
-# Desktop app (Wails v2 + React)
+# Native macOS app (Pilot 91, SwiftUI) — the primary desktop surface.
+# Signing/notarization are deliberately out of scope here (see
+# .agent/system/native-desktop-migration.md); the bundle is ad-hoc signed
+# for local runs only.
+NATIVE_DIR := native-macos/Pilot91
+
+native-build:
+	cd $(NATIVE_DIR) && swift build -c release
+
+native-test:
+	cd $(NATIVE_DIR) && swift test
+
+native-bundle:
+	CONFIG=release VERSION=$(VERSION) ./$(NATIVE_DIR)/scripts/bundle-app.sh
+
+native-package: native-bundle
+	@mkdir -p bin
+	cd $(NATIVE_DIR)/dist && ditto -c -k --sequesterRsrc --keepParent Pilot91.app ../../../bin/Pilot91-macOS-$(VERSION).zip
+	@echo "Created bin/Pilot91-macOS-$(VERSION).zip"
+
+native-clean:
+	rm -rf $(NATIVE_DIR)/.build $(NATIVE_DIR)/dist
+
+# Web dashboard frontend (desktop/frontend). The Wails desktop app is retired
+# (see .agent/system/native-desktop-migration.md); this React app now only
+# feeds the gateway's embedded /dashboard/ via build-with-dashboard. Native
+# macOS lives under native-* above.
 desktop-deps:
 	cd desktop/frontend && npm ci
 
-desktop-dev:
-	cd desktop && wails dev
-
-desktop-build: desktop-deps
-	cd desktop && wails build -platform darwin/universal -ldflags "-X main.version=$(VERSION)"
-
-desktop: desktop-build
-
-desktop-package: desktop-build
-	@echo "Packaging Pilot.app..."
-	@mkdir -p bin
-	cd desktop/build/bin && COPYFILE_DISABLE=1 zip -r ../../../bin/Pilot-macOS-$(VERSION).zip Pilot.app
-	@echo "Created bin/Pilot-macOS-$(VERSION).zip"
-
-desktop-build-windows: desktop-deps
-	cd desktop && wails build -platform windows/amd64 -ldflags "-X main.version=$(VERSION)"
-
-desktop-build-linux: desktop-deps
-	cd desktop && wails build -platform linux/amd64 -ldflags "-X main.version=$(VERSION)"
-
-desktop-dmg: desktop-build
-	@echo "Creating Pilot.dmg..."
-	@mkdir -p bin
-	@mkdir -p /tmp/pilot-dmg-staging
-	@cp -R desktop/build/bin/Pilot.app /tmp/pilot-dmg-staging/
-	@ln -sf /Applications /tmp/pilot-dmg-staging/Applications
-	@hdiutil create -volname "Pilot" -srcfolder /tmp/pilot-dmg-staging \
-		-ov -format UDZO bin/Pilot-macOS-$(VERSION).dmg
-	@rm -rf /tmp/pilot-dmg-staging
-	@echo "Created bin/Pilot-macOS-$(VERSION).dmg"
-
 desktop-clean:
-	rm -rf desktop/build/bin desktop/frontend/dist desktop/frontend/node_modules
+	rm -rf desktop/frontend/dist desktop/frontend/node_modules
 
 # Help
 help:
@@ -264,12 +259,11 @@ help:
 	@echo "  make package        Package binaries into tar.gz archives"
 	@echo "  make release        Create release (V=0.x.x required)"
 	@echo "  make build-with-dashboard  Build with embedded React dashboard"
-	@echo "  make desktop-deps          Install desktop frontend dependencies"
-	@echo "  make desktop-dev           Run desktop app in dev mode"
-	@echo "  make desktop-build         Build desktop app (darwin/universal)"
-	@echo "  make desktop-build-windows Build desktop app (windows/amd64)"
-	@echo "  make desktop-build-linux   Build desktop app (linux/amd64)"
-	@echo "  make desktop-package       Package Pilot.app into zip (VERSION=vX.Y.Z)"
-	@echo "  make desktop-dmg           Create Pilot.dmg installer (VERSION=vX.Y.Z)"
-	@echo "  make desktop-clean         Clean desktop build artifacts"
+	@echo "  make desktop-deps          Install web dashboard frontend dependencies"
+	@echo "  make desktop-clean         Clean web dashboard frontend artifacts"
+	@echo "  make native-build          Build native macOS app (Pilot 91)"
+	@echo "  make native-test           Test native macOS app"
+	@echo "  make native-bundle         Assemble Pilot91.app"
+	@echo "  make native-package        Package Pilot91.app into zip (VERSION=X.Y.Z)"
+	@echo "  make native-clean          Clean native build artifacts"
 	@echo ""
