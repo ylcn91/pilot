@@ -1,6 +1,8 @@
 # Pilot Feature Matrix
 
-**Last Updated:** 2026-06-02 (v2.151.0)
+**Last Updated:** 2026-06-02 (v2.151.0) — snapshot; the current release
+(`docs/lib/version.ts`) is ahead, so features added since may not be listed yet.
+Treat this as a point-in-time map, not a live inventory.
 
 ## Legend
 

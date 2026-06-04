@@ -157,7 +157,7 @@ You label issue "pilot"
 
 ## Features
 
-**133 features implemented** across execution, intelligence, integrations, and infrastructure.
+Capabilities span execution, intelligence, integrations, and infrastructure — see the table below.
 
 ### Core Execution
 
