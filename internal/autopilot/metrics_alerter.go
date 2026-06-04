@@ -106,6 +106,16 @@ func NewMetricsAlerter(controller *Controller, engine *alerts.Engine) *MetricsAl
 	}
 }
 
+// AttachToController registers this alerter's circuit-breaker escalation as the
+// controller's trip hook so that an open per-PR breaker drives the PagerDuty
+// escalation path (3+ trips/hour), not just the inert Prometheus counter.
+func (ma *MetricsAlerter) AttachToController(c *Controller) {
+	if c == nil {
+		return
+	}
+	c.SetCircuitBreakerTripHook(ma.RecordCircuitBreakerTrip)
+}
+
 // Run starts the metrics alerter loop.
 func (ma *MetricsAlerter) Run(ctx context.Context) {
 	if ma.engine == nil {

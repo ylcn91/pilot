@@ -148,6 +148,14 @@ func (c *Controller) SetOnIssueDone(fn func(issueNumber int)) {
 	c.onIssueDone = fn
 }
 
+// SetCircuitBreakerTripHook registers a callback invoked whenever a per-PR
+// circuit breaker is found open in ProcessPR. Wire it to
+// MetricsAlerter.RecordCircuitBreakerTrip so the PagerDuty escalation path runs
+// (the no-arg metrics counter only feeds the Prometheus gauge). nil disables it.
+func (c *Controller) SetCircuitBreakerTripHook(fn func(prNumber int, reason string)) {
+	c.circuitBreakerTripHook = fn
+}
+
 // SetGuardrailsGate wires the per-PR architectural guardrails gate. When set and
 // enabled, handleCIPassed runs it as a fail-open, report-only-by-default check
 // that posts a pilot/guardrails commit status + PR comment. It never blocks the
