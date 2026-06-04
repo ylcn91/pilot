@@ -235,7 +235,7 @@ func (p *Poller) findOldestUnprocessedWorkItem(ctx context.Context) (*WorkItem, 
 		}
 
 		if HasTag(wi, TagInProgress) || HasTag(wi, TagDone) {
-			p.recordSkip(skipreason.ReasonStatusTag)
+			p.recordSkip(p.statusTagSkipReason(wi))
 			continue
 		}
 

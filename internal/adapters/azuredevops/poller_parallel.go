@@ -77,7 +77,7 @@ func (p *Poller) checkForNewWorkItems(ctx context.Context) {
 		// Skip if has in-progress, done, or failed tag
 		if p.hasStatusTag(wi) {
 			p.markProcessed(wi.ID)
-			p.recordSkip(skipreason.ReasonStatusTag)
+			p.recordSkip(p.statusTagSkipReason(wi))
 			continue
 		}
 
@@ -152,4 +152,20 @@ func (p *Poller) hasStatusTag(wi *WorkItem) bool {
 	return HasTag(wi, TagInProgress) ||
 		HasTag(wi, TagDone) ||
 		HasTag(wi, TagFailed)
+}
+
+// statusTagSkipReason maps a status-tag hit to the granular skip reason used by
+// the github parallel poller, so Azure DevOps reports distinct in_progress /
+// done / failed_skip metrics instead of a single combined status_tag (GH #23).
+func (p *Poller) statusTagSkipReason(wi *WorkItem) string {
+	switch {
+	case HasTag(wi, TagInProgress):
+		return skipreason.ReasonInProgress
+	case HasTag(wi, TagDone):
+		return skipreason.ReasonDone
+	case HasTag(wi, TagFailed):
+		return skipreason.ReasonFailedSkip
+	default:
+		return skipreason.ReasonStatusTag
+	}
 }

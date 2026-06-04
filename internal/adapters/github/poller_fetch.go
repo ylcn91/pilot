@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/ylcn91/pilot/internal/adapters/skipreason"
 )
 
 // findOldestUnprocessedIssue finds the oldest issue with the pilot label
@@ -50,30 +52,40 @@ func (p *Poller) findOldestUnprocessedIssue(ctx context.Context) (*Issue, error)
 			continue
 		}
 
-		// Skip if in-progress or done
-		if HasLabel(issue, LabelInProgress) || HasLabel(issue, LabelDone) {
+		// Skip if in-progress or done (split to record the same reasons as the
+		// parallel path so sequential mode reports skip metrics too — GH #23).
+		if HasLabel(issue, LabelInProgress) {
+			p.recordSkip(skipreason.ReasonInProgress)
+			continue
+		}
+		if HasLabel(issue, LabelDone) {
+			p.recordSkip(skipreason.ReasonDone)
 			continue
 		}
 
 		// GH-2402: Skip permanently-blocked issues. The user must remove
 		// the pilot-blocked label to retry (e.g. after fixing a non-conventional title).
 		if HasLabel(issue, LabelBlocked) {
+			p.recordSkip(skipreason.ReasonBlocked)
 			continue
 		}
 
 		// GH-2768: Skip issues declined as unactionable. Remove the label to re-enable dispatch.
 		if HasLabel(issue, LabelNeedsClarification) {
+			p.recordSkip(skipreason.ReasonNeedsClarification)
 			continue
 		}
 
 		// GH-2402: Auto-close sub-issues whose parent epic already shipped.
 		if p.skipSupersededByParent(ctx, issue) {
+			p.recordSkip(skipreason.ReasonSuperseded)
 			continue
 		}
 
 		// GH-2176: Auto-retry issues stuck with pilot-failed (no pilot-done)
 		if HasLabel(issue, LabelFailed) {
 			if !p.shouldRetryFailedIssue(ctx, issue) {
+				p.recordSkip(skipreason.ReasonFailedSkip)
 				continue
 			}
 			// Label removed, fall through to candidate selection
@@ -82,6 +94,7 @@ func (p *Poller) findOldestUnprocessedIssue(ctx context.Context) (*Issue, error)
 		// GH-2276: Auto-retry issues with pilot-retry-ready (PR closed without merge)
 		if HasLabel(issue, LabelRetryReady) {
 			if !p.shouldRetryRetryReadyIssue(ctx, issue) {
+				p.recordSkip(skipreason.ReasonRetryReadySkip)
 				continue
 			}
 			// Label removed, fall through to candidate selection
@@ -100,6 +113,7 @@ func (p *Poller) findOldestUnprocessedIssue(ctx context.Context) (*Issue, error)
 					slog.Int("number", issue.Number),
 					slog.Duration("elapsed", time.Since(processedAt)),
 					slog.Duration("grace_period", p.dispatch.retryGracePeriod))
+				p.recordSkip(skipreason.ReasonProcessedGrace)
 				continue
 			}
 
@@ -110,6 +124,7 @@ func (p *Poller) findOldestUnprocessedIssue(ctx context.Context) (*Issue, error)
 					p.logger.Debug("Issue still queued/in-progress, skipping retry",
 						slog.Int("number", issue.Number),
 						slog.String("task_id", taskID))
+					p.recordSkip(skipreason.ReasonTaskQueued)
 					continue
 				}
 			}
@@ -130,6 +145,7 @@ func (p *Poller) findOldestUnprocessedIssue(ctx context.Context) (*Issue, error)
 
 			// GH-1983: Before retrying, check if merged PRs already exist
 			if p.hasMergedWork(ctx, issue) {
+				p.recordSkip(skipreason.ReasonHasMergedWork)
 				continue
 			}
 
@@ -141,6 +157,7 @@ func (p *Poller) findOldestUnprocessedIssue(ctx context.Context) (*Issue, error)
 			// autopilot merge flow owns this issue until the PR merges or closes.
 			if p.hasOpenPRAwaitingMerge(ctx, issue) {
 				p.markProcessed(issue.Number)
+				p.recordSkip(skipreason.ReasonHasOpenPR)
 				continue
 			}
 		}
@@ -148,6 +165,7 @@ func (p *Poller) findOldestUnprocessedIssue(ctx context.Context) (*Issue, error)
 		// GH-3269: Fresh candidates (never processed / post-unmark) bypass the
 		// retry block above, so apply the merged-work guard unconditionally for them.
 		if !processed && p.hasMergedWork(ctx, issue) {
+			p.recordSkip(skipreason.ReasonHasMergedWork)
 			continue
 		}
 
@@ -165,6 +183,7 @@ func (p *Poller) findOldestUnprocessedIssue(ctx context.Context) (*Issue, error)
 					slog.Int("number", issue.Number),
 					slog.String("task_id", taskID))
 				p.markProcessed(issue.Number)
+				p.recordSkip(skipreason.ReasonCompletedExecution)
 				continue
 			}
 		}
@@ -190,6 +209,7 @@ func (p *Poller) findOldestUnprocessedIssue(ctx context.Context) (*Issue, error)
 			slog.Int("number", candidate.Number),
 			slog.String("title", candidate.Title),
 		)
+		p.recordSkip(skipreason.ReasonPendingDependency)
 	}
 
 	// All candidates have pending dependencies

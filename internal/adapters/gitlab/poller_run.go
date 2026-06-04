@@ -259,7 +259,7 @@ func (p *Poller) findOldestUnprocessedIssue(ctx context.Context) (*Issue, error)
 		}
 
 		if HasLabel(issue, LabelInProgress) || HasLabel(issue, LabelDone) {
-			p.recordSkip(skipreason.ReasonStatusLabel)
+			p.recordSkip(p.statusLabelSkipReason(issue))
 			continue
 		}
 
